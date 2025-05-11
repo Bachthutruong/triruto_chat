@@ -11,19 +11,44 @@ To get started, take a look at src/app/page.tsx.
     npm install
     ```
 
-2.  **Set up Environment Variables:**
-    Create a `.env` file in the root of your project and add your Google AI API key:
-    ```
-    GOOGLE_API_KEY=YOUR_API_KEY_HERE
-    ```
-    You can obtain an API key from [Google AI Studio](https://aistudio.google.com/app/apikey).
+2.  **Set up MongoDB:**
+    This application requires a MongoDB database. You can:
+    *   Install MongoDB locally (e.g., from [MongoDB Community Server](https://www.mongodb.com/try/download/community)).
+    *   Use a cloud-hosted MongoDB service like [MongoDB Atlas](https://www.mongodb.com/cloud/atlas/register) (which offers a free tier).
 
-3.  **Run the development server:**
+    Once your MongoDB instance is set up and running, you will need its connection string (URI).
+
+3.  **Set up Environment Variables:**
+    Create a `.env` file in the root of your project (if it doesn't already exist). Add the following environment variables:
+
+    ```env
+    # For Google AI (Genkit)
+    GOOGLE_API_KEY=YOUR_GOOGLE_AI_API_KEY_HERE
+
+    # For MongoDB connection
+    # Replace with your actual MongoDB connection string.
+    #
+    # Example for a local MongoDB instance running on the default port 27017,
+    # connecting to a database named 'aetherchat':
+    # MONGODB_URI=mongodb://127.0.0.1:27017/aetherchat
+    #
+    # Example for a MongoDB Atlas cluster:
+    # MONGODB_URI=mongodb+srv://<your_username>:<your_password>@<your_cluster_address>/aetherchat?retryWrites=true&w=majority
+    # (Replace <your_username>, <your_password>, and <your_cluster_address> with your actual Atlas credentials and cluster URI parts.
+    #  'aetherchat' can be your desired database name.)
+    MONGODB_URI=YOUR_MONGODB_CONNECTION_STRING_HERE
+    ```
+    *   You can obtain a Google AI API key from [Google AI Studio](https://aistudio.google.com/app/apikey).
+    *   For `MONGODB_URI`:
+        *   If using a local MongoDB, `mongodb://127.0.0.1:27017/aetherchat` is a common format. Ensure your MongoDB server is running.
+        *   If using MongoDB Atlas, copy the connection string provided by Atlas for your application. Make sure to replace placeholders like `<username>`, `<password>`, and ensure your IP address is whitelisted in Atlas network access settings if necessary.
+
+4.  **Run the development server:**
     ```bash
     npm run dev
     ```
 
-4.  **Run the Genkit development server (in a separate terminal):**
+5.  **Run the Genkit development server (in a separate terminal):**
     ```bash
     npm run genkit:dev
     ```
@@ -34,6 +59,10 @@ To get started, take a look at src/app/page.tsx.
 
 Open [http://localhost:9002](http://localhost:9002) with your browser to see the result.
 The Genkit developer UI will be available at [http://localhost:4000](http://localhost:4000).
+
+**Important:**
+*   Ensure your MongoDB server is running and accessible from your application environment before starting the Next.js application.
+*   If the `MONGODB_URI` is not set correctly, or if the MongoDB server is not reachable, the application will fail to connect to the database and will not function properly. You might see errors like `ECONNREFUSED` in the console.
 
 ## Features
 
