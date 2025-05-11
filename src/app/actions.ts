@@ -4,86 +4,19 @@
 import type { Message, UserSession, AppointmentDetails, Product, Note, CustomerProfile, UserRole } from '@/lib/types';
 import { answerUserQuestion } from '@/ai/flows/answer-user-question';
 import { generateSuggestedReplies } from '@/ai/flows/generate-suggested-replies';
-import { scheduleAppointment } from '@/ai/flows/schedule-appointment';
-import type { ScheduleAppointmentOutput } from '@/ai/schemas/schedule-appointment-schemas';
-import { randomUUID } from 'crypto'; // For generating unique IDs
+import { scheduleAppointment as scheduleAppointmentAIFlow } from '@/ai/flows/schedule-appointment';
+import type { ScheduleAppointmentOutput, AppointmentDetails as AIScheduleAppointmentDetails } from '@/ai/schemas/schedule-appointment-schemas';
+import { randomUUID } from 'crypto'; // For generating unique IDs if needed for non-DB items
 
-// Mock database for users, appointments, etc.
-// Extended MOCK_USERS to include roles
-let MOCK_USERS: Record<string, UserSession> = {
-  // Customer
-  '1234567890': {
-    id: 'user_123',
-    phoneNumber: '1234567890',
-    role: 'customer',
-    name: 'Jane Doe',
-    chatHistory: [
-      { id: 'hist_1', sender: 'system', content: 'Chat history loaded for Jane Doe.', timestamp: new Date(Date.now() - 3600000) },
-      { id: 'hist_2', sender: 'user', content: 'Hello!', timestamp: new Date(Date.now() - 3500000) },
-      { id: 'hist_3', sender: 'ai', content: 'Hi Jane, how can I help you today?', timestamp: new Date(Date.now() - 3400000) },
-    ],
-    appointments: [],
-    products: [],
-    notes: [],
-    tags: ['VIP'],
-  },
-  // Staff
-  'staff001': {
-    id: 'staff_001_user',
-    phoneNumber: 'staff001', // Using phone number as a simple login key for mock
-    role: 'staff',
-    name: 'Support Staff Alice',
-  },
-  // Admin
-  'admin001': {
-    id: 'admin_001_user',
-    phoneNumber: 'admin001', // Using phone number as a simple login key for mock
-    role: 'admin',
-    name: 'Admin Bob',
-  }
-};
-
-let MOCK_CUSTOMERS_DATA: Record<string, CustomerProfile> = {
-    'user_123': {
-        id: 'user_123',
-        phoneNumber: '1234567890',
-        name: 'Jane Doe',
-        chatHistoryIds: ['hist_1', 'hist_2', 'hist_3'],
-        appointmentIds: ['appt_0'],
-        productIds: [],
-        noteIds: [],
-        tags: ['VIP'],
-        lastInteractionAt: new Date(Date.now() - 3400000),
-        createdAt: new Date(Date.now() - 86400000 * 10),
-    }
-};
-let MOCK_ALL_MESSAGES: Record<string, Message> = {
-    'hist_1': { id: 'hist_1', sender: 'system', content: 'Chat history loaded for Jane Doe.', timestamp: new Date(Date.now() - 3600000) },
-    'hist_2': { id: 'hist_2', sender: 'user', content: 'Hello!', timestamp: new Date(Date.now() - 3500000) },
-    'hist_3': { id: 'hist_3', sender: 'ai', content: 'Hi Jane, how can I help you today?', timestamp: new Date(Date.now() - 3400000) },
-};
-
-
-let MOCK_USER_ID_COUNTER = Object.keys(MOCK_USERS).length;
-let MOCK_APPOINTMENT_ID_COUNTER = 1;
-let MOCK_CUSTOMER_ID_COUNTER = Object.keys(MOCK_CUSTOMERS_DATA).length;
-
-
-let MOCK_APPOINTMENTS: AppointmentDetails[] = [
-    {
-        appointmentId: 'appt_0',
-        userId: 'user_123', // Links to CustomerProfile.id
-        service: 'Initial Consultation',
-        date: '2024-07-10',
-        time: '10:00 AM',
-        branch: 'Main Street Branch',
-        status: 'completed',
-        createdAt: new Date(Date.now() - 86400000 * 5),
-        updatedAt: new Date(Date.now() - 86400000 * 5),
-    }
-];
-const MOCK_PRODUCTS: Product[] = [];
-const MOCK_NOTES: Note[] = [];
+import dbConnect from '@/lib/mongodb';
+import UserModel from '@/models/User.model';
+import CustomerModel from '@/models/Customer.model';
+import MessageModel from '@/models/Message.model';
+import AppointmentModel from '@/models/Appointment.model';
+import type { IUser } from '@/models/User.model';
+import type { ICustomer } from '@/models/Customer.model';
+import type { IMessage } from '@/models/Message.model';
+import type { IAppointment } from '@/models/Appointment.model';
 
 const KEYWORD_RESPONSES: Record<string, string> = {
   "giờ mở cửa": "Chúng tôi mở cửa từ 9 giờ sáng đến 6 giờ tối, từ Thứ Hai đến Thứ Sáu.",
@@ -102,127 +35,178 @@ function formatChatHistoryForAI(messages: Message[]): string {
     .join('\n');
 }
 
-export async function identifyUserAndLoadData(phoneNumber: string): Promise<{
-  userSession: UserSession;
-  initialMessages?: Message[]; // Optional for admin/staff
-  initialSuggestedReplies?: string[]; // Optional for admin/staff
-}> {
-  await new Promise(resolve => setTimeout(resolve, 500)); 
-
-  let user = MOCK_USERS[phoneNumber];
-  
-  if (user) { // Existing user (could be customer, staff, or admin)
-    if (user.role === 'customer') {
-      const customerProfile = MOCK_CUSTOMERS_DATA[user.id];
-      const chatHistory = customerProfile?.chatHistoryIds.map(id => MOCK_ALL_MESSAGES[id]).filter(Boolean) || [];
-      user.chatHistory = chatHistory;
-      user.appointments = MOCK_APPOINTMENTS.filter(appt => appt.userId === user!.id);
-      // Load products, notes, tags similarly if they were stored by ID
-    }
-    // For staff/admin, their UserSession is already defined with their role and name.
-    // No specific customer data to load into their session directly here.
-  } else { // New customer
-    MOCK_USER_ID_COUNTER++;
-    const newUserId = `user_customer_${String(Date.now()).slice(-4)}${MOCK_USER_ID_COUNTER}`;
-    user = {
-      id: newUserId,
-      phoneNumber,
-      role: 'customer', // New users are customers by default
-      name: `Customer ${phoneNumber.slice(-4)}`, // Default name
-      chatHistory: [],
-      appointments: [],
-      products: [],
-      notes: [],
-      tags: [],
-    };
-    MOCK_USERS[phoneNumber] = user;
-
-    MOCK_CUSTOMER_ID_COUNTER++;
-    const newCustomerProfile: CustomerProfile = {
-        id: newUserId,
-        phoneNumber: phoneNumber,
-        name: user.name,
-        chatHistoryIds: [],
-        appointmentIds: [],
-        productIds: [],
-        noteIds: [],
-        tags: [],
-        lastInteractionAt: new Date(),
-        createdAt: new Date(),
-    };
-    MOCK_CUSTOMERS_DATA[newUserId] = newCustomerProfile;
-  }
-
-  if (user.role === 'customer') {
-    const welcomeMessageContent = !user.chatHistory || user.chatHistory.length === 0
-      ? `Welcome to AetherChat! I'm your AI assistant. How can I help you today? You can ask about our services or schedule an appointment.`
-      : `Welcome back${user.name ? ', ' + user.name : ''}! Your history is loaded. How can I assist you today?`;
-
-    const welcomeMessage: Message = {
-      id: `msg_system_${Date.now()}`,
-      sender: 'system', // System message, not AI
-      content: welcomeMessageContent,
-      timestamp: new Date(),
-    };
-    
-    const initialMessages = [...(user.chatHistory || []), welcomeMessage];
-    // Don't save welcome message to persistent history, it's dynamic
-    // MOCK_USERS[phoneNumber].chatHistory = initialMessages; 
-    // MOCK_CUSTOMERS_DATA[user.id].chatHistoryIds.push(welcomeMessage.id);
-    // MOCK_ALL_MESSAGES[welcomeMessage.id] = welcomeMessage;
-
-
-    let suggestedReplies: string[] = [];
-    try {
-      const repliesResult = await generateSuggestedReplies({ latestMessage: welcomeMessageContent });
-      suggestedReplies = repliesResult.suggestedReplies;
-    } catch (error) {
-      console.error('Error generating initial suggested replies:', error);
-      suggestedReplies = ['Tell me about services', 'Schedule an appointment', 'Where are you located?'];
-    }
-    
+function transformCustomerToSession(customerDoc: ICustomer): UserSession {
     return {
-      userSession: { ...user, chatHistory: undefined }, // Return user session without full history here
-      initialMessages, // Send messages for display
-      initialSuggestedReplies: suggestedReplies,
+        id: customerDoc._id.toString(),
+        phoneNumber: customerDoc.phoneNumber,
+        role: 'customer',
+        name: customerDoc.name || `Customer ${customerDoc.phoneNumber.slice(-4)}`,
+        // chatHistory, appointments, etc. will be loaded separately or populated if needed
     };
+}
+
+function transformUserToSession(userDoc: IUser): UserSession {
+    return {
+        id: userDoc._id.toString(),
+        phoneNumber: userDoc.phoneNumber,
+        role: userDoc.role,
+        name: userDoc.name || `${userDoc.role.charAt(0).toUpperCase() + userDoc.role.slice(1)} User`,
+    };
+}
+
+function transformMessageDocToMessage(msgDoc: IMessage): Message {
+    return {
+        id: msgDoc._id.toString(),
+        sender: msgDoc.sender as 'user' | 'ai' | 'system',
+        content: msgDoc.content,
+        timestamp: new Date(msgDoc.timestamp),
+        name: msgDoc.name,
+    };
+}
+
+function transformAppointmentDocToDetails(apptDoc: IAppointment): AppointmentDetails {
+    return {
+        appointmentId: apptDoc._id.toString(),
+        userId: apptDoc.customerId.toString(), // In AppointmentDetails, userId refers to the customer
+        service: apptDoc.service,
+        time: apptDoc.time,
+        date: apptDoc.date,
+        branch: apptDoc.branch,
+        status: apptDoc.status as AppointmentDetails['status'],
+        notes: apptDoc.notes,
+        createdAt: new Date(apptDoc.createdAt as Date),
+        updatedAt: new Date(apptDoc.updatedAt as Date),
+        staffId: apptDoc.staffId?.toString(),
+    };
+}
+
+
+// For customer identification via phone number on main page
+export async function handleCustomerAccess(phoneNumber: string): Promise<{
+  userSession: UserSession;
+  initialMessages: Message[];
+  initialSuggestedReplies: string[];
+}> {
+  await dbConnect();
+  let customer = await CustomerModel.findOne({ phoneNumber });
+  let userSession: UserSession;
+  let initialMessages: Message[] = [];
+
+  if (customer) {
+    userSession = transformCustomerToSession(customer);
+    const messageDocs = await MessageModel.find({ customerId: customer._id }).sort({ timestamp: 1 }).limit(50);
+    initialMessages = messageDocs.map(transformMessageDocToMessage);
   } else {
-    // For staff/admin, no initial messages or replies in this context.
-    // They'll go to their dashboards.
-    return { userSession: user };
+    const newCustomerDoc = new CustomerModel({
+      phoneNumber,
+      name: `Customer ${phoneNumber.slice(-4)}`,
+      lastInteractionAt: new Date(),
+    });
+    customer = await newCustomerDoc.save();
+    userSession = transformCustomerToSession(customer);
   }
+
+  const welcomeMessageContent = initialMessages.length === 0
+    ? `Welcome to AetherChat! I'm your AI assistant. How can I help you today? You can ask about our services or schedule an appointment.`
+    : `Welcome back${userSession.name ? ', ' + userSession.name : ''}! Your history is loaded. How can I assist you today?`;
+
+  const welcomeMessage: Message = {
+    id: `msg_system_${Date.now()}`,
+    sender: 'system',
+    content: welcomeMessageContent,
+    timestamp: new Date(),
+  };
+  
+  // Do not save system welcome message to DB, it's dynamic for the session
+  initialMessages.push(welcomeMessage);
+
+  let suggestedReplies: string[] = [];
+  try {
+    const repliesResult = await generateSuggestedReplies({ latestMessage: welcomeMessageContent });
+    suggestedReplies = repliesResult.suggestedReplies;
+  } catch (error) {
+    console.error('Error generating initial suggested replies:', error);
+    suggestedReplies = ['Tell me about services', 'Schedule an appointment', 'Where are you located?'];
+  }
+  
+  return {
+    userSession,
+    initialMessages,
+    initialSuggestedReplies: suggestedReplies,
+  };
+}
+
+
+export async function registerUser(name: string, phoneNumber: string, password: string, role: UserRole): Promise<UserSession | null> {
+  if (role === 'customer') throw new Error("Customer registration is handled differently.");
+  await dbConnect();
+
+  const existingUser = await UserModel.findOne({ phoneNumber });
+  if (existingUser) {
+    throw new Error('User with this phone number already exists.');
+  }
+
+  const newUserDoc = new UserModel({
+    name,
+    phoneNumber,
+    password, // Will be hashed by pre-save hook
+    role,
+  });
+  await newUserDoc.save();
+  return transformUserToSession(newUserDoc);
+}
+
+export async function loginUser(phoneNumber: string, passwordAttempt: string): Promise<UserSession | null> {
+  await dbConnect();
+  const user = await UserModel.findOne({ phoneNumber }).select('+password'); // Explicitly select password
+
+  if (!user || user.role === 'customer') { // Customers don't log in with password this way
+    throw new Error('User not found or not authorized for password login.');
+  }
+
+  if (!user.password) {
+     throw new Error('Password not set for this user. Please contact admin.');
+  }
+
+  const isMatch = await user.comparePassword(passwordAttempt);
+  if (!isMatch) {
+    throw new Error('Invalid credentials.');
+  }
+  return transformUserToSession(user);
 }
 
 
 export async function processUserMessage(
   userMessageContent: string,
-  currentUserSession: UserSession, // This is the customer's session
-  currentChatHistory: Message[] // This is the current displayed chat
+  currentUserSession: UserSession, // This is the customer's session ID (from CustomerModel._id)
+  currentChatHistory: Message[] 
 ): Promise<{ aiMessage: Message; newSuggestedReplies: string[]; updatedAppointment?: AppointmentDetails }> {
-  await new Promise(resolve => setTimeout(resolve, 300)); 
+  await dbConnect();
 
-  const userMessage: Message = {
-    id: `msg_user_${Date.now()}`,
+  const customerId = currentUserSession.id; // This is CustomerModel._id for customers
+
+  const userMessageData: Partial<IMessage> = {
     sender: 'user',
     content: userMessageContent,
     timestamp: new Date(),
     name: currentUserSession.name || 'User',
+    customerId: customerId as any, // mongoose.Types.ObjectId,
   };
+  const savedUserMessageDoc = await new MessageModel(userMessageData).save();
+  const userMessage = transformMessageDocToMessage(savedUserMessageDoc);
 
+  // Update customer's last interaction and add message ID to history
+  await CustomerModel.findByIdAndUpdate(customerId, {
+    $push: { chatHistoryIds: savedUserMessageDoc._id },
+    lastInteractionAt: new Date(),
+  });
+  
   let updatedChatHistoryWithUserMsg = [...currentChatHistory, userMessage];
-  
-  // Persist user message
-  if (MOCK_CUSTOMERS_DATA[currentUserSession.id]) {
-    MOCK_ALL_MESSAGES[userMessage.id] = userMessage;
-    MOCK_CUSTOMERS_DATA[currentUserSession.id].chatHistoryIds.push(userMessage.id);
-    MOCK_CUSTOMERS_DATA[currentUserSession.id].lastInteractionAt = new Date();
-  }
-  
   const formattedHistory = formatChatHistoryForAI(updatedChatHistoryWithUserMsg.slice(-10));
 
   let aiResponseContent: string = "";
   let finalAiMessage: Message;
-  let processedAppointment: AppointmentDetails | undefined = undefined;
+  let processedAppointmentDB: IAppointment | null = null; // To store appointment from DB if action occurs
   let scheduleOutput: ScheduleAppointmentOutput | null = null;
 
   const schedulingKeywords = ['book', 'schedule', 'appointment', 'meeting', 'reserve', 'đặt lịch', 'hẹn', 'cancel', 'hủy', 'reschedule', 'đổi lịch'];
@@ -231,68 +215,63 @@ export async function processUserMessage(
 
   if (hasSchedulingIntent) {
     try {
-      const userAppointments = MOCK_APPOINTMENTS.filter(a => a.userId === currentUserSession.id && a.status !== 'cancelled');
-      scheduleOutput = await scheduleAppointment({
+      const customerAppointmentsDocs = await AppointmentModel.find({ customerId: customerId, status: { $ne: 'cancelled' } });
+      const customerAppointments = customerAppointmentsDocs.map(transformAppointmentDocToDetails);
+      
+      scheduleOutput = await scheduleAppointmentAIFlow({
         userInput: userMessageContent,
         phoneNumber: currentUserSession.phoneNumber,
-        userId: currentUserSession.id,
-        existingAppointments: userAppointments,
+        userId: customerId, // Use customer's DB ID
+        existingAppointments: customerAppointments,
         currentDateTime: new Date().toISOString(),
       });
 
       aiResponseContent = scheduleOutput.confirmationMessage;
 
       if (scheduleOutput.intent === 'booked' && scheduleOutput.appointmentDetails) {
-        MOCK_APPOINTMENT_ID_COUNTER++;
-        const newAppointmentId = `appt_${String(Date.now()).slice(-4)}${MOCK_APPOINTMENT_ID_COUNTER}`;
-        const newAppointment: AppointmentDetails = {
-          ...scheduleOutput.appointmentDetails,
-          appointmentId: newAppointmentId,
-          userId: currentUserSession.id,
-          status: 'booked', 
-          createdAt: new Date(),
-          updatedAt: new Date(),
+        const newAppointmentData: Omit<IAppointment, '_id' | 'createdAt' | 'updatedAt'> = {
+          customerId: customerId as any,
+          service: scheduleOutput.appointmentDetails.service!,
+          date: scheduleOutput.appointmentDetails.date!,
+          time: scheduleOutput.appointmentDetails.time!,
+          branch: scheduleOutput.appointmentDetails.branch,
+          status: 'booked',
         };
-        MOCK_APPOINTMENTS.push(newAppointment);
-        if (MOCK_CUSTOMERS_DATA[currentUserSession.id]) {
-            MOCK_CUSTOMERS_DATA[currentUserSession.id].appointmentIds.push(newAppointmentId);
-        }
-        processedAppointment = newAppointment;
-        aiResponseContent += ` Appointment ID: ${newAppointmentId}.`;
+        processedAppointmentDB = await new AppointmentModel(newAppointmentData).save();
+        await CustomerModel.findByIdAndUpdate(customerId, { $push: { appointmentIds: processedAppointmentDB._id } });
+        aiResponseContent += ` Appointment ID: ${processedAppointmentDB._id.toString()}.`;
+
       } else if (scheduleOutput.intent === 'cancelled' && scheduleOutput.originalAppointmentIdToModify) {
-        const apptIndex = MOCK_APPOINTMENTS.findIndex(a => a.appointmentId === scheduleOutput!.originalAppointmentIdToModify && a.userId === currentUserSession.id);
-        if (apptIndex > -1) {
-          MOCK_APPOINTMENTS[apptIndex].status = 'cancelled';
-          MOCK_APPOINTMENTS[apptIndex].updatedAt = new Date();
-          processedAppointment = MOCK_APPOINTMENTS[apptIndex];
-        }
+        processedAppointmentDB = await AppointmentModel.findOneAndUpdate(
+          { _id: scheduleOutput.originalAppointmentIdToModify, customerId: customerId },
+          { status: 'cancelled', updatedAt: new Date() },
+          { new: true }
+        );
       } else if (scheduleOutput.intent === 'rescheduled' && scheduleOutput.originalAppointmentIdToModify && scheduleOutput.appointmentDetails) {
-         const apptIndex = MOCK_APPOINTMENTS.findIndex(a => a.appointmentId === scheduleOutput!.originalAppointmentIdToModify && a.userId === currentUserSession.id);
-         if (apptIndex > -1) {
-            MOCK_APPOINTMENTS[apptIndex] = {
-                ...MOCK_APPOINTMENTS[apptIndex],
-                ...scheduleOutput.appointmentDetails, 
-                status: 'booked', 
-                updatedAt: new Date(),
-            };
-            processedAppointment = MOCK_APPOINTMENTS[apptIndex];
-         } else { 
-            MOCK_APPOINTMENT_ID_COUNTER++;
-            const newAppointmentId = `appt_${String(Date.now()).slice(-4)}${MOCK_APPOINTMENT_ID_COUNTER}`;
-            const newAppointment: AppointmentDetails = {
-              ...scheduleOutput.appointmentDetails,
-              appointmentId: newAppointmentId,
-              userId: currentUserSession.id,
+         processedAppointmentDB = await AppointmentModel.findOneAndUpdate(
+            { _id: scheduleOutput.originalAppointmentIdToModify, customerId: customerId },
+            { 
+              service: scheduleOutput.appointmentDetails.service!,
+              date: scheduleOutput.appointmentDetails.date!,
+              time: scheduleOutput.appointmentDetails.time!,
+              branch: scheduleOutput.appointmentDetails.branch,
+              status: 'booked', 
+              updatedAt: new Date() 
+            },
+            { new: true }
+         );
+         if (!processedAppointmentDB) { // Original not found, create new
+            const newAppointmentData: Omit<IAppointment, '_id' | 'createdAt' | 'updatedAt'> = {
+              customerId: customerId as any,
+              service: scheduleOutput.appointmentDetails.service!,
+              date: scheduleOutput.appointmentDetails.date!,
+              time: scheduleOutput.appointmentDetails.time!,
+              branch: scheduleOutput.appointmentDetails.branch,
               status: 'booked',
-              createdAt: new Date(),
-              updatedAt: new Date(),
             };
-            MOCK_APPOINTMENTS.push(newAppointment);
-            if (MOCK_CUSTOMERS_DATA[currentUserSession.id]) {
-                MOCK_CUSTOMERS_DATA[currentUserSession.id].appointmentIds.push(newAppointmentId);
-            }
-            processedAppointment = newAppointment;
-            aiResponseContent = `Could not find the original appointment to reschedule. So, I've created a new one for you: ${scheduleOutput.confirmationMessage} Appointment ID: ${newAppointmentId}.`;
+            processedAppointmentDB = await new AppointmentModel(newAppointmentData).save();
+            await CustomerModel.findByIdAndUpdate(customerId, { $push: { appointmentIds: processedAppointmentDB._id } });
+            aiResponseContent = `Could not find the original appointment to reschedule. So, I've created a new one for you: ${scheduleOutput.confirmationMessage} Appointment ID: ${processedAppointmentDB._id.toString()}.`;
          }
       }
 
@@ -303,7 +282,7 @@ export async function processUserMessage(
         scheduleOutput = { intent: 'error', confirmationMessage: aiResponseContent, requiresAssistance: true };
       }
     }
-  } else {
+  } else { // Not a scheduling intent
     let keywordFound = false;
     for (const keyword in KEYWORD_RESPONSES) {
       if (lowerCaseUserMessage.includes(keyword)) {
@@ -327,24 +306,20 @@ export async function processUserMessage(
     }
   }
 
-  finalAiMessage = {
-    id: `msg_ai_${Date.now()}`,
+  const aiMessageData: Partial<IMessage> = {
     sender: 'ai',
     content: aiResponseContent,
     timestamp: new Date(),
     name: 'AetherChat AI',
+    customerId: customerId as any,
   };
-  
-  // Persist AI message
-  if (MOCK_CUSTOMERS_DATA[currentUserSession.id]) {
-     MOCK_ALL_MESSAGES[finalAiMessage.id] = finalAiMessage;
-     MOCK_CUSTOMERS_DATA[currentUserSession.id].chatHistoryIds.push(finalAiMessage.id);
-     MOCK_CUSTOMERS_DATA[currentUserSession.id].lastInteractionAt = new Date();
-     if (processedAppointment) {
-        // MOCK_APPOINTMENTS is already updated. UserSession in MOCK_USERS is also updated.
-        // For CustomerProfile, appointmentIds are updated when appointment is created/modified.
-     }
-  }
+  const savedAiMessageDoc = await new MessageModel(aiMessageData).save();
+  finalAiMessage = transformMessageDocToMessage(savedAiMessageDoc);
+
+  await CustomerModel.findByIdAndUpdate(customerId, {
+    $push: { chatHistoryIds: savedAiMessageDoc._id },
+    lastInteractionAt: new Date(),
+  });
 
   let newSuggestedReplies: string[] = [];
   try {
@@ -376,38 +351,92 @@ export async function processUserMessage(
   }
   newSuggestedReplies = [...new Set(newSuggestedReplies)].slice(0, 3);
 
-  return { aiMessage: finalAiMessage, newSuggestedReplies, updatedAppointment: processedAppointment };
+  const updatedAppointmentClient = processedAppointmentDB ? transformAppointmentDocToDetails(processedAppointmentDB) : undefined;
+
+  return { aiMessage: finalAiMessage, newSuggestedReplies, updatedAppointment: updatedAppointmentClient };
 }
 
 
 // --- Functions for Admin/Staff ---
 export async function getCustomersForStaffView(): Promise<CustomerProfile[]> {
-    // In a real app, filter by assignment, status, etc.
-    // For now, return all customers, sorted by last interaction.
-    return Object.values(MOCK_CUSTOMERS_DATA).sort((a, b) => b.lastInteractionAt.getTime() - a.lastInteractionAt.getTime());
+    await dbConnect();
+    const customerDocs = await CustomerModel.find({})
+        .sort({ lastInteractionAt: -1 })
+        .limit(50); // Add pagination later
+    
+    return customerDocs.map(doc => ({
+        id: doc._id.toString(),
+        phoneNumber: doc.phoneNumber,
+        name: doc.name,
+        internalName: doc.internalName,
+        chatHistoryIds: doc.chatHistoryIds.map(id => id.toString()),
+        appointmentIds: doc.appointmentIds.map(id => id.toString()),
+        productIds: doc.productIds,
+        noteIds: doc.noteIds.map(id => id.toString()),
+        tags: doc.tags,
+        assignedStaffId: doc.assignedStaffId?.toString(),
+        lastInteractionAt: new Date(doc.lastInteractionAt),
+        createdAt: new Date(doc.createdAt as Date),
+    }));
 }
 
 export async function getCustomerDetails(customerId: string): Promise<{customer: CustomerProfile | null, messages: Message[], appointments: AppointmentDetails[]}> {
-    const customer = MOCK_CUSTOMERS_DATA[customerId] || null;
-    if (!customer) {
+    await dbConnect();
+    const customerDoc = await CustomerModel.findById(customerId);
+    if (!customerDoc) {
         return { customer: null, messages: [], appointments: [] };
     }
-    const messages = customer.chatHistoryIds.map(id => MOCK_ALL_MESSAGES[id]).filter(Boolean);
-    const appointments = MOCK_APPOINTMENTS.filter(a => customer.appointmentIds.includes(a.appointmentId));
-    return { customer, messages, appointments };
+
+    const messageDocs = await MessageModel.find({ customerId: customerDoc._id }).sort({ timestamp: 1 });
+    const appointmentDocs = await AppointmentModel.find({ customerId: customerDoc._id }).sort({ date: 1, time: 1 });
+
+    const customerProfile: CustomerProfile = {
+        id: customerDoc._id.toString(),
+        phoneNumber: customerDoc.phoneNumber,
+        name: customerDoc.name,
+        internalName: customerDoc.internalName,
+        chatHistoryIds: customerDoc.chatHistoryIds.map(id => id.toString()),
+        appointmentIds: customerDoc.appointmentIds.map(id => id.toString()),
+        productIds: customerDoc.productIds,
+        noteIds: customerDoc.noteIds.map(id => id.toString()),
+        tags: customerDoc.tags,
+        assignedStaffId: customerDoc.assignedStaffId?.toString(),
+        lastInteractionAt: new Date(customerDoc.lastInteractionAt),
+        createdAt: new Date(customerDoc.createdAt as Date),
+    };
+    
+    return { 
+        customer: customerProfile, 
+        messages: messageDocs.map(transformMessageDocToMessage), 
+        appointments: appointmentDocs.map(transformAppointmentDocToDetails) 
+    };
 }
 
 export async function getAllUsers(): Promise<UserSession[]> {
-    // Returns all users including customers, staff, admin for user management by admin
-    return Object.values(MOCK_USERS);
+    await dbConnect();
+    // Fetch only staff and admin users for user management purposes, exclude customers.
+    const userDocs = await UserModel.find({ role: { $in: ['staff', 'admin'] } });
+    return userDocs.map(transformUserToSession);
 }
 
-// Add more actions for staff/admin as features are built, e.g.:
-// - assignCustomerToStaff(customerId, staffId)
-// - addInternalNote(customerId, staffId, noteContent)
-// - updateCustomerTags(customerId, tags)
-// - createManualAppointmentForCustomer(staffId, customerId, appointmentDetails)
-// - manageKeywords(action: 'add'|'update'|'delete', keywordData)
-// - manageInterfaceSettings(settings)
-// - manageSEOSettings(settings)
-// etc.
+// Example action for admin to create a staff user or another admin
+export async function createStaffOrAdminUser(
+  name: string,
+  phoneNumber: string,
+  role: 'staff' | 'admin',
+  // In a real app, password would be set by admin or a temporary one sent
+  tempPassword?: string 
+): Promise<UserSession | null> {
+  await dbConnect();
+  if (await UserModel.findOne({ phoneNumber })) {
+    throw new Error('User with this phone number already exists.');
+  }
+  const newUser = new UserModel({
+    name,
+    phoneNumber,
+    role,
+    password: tempPassword || randomUUID(), // Set a random password if not provided, to be changed on first login
+  });
+  await newUser.save();
+  return transformUserToSession(newUser);
+}

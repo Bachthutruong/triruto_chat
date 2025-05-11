@@ -1,26 +1,30 @@
+// src/components/staff/StaffLayout.tsx
+'use client';
 import type { ReactNode } from 'react';
+import { useRouter } from 'next/navigation';
 import { StaffSidebar } from './StaffSidebar';
 import { AppHeader } from '@/components/layout/AppHeader';
+import type { UserSession } from '@/lib/types';
 
 type StaffLayoutProps = {
   children: ReactNode;
+  currentSession: UserSession; // Session passed from the protected layout
 };
 
-export function StaffLayout({ children }: StaffLayoutProps) {
-  // Mock user session for header display, replace with actual session logic
-  const mockStaffSession = {
-    id: 'staff_001_user',
-    phoneNumber: 'staff001',
-    role: 'staff' as const,
-    name: 'Staff User Alice',
+export function StaffLayout({ children, currentSession }: StaffLayoutProps) {
+  const router = useRouter();
+  
+  const handleLogout = () => {
+    sessionStorage.removeItem('aetherChatUserSession');
+    router.push('/login'); // Or '/'
   };
 
   return (
     <div className="flex flex-col min-h-screen">
-      <AppHeader userSession={mockStaffSession} onLogout={() => { console.log('Staff logout'); window.location.href = '/'; }} />
-      <div className="flex flex-1 pt-16"> {/* Adjust pt-16 based on AppHeader height */}
+      <AppHeader userSession={currentSession} onLogout={handleLogout} />
+      <div className="flex flex-1"> {/* pt-16 removed */}
         <StaffSidebar />
-        <main className="flex-1 p-6 sm:ml-64"> {/* Adjust sm:ml-64 based on StaffSidebar width */}
+        <main className="flex-1 p-6 sm:ml-64 mt-16"> {/* Added mt-16 for AppHeader height */}
           {children}
         </main>
       </div>

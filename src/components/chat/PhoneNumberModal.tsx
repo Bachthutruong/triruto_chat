@@ -1,6 +1,8 @@
+// src/components/chat/PhoneNumberModal.tsx
 'use client';
 
 import { useState } from 'react';
+import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -12,11 +14,11 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Phone } from 'lucide-react';
+import { Phone, LogIn } from 'lucide-react';
 
 type PhoneNumberModalProps = {
   isOpen: boolean;
-  onSubmit: (phoneNumber: string) => void;
+  onSubmit: (phoneNumber: string) => void; // This is for customer phone number submission
   isLoading?: boolean;
 };
 
@@ -31,14 +33,14 @@ export function PhoneNumberModal({ isOpen, onSubmit, isLoading }: PhoneNumberMod
   };
 
   return (
-    <Dialog open={isOpen} onOpenChange={() => {}}>
+    <Dialog open={isOpen} onOpenChange={() => { /* Modal should be controlled by parent state */ }}>
       <DialogContent className="sm:max-w-[425px]">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Phone className="text-primary" /> Welcome to AetherChat!
           </DialogTitle>
           <DialogDescription>
-            Please enter your phone number to start chatting or retrieve your previous conversations.
+            To start chatting, please enter your phone number. This helps us retrieve your past conversations.
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit}>
@@ -59,9 +61,14 @@ export function PhoneNumberModal({ isOpen, onSubmit, isLoading }: PhoneNumberMod
               />
             </div>
           </div>
-          <DialogFooter>
-            <Button type="submit" disabled={isLoading || !phoneNumber.trim()}>
+          <DialogFooter className="flex-col gap-3 sm:flex-row sm:justify-between items-center">
+            <Button type="submit" disabled={isLoading || !phoneNumber.trim()} className="w-full sm:w-auto">
               {isLoading ? 'Loading...' : 'Start Chat'}
+            </Button>
+            <Button variant="outline" asChild className="w-full sm:w-auto">
+              <Link href="/login">
+                <LogIn className="mr-2 h-4 w-4" /> Staff/Admin Login
+              </Link>
             </Button>
           </DialogFooter>
         </form>

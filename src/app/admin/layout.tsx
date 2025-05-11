@@ -1,12 +1,53 @@
-import type { ReactNode } from 'react';
-import { AdminLayout } from '@/components/admin/AdminLayout';
+// src/app/admin/layout.tsx
+'use client';
 
-// This layout applies to all routes starting with /admin
+import type { ReactNode } from 'react';
+import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { AdminLayout as AdminLayoutComponent } from '@/components/admin/AdminLayout';
+import type { UserSession } from '@/lib/types';
+import { Skeleton } from '@/components/ui/skeleton'; // For loading state
 
 export default function Layout({ children }: { children: ReactNode }) {
-  // Here you would typically add authentication checks to ensure only admins can access
-  // For example, redirect if not admin.
-  // if (!isUserAdmin()) { redirect('/login'); }
+  const router = useRouter();
+  const [isLoading, setIsLoading] = useState(true);
+  const [session, setSession] = useState<UserSession | null>(null);
 
-  return <AdminLayout>{children}</AdminLayout>;
+  useEffect(() => {
+    const sessionString = sessionStorage.getItem('aetherChatUserSession');
+    if (sessionString) {
+      try {
+        const parsedSession: UserSession = JSON.parse(sessionString);
+        if (parsedSession && parsedSession.role === 'admin') {
+          setSession(parsedSession);
+        } else {
+          router.replace('/login?error=unauthorized_admin');
+        }
+      } catch (e) {
+        console.error("Error parsing session for admin layout:", e);
+        router.replace('/login?error=session_error');
+      }
+    } else {
+      router.replace('/login?error=no_session_admin');
+    }
+    setIsLoading(false);
+  }, [router]);
+
+  if (isLoading || !session) {
+    // Basic full-page loading skeleton
+    return (
+      <div className="flex flex-col min-h-screen">
+        <Skeleton className="h-16 w-full" /> {/* Header placeholder */}
+        <div className="flex flex-1 pt-16">
+          <Skeleton className="fixed top-0 left-0 z-40 w-64 h-screen pt-20 hidden sm:block" /> {/* Sidebar placeholder */}
+          <main className="flex-1 p-6 sm:ml-64">
+            <Skeleton className="h-32 w-full mb-4" />
+            <Skeleton className="h-64 w-full" />
+          </main>
+        </div>
+      </div>
+    );
+  }
+
+  return <AdminLayoutComponent currentSession={session}>{children}</AdminLayoutComponent>;
 }
