@@ -26,7 +26,7 @@ const MOCK_APPOINTMENTS: AppointmentDetails[] = [];
 function formatChatHistoryForAI(messages: Message[]): string {
   return messages
     .map(msg => `${msg.sender === 'user' ? 'User' : 'AI'}: ${msg.content}`)
-    .join('\\n');
+    .join('\n');
 }
 
 export async function identifyUserAndLoadData(phoneNumber: string): Promise<{
@@ -125,7 +125,7 @@ export async function processUserMessage(
         appointmentDetails = scheduleResult.appointmentDetails;
         // Simulate saving appointment
         MOCK_APPOINTMENTS.push(appointmentDetails); 
-        aiResponseContent += `\\nAppointment for ${appointmentDetails.service} on ${appointmentDetails.date} at ${appointmentDetails.time} has been noted.`;
+        aiResponseContent += `\nAppointment for ${appointmentDetails.service} on ${appointmentDetails.date} at ${appointmentDetails.time} has been noted.`;
       }
     } catch (error) {
       console.error('Error scheduling appointment:', error);
@@ -171,3 +171,4 @@ export async function processUserMessage(
 
   return { aiMessage, newSuggestedReplies, appointment: appointmentDetails };
 }
+

@@ -1,19 +1,21 @@
+
 import type {Metadata} from 'next';
-import { Geist } from 'next/font/google'; // Corrected import for Geist Sans
-import { GeistMono } from 'next/font/google'; // Corrected import for Geist Mono
+import { Inter, Roboto_Mono } from 'next/font/google'; // Changed from Geist and GeistMono
 import './globals.css';
 import { Toaster } from "@/components/ui/toaster";
 import { Analytics } from '@vercel/analytics/react';
 
 
-const geistSans = Geist({ // Geist Sans
-  variable: '--font-geist-sans',
+const interFont = Inter({ // Use Inter as a replacement for Geist Sans
+  variable: '--font-geist-sans', // Keep original CSS variable name for compatibility
   subsets: ['latin'],
+  display: 'swap',
 });
 
-const geistMono = GeistMono({ // Geist Mono
-  variable: '--font-geist-mono',
+const robotoMonoFont = Roboto_Mono({ // Use Roboto_Mono as a replacement for Geist Mono
+  variable: '--font-geist-mono', // Keep original CSS variable name for compatibility
   subsets: ['latin'],
+  display: 'swap',
 });
 
 export const metadata: Metadata = {
@@ -28,7 +30,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className={`${geistSans.variable} ${geistMono.variable} font-sans antialiased`}>
+      <body className={`${interFont.variable} ${robotoMonoFont.variable} font-sans antialiased`}>
         {children}
         <Toaster />
         <Analytics />
