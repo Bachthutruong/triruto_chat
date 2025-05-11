@@ -1,46 +1,71 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import Link from 'next/link';
 import { AppHeader } from '@/components/layout/AppHeader';
 import { AppFooter } from '@/components/layout/AppFooter';
 import { PhoneNumberModal } from '@/components/chat/PhoneNumberModal';
 import { ChatWindow } from '@/components/chat/ChatWindow';
-import type { Message, UserSession, AppointmentDetails } from '@/lib/types';
+import type { Message, UserSession, UserRole } from '@/lib/types';
 import { identifyUserAndLoadData, processUserMessage } from './actions';
 import { useToast } from '@/hooks/use-toast';
-import { Card, CardContent } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { LogIn } from 'lucide-react';
 
 export default function HomePage() {
   const [userSession, setUserSession] = useState<UserSession | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [suggestedReplies, setSuggestedReplies] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(false);
-  const [showPhoneModal, setShowPhoneModal] = useState<boolean>(true); // Start with modal open
+  const [showPhoneModal, setShowPhoneModal] = useState<boolean>(true);
   const { toast } = useToast();
 
-  // Effect to ensure modal state is client-side after hydration
   useEffect(() => {
-    setShowPhoneModal(true); 
+    const storedSession = sessionStorage.getItem('aetherChatUserSession');
+    if (storedSession) {
+      const session: UserSession = JSON.parse(storedSession);
+      setUserSession(session);
+      setShowPhoneModal(false);
+      // If customer, load their messages etc.
+      if (session.role === 'customer') {
+        // This part would ideally re-fetch or use more persistent storage for messages
+        // For now, if session exists, we assume messages might need to be reloaded or were part of session
+        // For simplicity, let's assume identifyUserAndLoadData would handle this if called again.
+        // Or, store messages in session/local storage too (careful with size).
+         handlePhoneNumberSubmit(session.phoneNumber, true); // Re-init session, potentially loading messages
+      }
+    } else {
+      setShowPhoneModal(true);
+    }
   }, []);
 
-
-  const handlePhoneNumberSubmit = async (phoneNumber: string) => {
+  const handlePhoneNumberSubmit = async (phoneNumber: string, isSessionRestore = false) => {
     setIsLoading(true);
     try {
       const { userSession: session, initialMessages, initialSuggestedReplies } = await identifyUserAndLoadData(phoneNumber);
       setUserSession(session);
-      setMessages(initialMessages);
-      setSuggestedReplies(initialSuggestedReplies);
+      sessionStorage.setItem('aetherChatUserSession', JSON.stringify(session));
+      
+      if (session.role === 'customer') {
+        setMessages(initialMessages || []);
+        setSuggestedReplies(initialSuggestedReplies || []);
+      }
       setShowPhoneModal(false);
-      toast({
-        title: "Chat Started",
-        description: session.name ? `Welcome back, ${session.name}!` : "Welcome to AetherChat!",
-      });
+
+      if (!isSessionRestore) {
+        toast({
+          title: session.role === 'customer' ? "Chat Started" : "Access Granted",
+          description: session.name ? 
+            (session.role === 'customer' ? `Welcome back, ${session.name}!` : `Welcome, ${session.name}!`)
+            : (session.role === 'customer' ? "Welcome to AetherChat!" : `Access for ${session.role}.`),
+        });
+      }
     } catch (error) {
       console.error("Error identifying user:", error);
       toast({
         title: "Error",
-        description: "Could not start chat session. Please try again.",
+        description: "Could not start session. Please try again.",
         variant: "destructive",
       });
     } finally {
@@ -49,7 +74,7 @@ export default function HomePage() {
   };
 
   const handleSendMessage = async (messageContent: string) => {
-    if (!userSession) return;
+    if (!userSession || userSession.role !== 'customer') return;
 
     const userMessage: Message = {
       id: `msg_local_user_${Date.now()}`,
@@ -60,24 +85,34 @@ export default function HomePage() {
     };
     
     setMessages((prevMessages) => [...prevMessages, userMessage]);
-    setSuggestedReplies([]); // Clear old suggestions
+    setSuggestedReplies([]);
     setIsLoading(true);
 
     try {
-      const { aiMessage, newSuggestedReplies, appointment } = await processUserMessage(
+      const { aiMessage, newSuggestedReplies, updatedAppointment } = await processUserMessage(
         messageContent,
         userSession,
-        [...messages, userMessage] // send current history including new user message
+        [...messages, userMessage]
       );
       
       setMessages((prevMessages) => [...prevMessages, aiMessage]);
       setSuggestedReplies(newSuggestedReplies);
 
-      if (appointment) {
+      if (updatedAppointment) {
         toast({
           title: "Appointment Update",
-          description: `Service: ${appointment.service}, Date: ${appointment.date}, Time: ${appointment.time}`,
+          description: `Service: ${updatedAppointment.service}, Date: ${updatedAppointment.date}, Time: ${updatedAppointment.time}, Status: ${updatedAppointment.status}`,
         });
+        // Update userSession's appointments if needed, or rely on next load
+        if (userSession.appointments) {
+            const existingIndex = userSession.appointments.findIndex(a => a.appointmentId === updatedAppointment.appointmentId);
+            if (existingIndex > -1) {
+                userSession.appointments[existingIndex] = updatedAppointment;
+            } else {
+                userSession.appointments.push(updatedAppointment);
+            }
+            setUserSession({...userSession}); // Trigger re-render if needed
+        }
       }
 
     } catch (error) {
@@ -99,32 +134,80 @@ export default function HomePage() {
     }
   };
 
-  return (
-    <div className="flex flex-col min-h-screen bg-muted/40">
-      <AppHeader />
-      <main className="flex-grow container mx-auto py-8 px-4 flex justify-center items-center">
-        {showPhoneModal && !userSession && (
-          <PhoneNumberModal
-            isOpen={showPhoneModal}
-            onSubmit={handlePhoneNumberSubmit}
-            isLoading={isLoading}
-          />
-        )}
-        
-        {userSession && (
-          <Card className="w-full max-w-2xl h-[70vh] shadow-2xl rounded-lg flex flex-col">
-            <CardContent className="p-0 flex-grow flex flex-col overflow-hidden">
-              <ChatWindow
-                userSession={userSession}
-                messages={messages}
-                suggestedReplies={suggestedReplies}
-                onSendMessage={handleSendMessage}
-                onSuggestedReplyClick={handleSendMessage} // Clicking a suggestion sends it as a message
-                isLoading={isLoading}
-              />
+  const renderContent = () => {
+    if (showPhoneModal && !userSession) {
+      return (
+        <PhoneNumberModal
+          isOpen={showPhoneModal}
+          onSubmit={handlePhoneNumberSubmit}
+          isLoading={isLoading}
+        />
+      );
+    }
+
+    if (userSession) {
+      if (userSession.role === 'admin') {
+        return (
+          <Card className="w-full max-w-md text-center shadow-xl">
+            <CardHeader>
+              <CardTitle>Admin Access</CardTitle>
+              <CardDescription>Welcome, {userSession.name || 'Admin'}.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <p className="mb-4">This is the customer-facing chat. Please use the admin dashboard for your tasks.</p>
+              <Button asChild>
+                <Link href="/admin/dashboard">
+                  <LogIn className="mr-2 h-4 w-4" /> Go to Admin Dashboard
+                </Link>
+              </Button>
             </CardContent>
           </Card>
-        )}
+        );
+      }
+
+      if (userSession.role === 'staff') {
+        return (
+          <Card className="w-full max-w-md text-center shadow-xl">
+            <CardHeader>
+              <CardTitle>Staff Access</CardTitle>
+              <CardDescription>Welcome, {userSession.name || 'Staff Member'}.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <p className="mb-4">This is the customer-facing chat. Please use the staff dashboard to manage customer interactions.</p>
+              <Button asChild>
+                <Link href="/staff/dashboard">
+                  <LogIn className="mr-2 h-4 w-4" /> Go to Staff Dashboard
+                </Link>
+              </Button>
+            </CardContent>
+          </Card>
+        );
+      }
+
+      // Role is 'customer'
+      return (
+        <Card className="w-full max-w-2xl h-[70vh] shadow-2xl rounded-lg flex flex-col">
+          <CardContent className="p-0 flex-grow flex flex-col overflow-hidden">
+            <ChatWindow
+              userSession={userSession}
+              messages={messages}
+              suggestedReplies={suggestedReplies}
+              onSendMessage={handleSendMessage}
+              onSuggestedReplyClick={handleSendMessage}
+              isLoading={isLoading}
+            />
+          </CardContent>
+        </Card>
+      );
+    }
+    return null; // Should not happen if logic is correct
+  };
+
+  return (
+    <div className="flex flex-col min-h-screen bg-muted/40">
+      <AppHeader userSession={userSession} onLogout={() => { setUserSession(null); sessionStorage.removeItem('aetherChatUserSession'); setShowPhoneModal(true); }}/>
+      <main className="flex-grow container mx-auto py-8 px-4 flex justify-center items-center">
+        {renderContent()}
       </main>
       <AppFooter />
     </div>
