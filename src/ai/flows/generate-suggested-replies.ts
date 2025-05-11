@@ -5,22 +5,16 @@
  * @fileOverview Generates suggested replies based on the latest message in the chat.
  *
  * - generateSuggestedReplies - A function that handles the generation of suggested replies.
- * - GenerateSuggestedRepliesInput - The input type for the generateSuggestedReplies function.
- * - GenerateSuggestedRepliesOutput - The return type for the generateSuggestedReplies function.
+ * Schemas (GenerateSuggestedRepliesInput, GenerateSuggestedRepliesOutput) are defined in '@/ai/schemas/generate-suggested-replies-schemas.ts'.
  */
 
 import {ai} from '@/ai/genkit';
-import {z} from 'genkit';
-
-const GenerateSuggestedRepliesInputSchema = z.object({
-  latestMessage: z.string().describe('The latest message in the chat.'),
-});
-export type GenerateSuggestedRepliesInput = z.infer<typeof GenerateSuggestedRepliesInputSchema>;
-
-const GenerateSuggestedRepliesOutputSchema = z.object({
-  suggestedReplies: z.array(z.string()).describe('An array of suggested replies.'),
-});
-export type GenerateSuggestedRepliesOutput = z.infer<typeof GenerateSuggestedRepliesOutputSchema>;
+import {
+    GenerateSuggestedRepliesInputSchema,
+    type GenerateSuggestedRepliesInput,
+    GenerateSuggestedRepliesOutputSchema,
+    type GenerateSuggestedRepliesOutput
+} from '@/ai/schemas/generate-suggested-replies-schemas';
 
 export async function generateSuggestedReplies(input: GenerateSuggestedRepliesInput): Promise<GenerateSuggestedRepliesOutput> {
   return generateSuggestedRepliesFlow(input);

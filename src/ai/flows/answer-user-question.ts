@@ -3,23 +3,16 @@
  * @fileOverview An AI agent that answers user questions using GPT.
  *
  * - answerUserQuestion - A function that answers user questions.
- * - AnswerUserQuestionInput - The input type for the answerUserQuestion function.
- * - AnswerUserQuestionOutput - The return type for the answerUserQuestion function.
+ * Schemas (AnswerUserQuestionInput, AnswerUserQuestionOutput) are defined in '@/ai/schemas/answer-user-question-schemas.ts'.
  */
 
 import {ai} from '@/ai/genkit';
-import {z} from 'genkit';
-
-const AnswerUserQuestionInputSchema = z.object({
-  question: z.string().describe('The question from the user.'),
-  chatHistory: z.string().optional().describe('The chat history of the user.'),
-});
-export type AnswerUserQuestionInput = z.infer<typeof AnswerUserQuestionInputSchema>;
-
-const AnswerUserQuestionOutputSchema = z.object({
-  answer: z.string().describe('The answer to the user question.'),
-});
-export type AnswerUserQuestionOutput = z.infer<typeof AnswerUserQuestionOutputSchema>;
+import {
+    AnswerUserQuestionInputSchema,
+    type AnswerUserQuestionInput,
+    AnswerUserQuestionOutputSchema,
+    type AnswerUserQuestionOutput
+} from '@/ai/schemas/answer-user-question-schemas';
 
 export async function answerUserQuestion(input: AnswerUserQuestionInput): Promise<AnswerUserQuestionOutput> {
   return answerUserQuestionFlow(input);
