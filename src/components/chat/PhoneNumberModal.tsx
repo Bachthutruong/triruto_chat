@@ -34,7 +34,7 @@ export function PhoneNumberModal({ isOpen, onSubmit, isLoading }: PhoneNumberMod
 
   return (
     <Dialog open={isOpen} onOpenChange={() => { /* Modal should be controlled by parent state */ }}>
-      <DialogContent className="sm:max-w-[425px]">
+      <DialogContent className="sm:max-w-md"> {/* Increased width from sm:max-w-[425px] */}
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Phone className="text-primary" /> Welcome to AetherChat!
