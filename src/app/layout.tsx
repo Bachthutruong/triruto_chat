@@ -1,19 +1,19 @@
 
 import type {Metadata} from 'next';
-import { Inter, Roboto_Mono } from 'next/font/google'; 
+import { Inter, Roboto_Mono } from 'next/font/google';
 import './globals.css';
 import { Toaster } from "@/components/ui/toaster";
 import { Analytics } from '@vercel/analytics/react';
 
 
-const interFont = Inter({ 
-  variable: '--font-geist-sans', 
+const interFont = Inter({
+  variable: '--font-geist-sans',
   subsets: ['latin', 'vietnamese'], // Added vietnamese subset
   display: 'swap',
 });
 
-const robotoMonoFont = Roboto_Mono({ 
-  variable: '--font-geist-mono', 
+const robotoMonoFont = Roboto_Mono({
+  variable: '--font-geist-mono',
   subsets: ['latin', 'vietnamese'], // Added vietnamese subset
   display: 'swap',
 });
@@ -29,8 +29,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="vi"> {/* Changed lang to vi */}
-      <body className={`${interFont.variable} ${robotoMonoFont.variable} font-sans antialiased`}>
+    <html lang="vi">{/* Changed lang to vi */}<body className={`${interFont.variable} ${robotoMonoFont.variable} font-sans antialiased`}>
         {children}
         <Toaster />
         <Analytics />
@@ -38,4 +37,3 @@ export default function RootLayout({
     </html>
   );
 }
-
