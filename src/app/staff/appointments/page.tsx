@@ -5,7 +5,7 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter }
 import { Button } from '@/components/ui/button';
 import { Calendar } from '@/components/ui/calendar'; 
 import { PlusCircle, ListFilter, Edit, Trash2, Save, Users, Clock } from 'lucide-react';
-import type { AppointmentDetails, UserSession, CustomerProfile } from '@/lib/types';
+import type { AppointmentDetails, UserSession } from '@/lib/types';
 import { getAppointments, createNewAppointment, updateExistingAppointment, deleteExistingAppointment, getCustomerListForSelect, getAllUsers } from '@/app/actions';
 import { useToast } from '@/hooks/use-toast';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogClose, DialogTrigger, DialogFooter } from '@/components/ui/dialog';
@@ -24,6 +24,7 @@ const parseDateFromYYYYMMDD = (dateString: string): Date => {
   return parseISO(dateString);
 };
 
+const NO_STAFF_ASSIGNED_VALUE = "__NO_STAFF_ASSIGNED__";
 
 export default function StaffAppointmentsPage() {
   const { toast } = useToast();
@@ -35,7 +36,6 @@ export default function StaffAppointmentsPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [currentAppointment, setCurrentAppointment] = useState<AppointmentDetails | null>(null);
   
-  // Form state for modal
   const [formCustomerId, setFormCustomerId] = useState('');
   const [formService, setFormService] = useState('');
   const [formDate, setFormDate] = useState(formatDateToYYYYMMDD(new Date()));
@@ -43,7 +43,7 @@ export default function StaffAppointmentsPage() {
   const [formBranch, setFormBranch] = useState('');
   const [formStatus, setFormStatus] = useState<AppointmentDetails['status']>('booked');
   const [formNotes, setFormNotes] = useState('');
-  const [formStaffId, setFormStaffId] = useState('');
+  const [formStaffId, setFormStaffId] = useState(NO_STAFF_ASSIGNED_VALUE);
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [customerList, setCustomerList] = useState<{ id: string; name: string; phoneNumber: string }[]>([]);
@@ -55,14 +55,14 @@ export default function StaffAppointmentsPage() {
     if (sessionString) {
       const session = JSON.parse(sessionString);
       setStaffSession(session);
-      setFormStaffId(session.id); // Default to self for new appointments
+      setFormStaffId(session.id || NO_STAFF_ASSIGNED_VALUE); 
     }
 
     const fetchInitialData = async () => {
         try {
             const [customers, staffMembers] = await Promise.all([
                 getCustomerListForSelect(),
-                getAllUsers() // Assuming this gets staff/admins
+                getAllUsers() 
             ]);
             setCustomerList(customers);
             setStaffList(staffMembers.filter(u => u.role === 'staff' || u.role === 'admin'));
@@ -80,8 +80,7 @@ export default function StaffAppointmentsPage() {
     try {
       const dateStr = formatDateToYYYYMMDD(selectedDate);
       const filters: any = { date: dateStr };
-      // If staff should only see their own appointments uncomment next line
-      // if (staffSession.role === 'staff') filters.staffId = staffSession.id;
+      // if (staffSession.role === 'staff') filters.staffId = staffSession.id; // Uncomment if staff only sees their own
       
       const data = await getAppointments(filters);
       setAppointments(data);
@@ -93,7 +92,7 @@ export default function StaffAppointmentsPage() {
   }, [selectedDate, staffSession, toast]);
 
   useEffect(() => {
-    if (staffSession) { // Ensure session is loaded before fetching
+    if (staffSession) { 
         fetchAppointments();
     }
   }, [fetchAppointments, staffSession]);
@@ -108,25 +107,23 @@ export default function StaffAppointmentsPage() {
     setFormBranch('');
     setFormStatus('booked');
     setFormNotes('');
-    setFormStaffId(staffSession?.id || '');
+    setFormStaffId(staffSession?.id || NO_STAFF_ASSIGNED_VALUE);
   };
 
   const handleOpenModal = (appointment: AppointmentDetails | null = null) => {
-    resetForm();
     if (appointment) {
       setCurrentAppointment(appointment);
       setFormCustomerId(appointment.userId);
       setFormService(appointment.service);
-      setFormDate(appointment.date); // date is already YYYY-MM-DD
-      setFormTime(appointment.time.replace(/ AM| PM/i, '')); // Assuming time is like "09:00 AM", convert to "09:00" for input type="time"
+      setFormDate(appointment.date); 
+      setFormTime(appointment.time.replace(/ AM| PM/i, '')); 
       setFormBranch(appointment.branch || '');
       setFormStatus(appointment.status);
       setFormNotes(appointment.notes || '');
-      setFormStaffId(appointment.staffId || staffSession?.id || '');
+      setFormStaffId(appointment.staffId || staffSession?.id || NO_STAFF_ASSIGNED_VALUE);
     } else {
-      // For new appointment, default date to selectedDate on calendar
+      resetForm();
       setFormDate(formatDateToYYYYMMDD(selectedDate || new Date()));
-      setFormStaffId(staffSession?.id || ''); // Default to current staff
     }
     setIsModalOpen(true);
   };
@@ -144,11 +141,11 @@ export default function StaffAppointmentsPage() {
       customerId: formCustomerId,
       service: formService,
       date: formDate,
-      time: formTime, // Store as "HH:mm"
+      time: formTime, 
       branch: formBranch,
       status: formStatus,
       notes: formNotes,
-      staffId: formStaffId || undefined,
+      staffId: formStaffId === NO_STAFF_ASSIGNED_VALUE ? undefined : formStaffId,
     };
 
     try {
@@ -224,7 +221,6 @@ export default function StaffAppointmentsPage() {
                 <CardTitle>Lịch hẹn ngày {selectedDate ? selectedDate.toLocaleDateString('vi-VN') : 'N/A'}</CardTitle>
                 <CardDescription>Danh sách các lịch hẹn đã đặt.</CardDescription>
               </div>
-              {/* <Button variant="outline" size="sm"><ListFilter className="mr-2 h-4 w-4" /> Lọc</Button> */}
             </div>
           </CardHeader>
           <CardContent>
@@ -301,11 +297,11 @@ export default function StaffAppointmentsPage() {
             </div>
             <div><Label htmlFor="formBranch">Chi nhánh</Label><Input id="formBranch" value={formBranch} onChange={e => setFormBranch(e.target.value)} placeholder="ví dụ: Chi nhánh Chính" disabled={isSubmitting}/></div>
             <div>
-                <Label htmlFor="formStaffId">Nhân viên phụ trách (tùy chọn)</Label>
+                <Label htmlFor="formStaffIdModalStaff">Nhân viên phụ trách (tùy chọn)</Label>
                 <Select value={formStaffId} onValueChange={setFormStaffId} disabled={isSubmitting}>
-                    <SelectTrigger><SelectValue placeholder="Chọn nhân viên" /></SelectTrigger>
+                    <SelectTrigger id="formStaffIdModalStaff"><SelectValue placeholder="Chọn nhân viên" /></SelectTrigger>
                     <SelectContent>
-                        <SelectItem value="">Không chọn</SelectItem>
+                        <SelectItem value={NO_STAFF_ASSIGNED_VALUE}>Không chọn</SelectItem>
                         {staffList.map(s => <SelectItem key={s.id} value={s.id}>{s.name} ({s.phoneNumber})</SelectItem>)}
                     </SelectContent>
                 </Select>
@@ -334,3 +330,5 @@ export default function StaffAppointmentsPage() {
     </div>
   );
 }
+
+    

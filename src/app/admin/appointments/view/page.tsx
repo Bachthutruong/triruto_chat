@@ -6,7 +6,7 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter }
 import { Button } from '@/components/ui/button';
 import { Calendar } from '@/components/ui/calendar'; 
 import { PlusCircle, ListFilter, Edit, Trash2, Save, Users, Clock, Search } from 'lucide-react';
-import type { AppointmentDetails, UserSession, CustomerProfile } from '@/lib/types';
+import type { AppointmentDetails, UserSession } from '@/lib/types';
 import { getAppointments, createNewAppointment, updateExistingAppointment, deleteExistingAppointment, getCustomerListForSelect, getAllUsers } from '@/app/actions';
 import { useToast } from '@/hooks/use-toast';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogClose, DialogTrigger, DialogFooter } from '@/components/ui/dialog';
@@ -20,6 +20,9 @@ const formatDateToYYYYMMDD = (date: Date | undefined): string => {
   if (!date) return '';
   return format(date, 'yyyy-MM-dd');
 };
+
+const ALL_STAFF_FILTER_VALUE = "__ALL_STAFF_FILTER__";
+const NO_STAFF_MODAL_VALUE = "__NO_STAFF_ASSIGNED__";
 
 export default function AdminViewAppointmentsPage() {
   const { toast } = useToast();
@@ -38,14 +41,14 @@ export default function AdminViewAppointmentsPage() {
   const [formBranch, setFormBranch] = useState('');
   const [formStatus, setFormStatus] = useState<AppointmentDetails['status']>('booked');
   const [formNotes, setFormNotes] = useState('');
-  const [formStaffId, setFormStaffId] = useState(''); // For assigning/filtering by staff
+  const [formStaffId, setFormStaffId] = useState(NO_STAFF_MODAL_VALUE); 
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [customerList, setCustomerList] = useState<{ id: string; name: string; phoneNumber: string }[]>([]);
   const [staffList, setStaffList] = useState<UserSession[]>([]);
   
   const [filterCustomerSearch, setFilterCustomerSearch] = useState('');
-  const [filterStaffId, setFilterStaffId] = useState('');
+  const [filterStaffId, setFilterStaffId] = useState(ALL_STAFF_FILTER_VALUE);
 
 
   useEffect(() => {
@@ -69,13 +72,14 @@ export default function AdminViewAppointmentsPage() {
   }, [toast]);
   
   const fetchAppointments = useCallback(async () => {
-    if (!adminSession) return; // Ensure admin session is loaded
+    if (!adminSession) return; 
     setIsLoading(true);
     try {
       const filters: any = {};
       if (selectedDate) filters.date = formatDateToYYYYMMDD(selectedDate);
-      if (filterStaffId) filters.staffId = filterStaffId;
-      // Customer search/filter will be applied client-side for now, or enhance getAppointments
+      if (filterStaffId && filterStaffId !== ALL_STAFF_FILTER_VALUE) {
+         filters.staffId = filterStaffId;
+      }
       
       const data = await getAppointments(filters);
       let filteredData = data;
@@ -108,11 +112,10 @@ export default function AdminViewAppointmentsPage() {
     setFormBranch('');
     setFormStatus('booked');
     setFormNotes('');
-    setFormStaffId(''); // Admin might not default to self
+    setFormStaffId(NO_STAFF_MODAL_VALUE); 
   };
 
   const handleOpenModal = (appointment: AppointmentDetails | null = null) => {
-    resetForm();
     if (appointment) {
       setCurrentAppointment(appointment);
       setFormCustomerId(appointment.userId);
@@ -122,8 +125,9 @@ export default function AdminViewAppointmentsPage() {
       setFormBranch(appointment.branch || '');
       setFormStatus(appointment.status);
       setFormNotes(appointment.notes || '');
-      setFormStaffId(appointment.staffId || '');
+      setFormStaffId(appointment.staffId || NO_STAFF_MODAL_VALUE);
     } else {
+      resetForm(); // Ensures formStaffId is NO_STAFF_MODAL_VALUE for new
       setFormDate(formatDateToYYYYMMDD(selectedDate || new Date()));
     }
     setIsModalOpen(true);
@@ -145,7 +149,7 @@ export default function AdminViewAppointmentsPage() {
       branch: formBranch,
       status: formStatus,
       notes: formNotes,
-      staffId: formStaffId || undefined,
+      staffId: formStaffId === NO_STAFF_MODAL_VALUE ? undefined : formStaffId,
     };
 
     try {
@@ -217,7 +221,7 @@ export default function AdminViewAppointmentsPage() {
                 <Select value={filterStaffId} onValueChange={setFilterStaffId}>
                     <SelectTrigger><SelectValue placeholder="Tất cả nhân viên" /></SelectTrigger>
                     <SelectContent>
-                        <SelectItem value="">Tất cả nhân viên</SelectItem>
+                        <SelectItem value={ALL_STAFF_FILTER_VALUE}>Tất cả nhân viên</SelectItem>
                         {staffList.map(s => <SelectItem key={s.id} value={s.id}>{s.name} ({s.phoneNumber})</SelectItem>)}
                     </SelectContent>
                 </Select>
@@ -240,13 +244,12 @@ export default function AdminViewAppointmentsPage() {
               selected={selectedDate}
               onSelect={(date) => {
                 setSelectedDate(date);
-                // fetchAppointments(); // Auto-fetch on date change
               }}
               className="rounded-md border"
             />
           </CardContent>
             <CardFooter>
-                <Button variant="outline" onClick={() => {setSelectedDate(undefined); /*fetchAppointments();*/}} className="w-full">
+                <Button variant="outline" onClick={() => {setSelectedDate(undefined);}} className="w-full">
                     Xem Tất cả Ngày
                 </Button>
             </CardFooter>
@@ -335,7 +338,7 @@ export default function AdminViewAppointmentsPage() {
                 <Select value={formStaffId} onValueChange={setFormStaffId} disabled={isSubmitting}>
                     <SelectTrigger id="formStaffIdModal"><SelectValue placeholder="Chọn nhân viên (tùy chọn)" /></SelectTrigger>
                     <SelectContent>
-                        <SelectItem value="">Không chọn/Bất kỳ</SelectItem>
+                        <SelectItem value={NO_STAFF_MODAL_VALUE}>Không chọn/Bất kỳ</SelectItem>
                         {staffList.map(s => <SelectItem key={s.id} value={s.id}>{s.name} ({s.phoneNumber})</SelectItem>)}
                     </SelectContent>
                 </Select>
@@ -364,3 +367,5 @@ export default function AdminViewAppointmentsPage() {
     </div>
   );
 }
+
+    
