@@ -1,6 +1,7 @@
 import type { SVGProps } from 'react';
+import { cn } from '@/lib/utils';
 
-export function Logo(props: SVGProps<SVGSVGElement>) {
+export function Logo({ className, ...props }: SVGProps<SVGSVGElement>) {
   return (
     <svg
       xmlns="http://www.w3.org/2000/svg"
@@ -8,6 +9,7 @@ export function Logo(props: SVGProps<SVGSVGElement>) {
       width="40"
       height="40"
       aria-label="AetherChat Logo"
+      className={cn(className)}
       {...props}
     >
       <rect width="100" height="100" rx="20" fill="hsl(var(--primary))" />

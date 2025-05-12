@@ -2,13 +2,14 @@
 'use client';
 import type { ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
-import { AdminSidebar } from './AdminSidebar';
-import { AppHeader } from '@/components/layout/AppHeader'; 
+import { AppHeader } from '@/components/layout/AppHeader';
 import type { UserSession } from '@/lib/types';
+import { AdminSidebar as AdminSidebarContent } from './AdminSidebar';
+import { SidebarProvider, Sidebar, SidebarTrigger, SidebarInset } from '@/components/ui/sidebar';
 
 type AdminLayoutProps = {
   children: ReactNode;
-  currentSession: UserSession; // Session passed from the protected layout
+  currentSession: UserSession;
 };
 
 export function AdminLayout({ children, currentSession }: AdminLayoutProps) {
@@ -16,18 +17,28 @@ export function AdminLayout({ children, currentSession }: AdminLayoutProps) {
 
   const handleLogout = () => {
     sessionStorage.removeItem('aetherChatUserSession');
-    router.push('/login'); // Or '/' if you prefer homepage after logout
+    router.push('/login');
   };
 
   return (
-    <div className="flex flex-col min-h-screen">
-      <AppHeader userSession={currentSession} onLogout={handleLogout} />
-      <div className="flex flex-1"> {/* pt-16 removed as AppHeader is sticky now */}
-        <AdminSidebar />
-        <main className="flex-1 p-6 sm:ml-64 mt-16"> {/* Added mt-16 for AppHeader height */}
-          {children}
-        </main>
+    <SidebarProvider>
+      <div className="flex flex-col min-h-screen bg-muted/40">
+        <AppHeader
+          userSession={currentSession}
+          onLogout={handleLogout}
+          sidebarTrigger={<SidebarTrigger className="sm:hidden" />} 
+        />
+        <div className="flex flex-1 mt-16"> {/* mt-16 for fixed AppHeader */}
+          <Sidebar className="hidden sm:block fixed h-[calc(100vh-4rem)]" collapsible="icon" side="left" variant="sidebar"> {/* Ensure sidebar doesn't overlap content */}
+            <AdminSidebarContent />
+          </Sidebar>
+          <SidebarInset> {/* Manages margin based on desktop sidebar state */}
+            <main className="flex-1 p-4 md:p-6 overflow-y-auto">
+              {children}
+            </main>
+          </SidebarInset>
+        </div>
       </div>
-    </div>
+    </SidebarProvider>
   );
 }
