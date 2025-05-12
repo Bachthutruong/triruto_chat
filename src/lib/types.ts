@@ -142,3 +142,12 @@ export type AppSettings = {
   // Add other global settings as needed
   updatedAt?: Date; // To know when settings were last updated
 };
+
+// Type for appointment filters used in getAppointments action
+export type GetAppointmentsFilters = {
+  date?: string; // YYYY-MM-DD for single date filter
+  dates?: string[]; // Array of YYYY-MM-DD for multiple date filter
+  customerId?: string;
+  staffId?: string;
+  status?: string[]; // Array of AppointmentStatus
+};

@@ -5,7 +5,7 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter }
 import { Button } from '@/components/ui/button';
 import { Calendar } from '@/components/ui/calendar'; 
 import { PlusCircle, ListFilter, Edit, Trash2, Save, Users, Clock } from 'lucide-react';
-import type { AppointmentDetails, UserSession } from '@/lib/types';
+import type { AppointmentDetails, UserSession, GetAppointmentsFilters } from '@/lib/types';
 import { getAppointments, createNewAppointment, updateExistingAppointment, deleteExistingAppointment, getCustomerListForSelect, getAllUsers } from '@/app/actions';
 import { useToast } from '@/hooks/use-toast';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogClose, DialogTrigger, DialogFooter } from '@/components/ui/dialog';
@@ -14,6 +14,8 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { format, parseISO } from 'date-fns';
+import { vi } from 'date-fns/locale';
+
 
 const formatDateToYYYYMMDD = (date: Date | undefined): string => {
   if (!date) return '';
@@ -55,6 +57,7 @@ export default function StaffAppointmentsPage() {
     if (sessionString) {
       const session = JSON.parse(sessionString);
       setStaffSession(session);
+      // Staff might primarily create appointments for themselves or unassigned
       setFormStaffId(session.id || NO_STAFF_ASSIGNED_VALUE); 
     }
 
@@ -75,21 +78,49 @@ export default function StaffAppointmentsPage() {
   }, [toast]);
   
   const fetchAppointments = useCallback(async () => {
-    if (!selectedDate || !staffSession) return;
+    if (!staffSession) return;
     setIsLoading(true);
     try {
-      const dateStr = formatDateToYYYYMMDD(selectedDate);
-      const filters: any = { date: dateStr };
-      // if (staffSession.role === 'staff') filters.staffId = staffSession.id; // Uncomment if staff only sees their own
+      const filters: GetAppointmentsFilters = {};
+       if (selectedDate) {
+        const localDateStr = formatDateToYYYYMMDD(selectedDate);
+        const now = new Date();
+        const isViewingToday = selectedDate.getFullYear() === now.getFullYear() &&
+                               selectedDate.getMonth() === now.getMonth() &&
+                               selectedDate.getDate() === now.getDate();
+
+        if (isViewingToday) {
+          const utcDate = new Date(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+          const utcDateStr = formatDateToYYYYMMDD(utcDate);
+          if (localDateStr !== utcDateStr) {
+            filters.dates = [localDateStr, utcDateStr];
+             console.log(`[StaffAppointments] Querying for today (local & UTC): ${localDateStr}, ${utcDateStr}`);
+          } else {
+            filters.date = localDateStr;
+             console.log(`[StaffAppointments] Querying for today (local=UTC): ${localDateStr}`);
+          }
+        } else {
+          filters.date = localDateStr;
+          console.log(`[StaffAppointments] Querying for specific date: ${localDateStr}`);
+        }
+      } else {
+         console.log(`[StaffAppointments] No date selected, fetching all applicable for staff.`);
+      }
+      // Staff might only see their own appointments or unassigned ones by default
+      // For now, let's assume they see all for a given date, or based on admin page for all.
+      // If staff should only see their own:
+      // if (staffSession.role === 'staff') filters.staffId = staffSession.id; 
       
       const data = await getAppointments(filters);
       setAppointments(data);
     } catch (error) {
       toast({ title: "Lỗi", description: "Không thể tải lịch hẹn.", variant: "destructive" });
+      console.error("Error fetching appointments for staff:", error);
     } finally {
       setIsLoading(false);
     }
   }, [selectedDate, staffSession, toast]);
+
 
   useEffect(() => {
     if (staffSession) { 
@@ -113,7 +144,7 @@ export default function StaffAppointmentsPage() {
   const handleOpenModal = (appointment: AppointmentDetails | null = null) => {
     if (appointment) {
       setCurrentAppointment(appointment);
-      setFormCustomerId(appointment.userId);
+      setFormCustomerId(appointment.userId); // This should be customerId from transformed object
       setFormService(appointment.service);
       setFormDate(appointment.date); 
       setFormTime(appointment.time.replace(/ AM| PM/i, '')); 
@@ -138,7 +169,7 @@ export default function StaffAppointmentsPage() {
     }
     
     const appointmentData = {
-      customerId: formCustomerId,
+      customerId: formCustomerId, // Ensure this is customer's DB ID
       service: formService,
       date: formDate,
       time: formTime, 
@@ -146,6 +177,7 @@ export default function StaffAppointmentsPage() {
       status: formStatus,
       notes: formNotes,
       staffId: formStaffId === NO_STAFF_ASSIGNED_VALUE ? undefined : formStaffId,
+      // packageType and priority could be added to the form if needed
     };
 
     try {
@@ -203,6 +235,7 @@ export default function StaffAppointmentsPage() {
         <Card className="md:col-span-1">
           <CardHeader>
             <CardTitle>Chọn Ngày</CardTitle>
+             <CardDescription>(Để trống để xem tất cả ngày)</CardDescription>
           </CardHeader>
           <CardContent className="flex justify-center">
             <Calendar
@@ -210,15 +243,21 @@ export default function StaffAppointmentsPage() {
               selected={selectedDate}
               onSelect={setSelectedDate}
               className="rounded-md border"
+              locale={vi}
             />
           </CardContent>
+           <CardFooter>
+                <Button variant="outline" onClick={() => {setSelectedDate(undefined);}} className="w-full">
+                    Xem Tất cả Ngày
+                </Button>
+            </CardFooter>
         </Card>
 
         <Card className="md:col-span-2">
           <CardHeader>
             <div className="flex items-center justify-between">
               <div>
-                <CardTitle>Lịch hẹn ngày {selectedDate ? selectedDate.toLocaleDateString('vi-VN') : 'N/A'}</CardTitle>
+                <CardTitle>Lịch hẹn {selectedDate ? `ngày ${format(selectedDate, 'dd/MM/yyyy', { locale: vi})}` : '(Tất cả ngày)'}</CardTitle>
                 <CardDescription>Danh sách các lịch hẹn đã đặt.</CardDescription>
               </div>
             </div>

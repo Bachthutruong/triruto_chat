@@ -6,7 +6,7 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter }
 import { Button } from '@/components/ui/button';
 import { Calendar } from '@/components/ui/calendar'; 
 import { PlusCircle, ListFilter, Edit, Trash2, Save, Users, Clock, Search } from 'lucide-react';
-import type { AppointmentDetails, UserSession } from '@/lib/types';
+import type { AppointmentDetails, UserSession, GetAppointmentsFilters } from '@/lib/types';
 import { getAppointments, createNewAppointment, updateExistingAppointment, deleteExistingAppointment, getCustomerListForSelect, getAllUsers } from '@/app/actions';
 import { useToast } from '@/hooks/use-toast';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogClose, DialogTrigger, DialogFooter } from '@/components/ui/dialog';
@@ -72,11 +72,38 @@ export default function AdminViewAppointmentsPage() {
   }, [toast]);
   
   const fetchAppointments = useCallback(async () => {
-    if (!adminSession) return; 
+    if (!adminSession && !(adminSession?.role === 'admin')) return; 
     setIsLoading(true);
     try {
-      const filters: any = {};
-      if (selectedDate) filters.date = formatDateToYYYYMMDD(selectedDate);
+      const filters: GetAppointmentsFilters = {};
+      if (selectedDate) {
+        const localDateStr = formatDateToYYYYMMDD(selectedDate);
+        const now = new Date();
+        // Check if the selectedDate is indeed "today" relative to local browser time
+        const isViewingToday = selectedDate.getFullYear() === now.getFullYear() &&
+                               selectedDate.getMonth() === now.getMonth() &&
+                               selectedDate.getDate() === now.getDate();
+
+        if (isViewingToday) {
+          // Get UTC "today" date string
+          const utcDate = new Date(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+          const utcDateStr = formatDateToYYYYMMDD(utcDate);
+          
+          if (localDateStr !== utcDateStr) {
+            filters.dates = [localDateStr, utcDateStr]; // Query for both local and UTC "today"
+            console.log(`[AdminViewAppointments] Querying for today (local & UTC): ${localDateStr}, ${utcDateStr}`);
+          } else {
+            filters.date = localDateStr;
+            console.log(`[AdminViewAppointments] Querying for today (local=UTC): ${localDateStr}`);
+          }
+        } else {
+          filters.date = localDateStr; // For any other selected day, just use that day
+          console.log(`[AdminViewAppointments] Querying for specific date: ${localDateStr}`);
+        }
+      } else {
+        console.log(`[AdminViewAppointments] No date selected, fetching all applicable.`);
+      }
+
       if (filterStaffId && filterStaffId !== ALL_STAFF_FILTER_VALUE) {
          filters.staffId = filterStaffId;
       }
@@ -93,6 +120,7 @@ export default function AdminViewAppointmentsPage() {
       setAppointments(filteredData);
     } catch (error) {
       toast({ title: "Lỗi", description: "Không thể tải lịch hẹn.", variant: "destructive" });
+      console.error("Error fetching appointments:", error);
     } finally {
       setIsLoading(false);
     }
@@ -118,7 +146,7 @@ export default function AdminViewAppointmentsPage() {
   const handleOpenModal = (appointment: AppointmentDetails | null = null) => {
     if (appointment) {
       setCurrentAppointment(appointment);
-      setFormCustomerId(appointment.userId);
+      setFormCustomerId(appointment.userId); // This should be customerId from the transformed object
       setFormService(appointment.service);
       setFormDate(appointment.date);
       setFormTime(appointment.time.replace(/ AM| PM/i, ''));
@@ -127,7 +155,7 @@ export default function AdminViewAppointmentsPage() {
       setFormNotes(appointment.notes || '');
       setFormStaffId(appointment.staffId || NO_STAFF_MODAL_VALUE);
     } else {
-      resetForm(); // Ensures formStaffId is NO_STAFF_MODAL_VALUE for new
+      resetForm(); 
       setFormDate(formatDateToYYYYMMDD(selectedDate || new Date()));
     }
     setIsModalOpen(true);
@@ -142,7 +170,7 @@ export default function AdminViewAppointmentsPage() {
         return;
     }
     const appointmentData = {
-      customerId: formCustomerId,
+      customerId: formCustomerId, // Ensure this is the customer's DB ID
       service: formService,
       date: formDate,
       time: formTime,
@@ -150,6 +178,7 @@ export default function AdminViewAppointmentsPage() {
       status: formStatus,
       notes: formNotes,
       staffId: formStaffId === NO_STAFF_MODAL_VALUE ? undefined : formStaffId,
+      // packageType and priority could be added to the form if needed
     };
 
     try {
@@ -246,6 +275,7 @@ export default function AdminViewAppointmentsPage() {
                 setSelectedDate(date);
               }}
               className="rounded-md border"
+              locale="vi"
             />
           </CardContent>
             <CardFooter>
@@ -257,7 +287,7 @@ export default function AdminViewAppointmentsPage() {
 
         <Card className="md:col-span-2">
           <CardHeader>
-            <CardTitle>Lịch hẹn {selectedDate ? `ngày ${selectedDate.toLocaleDateString('vi-VN')}` : '(Tất cả ngày đã lọc)'}</CardTitle>
+            <CardTitle>Lịch hẹn {selectedDate ? `ngày ${format(selectedDate, 'dd/MM/yyyy', { locale: require('date-fns/locale/vi')})}` : '(Tất cả ngày đã lọc)'}</CardTitle>
             <CardDescription>Danh sách các lịch hẹn đã đặt.</CardDescription>
           </CardHeader>
           <CardContent>
