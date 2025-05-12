@@ -11,18 +11,18 @@
 import { z } from 'genkit';
 
 export const AppointmentDetailsSchema = z.object({
-  appointmentId: z.string().describe('ID lịch hẹn'),
-  userId: z.string().describe('ID người dùng'),
+  appointmentId: z.string().optional().describe('ID lịch hẹn (để trống cho lịch hẹn mới)'), // Made optional
+  userId: z.string().optional().describe('ID người dùng (sẽ được hệ thống điền)'), // Made optional
   service: z.string().describe('Dịch vụ'),
-  time: z.string().describe('Thời gian hẹn'),
+  time: z.string().describe('Thời gian hẹn (ví dụ: "2:00 chiều", "14:00")'),
   date: z.string().describe('Ngày hẹn (YYYY-MM-DD)'),
   branch: z.string().optional().describe('Chi nhánh'),
-  packageType: z.string().optional().describe('Loại gói'),
-  priority: z.string().optional().describe('Mức độ ưu tiên'),
+  packageType: z.string().optional().describe('Loại gói (ví dụ: "Tiêu chuẩn", "Cao cấp")'),
+  priority: z.string().optional().describe('Mức độ ưu tiên (ví dụ: "Cao", "Bình thường")'),
   status: z.enum(['booked', 'cancelled', 'completed', 'pending_confirmation', 'rescheduled']).describe('Trạng thái lịch hẹn'),
-  notes: z.string().optional().describe('Ghi chú'),
-  createdAt: z.string().datetime().describe('Ngày tạo'),
-  updatedAt: z.string().datetime().describe('Ngày cập nhật'),
+  notes: z.string().optional().describe('Ghi chú cho lịch hẹn'),
+  createdAt: z.string().datetime().optional().describe('Ngày tạo (sẽ được hệ thống điền)'), // Made optional
+  updatedAt: z.string().datetime().optional().describe('Ngày cập nhật (sẽ được hệ thống điền)'), // Made optional
 });
 
 export const ScheduleAppointmentInputSchema = z.object({
@@ -38,10 +38,9 @@ export const ScheduleAppointmentOutputSchema = z.object({
   intent: z.enum(['booked', 'rescheduled', 'cancelled', 'pending_alternatives', 'clarification_needed', 'error', 'no_action_needed'])
     .describe('Kết quả của việc đặt lịch hoặc ý định được xác định của người dùng.'),
   confirmationMessage: z.string().describe('Một tin nhắn gửi cho người dùng bằng tiếng Việt về trạng thái lịch hẹn hoặc các bước tiếp theo.'),
-  appointmentDetails: AppointmentDetailsSchema.omit({ userId: true, createdAt: true, updatedAt: true, packageType: true, priority: true, notes: true })
-    .merge(z.object({ appointmentId: z.string().optional() }))
+  appointmentDetails: AppointmentDetailsSchema.omit({ userId: true, createdAt: true, updatedAt: true }) // Omit system-managed fields for AI output
     .optional()
-    .describe('Chi tiết của lịch hẹn đã đặt, đổi hoặc được xác định. Đối với đặt lịch mới, ID có thể đang chờ xử lý.'),
+    .describe('Chi tiết của lịch hẹn đã đặt, đổi hoặc được xác định. `appointmentId` là tùy chọn cho lịch mới.'),
   originalAppointmentIdToModify: z.string().optional().describe('Nếu đổi hoặc hủy lịch, ID của lịch hẹn gốc bị ảnh hưởng.'),
   suggestedSlots: z.array(z.object({
     date: z.string().describe('Ngày gợi ý (YYYY-MM-DD).'),
@@ -52,4 +51,3 @@ export const ScheduleAppointmentOutputSchema = z.object({
   requiresAssistance: z.boolean().optional().describe('True nếu AI không thể xử lý yêu cầu và cần sự hỗ trợ của con người.'),
 });
 export type ScheduleAppointmentOutput = z.infer<typeof ScheduleAppointmentOutputSchema>;
-

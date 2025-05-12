@@ -49,34 +49,34 @@ Nhiệm vụ của bạn:
 3.  Mô phỏng tình trạng lịch trống:
     *   BẠN PHẢI giả định một số khung giờ đã bận. KHÔNG được luôn nói rằng lịch trống.
     *   Nếu một khung giờ cụ thể được yêu cầu (ví dụ: "Cắt tóc ngày mai lúc 3 giờ chiều"):
-        *   50% khả năng lịch trống: đặt 'intent: "booked"', cung cấp 'appointmentDetails'.
+        *   50% khả năng lịch trống: đặt 'intent: "booked"', cung cấp 'appointmentDetails' (bao gồm service, date, time, branch, status='booked').
         *   50% khả năng lịch bận: đặt 'intent: "pending_alternatives"', cung cấp 'suggestedSlots' (2-3 khung giờ thực tế trong tương lai, ví dụ: giờ khác trong cùng ngày, hoặc ngày hôm sau).
     *   Nếu yêu cầu không rõ ràng (ví dụ: "Tôi muốn massage tuần tới"): đặt 'intent: "pending_alternatives"' và cung cấp 2-3 'suggestedSlots'.
 4.  Xử lý đổi lịch:
     *   Xác định lịch hẹn nào cần đổi bằng 'originalAppointmentIdToModify'. Nếu không rõ, hãy hỏi để làm rõ.
     *   Hỏi ngày/giờ ưu tiên mới nếu chưa được cung cấp.
-    *   Sau đó, mô phỏng tình trạng lịch trống như trên cho khung giờ mới. Nếu trống, 'intent: "rescheduled"'. Nếu không, 'intent: "pending_alternatives"'.
+    *   Sau đó, mô phỏng tình trạng lịch trống như trên cho khung giờ mới. Nếu trống, 'intent: "rescheduled"', cung cấp 'appointmentDetails' đầy đủ và 'originalAppointmentIdToModify'. Nếu không, 'intent: "pending_alternatives"'.
 5.  Xử lý hủy lịch:
     *   Xác định lịch hẹn nào cần hủy bằng 'originalAppointmentIdToModify'. Nếu không rõ, hãy hỏi để làm rõ.
-    *   Đặt 'intent: "cancelled"'.
+    *   Đặt 'intent: "cancelled"'. Cung cấp 'originalAppointmentIdToModify'. Nếu có thể, 'appointmentDetails' với status='cancelled'.
 6.  Làm rõ: Nếu thiếu thông tin quan trọng (ví dụ: dịch vụ cho đặt lịch mới, lịch hẹn nào cần sửa), đặt 'intent: "clarification_needed"' và chỉ định 'missingInformation'.
 7.  Lỗi/Cần hỗ trợ: Nếu yêu cầu quá phức tạp hoặc hoàn toàn không liên quan đến lịch hẹn, đặt 'intent: "error"' hoặc 'requiresAssistance: true'.
 
 Các trường phản hồi:
 - intent: "booked", "rescheduled", "cancelled", "pending_alternatives", "clarification_needed", "error", "no_action_needed".
 - confirmationMessage: Tin nhắn thân thiện của bạn gửi cho người dùng bằng tiếng Việt. Đây là nội dung người dùng sẽ thấy.
-- appointmentDetails: Đối tượng với {service, date, time, branch, status}. Đối với 'booked'/'rescheduled', status phải là 'booked'. Đối với kết quả ban đầu cho đặt lịch mới, bạn có thể bỏ qua 'appointmentId' vì hệ thống sẽ tạo nó.
-- originalAppointmentIdToModify: ID của lịch hẹn đang được thay đổi/hủy.
+- appointmentDetails: Đối tượng với {service, date, time, branch, status}. Đối với 'booked'/'rescheduled', status phải là 'booked'. Đối với 'cancelled', status nên là 'cancelled'. Đối với kết quả ban đầu cho đặt lịch mới, bạn có thể bỏ qua 'appointmentId' vì hệ thống sẽ tạo nó. PHẢI cung cấp appointmentDetails nếu intent là 'booked' hoặc 'rescheduled'.
+- originalAppointmentIdToModify: ID của lịch hẹn đang được thay đổi/hủy. PHẢI cung cấp nếu intent là 'rescheduled' hoặc 'cancelled' và có lịch hẹn cụ thể.
 - suggestedSlots: Mảng các {date, time, branch} cho "pending_alternatives".
 - missingInformation: Chuỗi mô tả những gì cần thiết cho "clarification_needed" bằng tiếng Việt.
 - requiresAssistance: Boolean.
 
 Ví dụ đặt lịch mới: Người dùng nói "Đặt lịch cắt tóc cho tôi vào ngày mai lúc 2 giờ chiều".
-Nếu lịch trống: intent="booked", confirmationMessage="OK! Tôi đã đặt lịch Cắt tóc cho bạn vào ngày mai lúc 2:00 chiều.", appointmentDetails={service:"Cắt tóc", date:"<ngày_mai>", time:"2:00 chiều", status:"booked"}.
+Nếu lịch trống: intent="booked", confirmationMessage="OK! Tôi đã đặt lịch Cắt tóc cho bạn vào ngày mai lúc 2:00 chiều.", appointmentDetails={service:"Cắt tóc", date:"<ngày_mai>", time:"2:00 chiều", branch:"Chi nhánh Chính", status:"booked"}.
 Nếu lịch bận: intent="pending_alternatives", confirmationMessage="Xin lỗi, 2 giờ chiều đã có người đặt. Bạn thấy 4 giờ chiều hoặc ngày kia lúc 2 giờ chiều thì sao?", suggestedSlots=[{date:"<ngày_mai>", time:"4:00 chiều"}, {date:"<ngày_kia>", time:"2:00 chiều"}].
 
 Ví dụ hủy lịch: Người dùng nói "Hủy lịch hẹn ngày mai của tôi." (Giả sử có một lịch hẹn vào ngày mai với ID 'appt123')
-intent="cancelled", confirmationMessage="Lịch hẹn ngày mai của bạn đã được hủy.", originalAppointmentIdToModify="appt123".
+intent="cancelled", confirmationMessage="Lịch hẹn ngày mai của bạn đã được hủy.", originalAppointmentIdToModify="appt123", appointmentDetails={appointmentId:"appt123", service:"<tên_dịch_vụ_cũ>", date:"<ngày_mai>", time:"<giờ_cũ>", status:"cancelled"}.
 
 Cung cấp ngày theo định dạng YYYY-MM-DD.
 Hãy súc tích và hữu ích trong confirmationMessage của bạn.
@@ -86,7 +86,7 @@ Nếu nội dung người dùng nhập không liên quan đến lịch hẹn (v�
 
 const scheduleAppointmentFlow = ai.defineFlow(
   {
-    name: 'scheduleAppointmentFlowVietnamese', // Changed name
+    name: 'scheduleAppointmentFlowVietnamese',
     inputSchema: ScheduleAppointmentInputSchema,
     outputSchema: ScheduleAppointmentOutputSchema,
   },
@@ -98,7 +98,7 @@ const scheduleAppointmentFlow = ai.defineFlow(
 
     const {output} = await prompt(input);
     
-    if (!output) {
+    if (!output) { // Prompt call failed entirely
       return {
         intent: 'error',
         confirmationMessage: "Tôi đang gặp sự cố khi xử lý yêu cầu của bạn. Vui lòng thử lại sau.",
@@ -106,15 +106,47 @@ const scheduleAppointmentFlow = ai.defineFlow(
       };
     }
     
+    // Handle specific intents and ensure data integrity
     if (output.intent === 'booked' || output.intent === 'rescheduled') {
-      if (output.appointmentDetails) {
-        output.appointmentDetails.status = 'booked';
+      if (output.appointmentDetails && output.appointmentDetails.service && output.appointmentDetails.date && output.appointmentDetails.time) {
+        // All critical details are present
+        output.appointmentDetails.status = 'booked'; 
+        
+        if (output.intent === 'rescheduled' && !output.originalAppointmentIdToModify) {
+            console.warn("[AI Flow] AI indicated 'rescheduled' but no originalAppointmentIdToModify was provided.");
+            return {
+                intent: 'clarification_needed',
+                confirmationMessage: "Tôi cần biết bạn muốn đổi lịch hẹn nào. Bạn có thể cung cấp ID lịch hẹn hoặc mô tả lịch hẹn đó được không?",
+                missingInformation: "lịch hẹn gốc cần đổi",
+                requiresAssistance: true,
+            };
+        }
       } else {
-        console.warn("AI indicated 'booked' or 'rescheduled' intent but no appointmentDetails were provided.");
+        // Critical appointmentDetails are missing for a booking/rescheduling action
+        console.warn("[AI Flow] AI indicated 'booked' or 'rescheduled' intent but crucial appointmentDetails (service, date, or time) were missing. Output:", JSON.stringify(output.appointmentDetails));
+        return {
+            intent: 'clarification_needed',
+            confirmationMessage: "Xin lỗi, tôi chưa thể xác nhận đầy đủ thông tin lịch hẹn. Bạn vui lòng cung cấp đầy đủ dịch vụ, ngày và giờ mong muốn được không?",
+            missingInformation: "dịch vụ, ngày, giờ",
+            requiresAssistance: true,
+        };
       }
     }
-    if (output.intent === 'cancelled' && output.originalAppointmentIdToModify && output.appointmentDetails) {
-        output.appointmentDetails.status = 'cancelled';
+    
+    if (output.intent === 'cancelled') {
+        if (!output.originalAppointmentIdToModify) {
+            console.warn("[AI Flow] AI indicated 'cancelled' but no originalAppointmentIdToModify was provided.");
+            return {
+                intent: 'clarification_needed',
+                confirmationMessage: "Tôi cần biết bạn muốn hủy lịch hẹn nào. Bạn có thể cung cấp ID lịch hẹn hoặc mô tả lịch hẹn đó được không?",
+                missingInformation: "lịch hẹn gốc cần hủy",
+                requiresAssistance: true,
+            };
+        }
+        // If AI provides appointmentDetails for cancellation, ensure status is 'cancelled'
+        if (output.appointmentDetails) {
+            output.appointmentDetails.status = 'cancelled';
+        }
     }
 
     return output;
