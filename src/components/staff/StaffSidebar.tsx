@@ -19,10 +19,10 @@ import {
 const staffNavItems = [
   { href: '/staff/dashboard', label: 'Bảng điều khiển', icon: LayoutDashboard },
   { href: '/staff/chat', label: 'Live Chats', icon: MessageSquare },
-  { href: '/staff/customers', label: 'Khách hàng', icon: User }, 
+  // { href: '/staff/customers', label: 'Khách hàng', icon: User }, // Temporarily hide if not fully implemented
   { href: '/staff/appointments', label: 'Lịch hẹn', icon: CalendarDays },
-  { href: '/staff/products', label: 'Sản phẩm/Dịch vụ', icon: Package }, 
-  { href: '/staff/reminders', label: 'Nhắc nhở Chăm sóc', icon: BellRing }, 
+  // { href: '/staff/products', label: 'Sản phẩm/Dịch vụ', icon: Package }, 
+  // { href: '/staff/reminders', label: 'Nhắc nhở Chăm sóc', icon: BellRing }, 
 ];
 
 export function StaffSidebar() {
@@ -48,7 +48,7 @@ export function StaffSidebar() {
           </h2>
         </div>
       </SidebarHeader>
-      <SidebarContent asChild>
+      <SidebarContent>
         <ScrollArea className="h-full">
           <SidebarMenu className="py-2 px-2">
             {staffNavItems.map((item) => (
@@ -56,7 +56,7 @@ export function StaffSidebar() {
                 <Link href={item.href} passHref legacyBehavior>
                   <SidebarMenuButton
                     className="w-full justify-start"
-                    isActive={pathname.startsWith(item.href)}
+                    isActive={pathname.startsWith(item.href) && (item.href === '/staff/dashboard' ? pathname === item.href : true)}
                     tooltip={{content: item.label, side: 'right', align: 'center', className: 'sm:hidden'}}
                     onClick={handleLinkClick}
                   >

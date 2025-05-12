@@ -36,7 +36,7 @@ export default function AdminUsersPage() {
   const [phoneNumber, setPhoneNumber] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [role, setRole] = useState<UserRole | ''>('');
+  const [role, setRole] = useState<'admin' | 'staff' | ''>('');
 
   const fetchUsers = useCallback(async () => {
     setIsLoading(true);
@@ -70,7 +70,7 @@ export default function AdminUsersPage() {
       setCurrentUser(user);
       setName(user.name || '');
       setPhoneNumber(user.phoneNumber);
-      setRole(user.role as UserRole);
+      setRole(user.role === 'customer' ? '' : user.role);
     }
     setIsModalOpen(true);
   };
@@ -86,7 +86,7 @@ export default function AdminUsersPage() {
       if (currentUser) { // Editing user
         const updateData: Partial<Pick<UserSession, 'name' | 'role'> & { password?: string }> = {
           name,
-          role: role as UserRole, // role is validated to be not ''
+          role: role as 'admin' | 'staff', // role is validated to be not ''
         };
         if (password) { // Only include password if it's being changed
           updateData.password = password;
@@ -99,7 +99,7 @@ export default function AdminUsersPage() {
             setIsSubmitting(false);
             return;
         }
-        await createStaffOrAdminUser(name, phoneNumber, role as UserRole, password);
+        await createStaffOrAdminUser(name, phoneNumber, role as 'admin' | 'staff', password);
         toast({ title: "Thành công", description: "Người dùng đã được tạo." });
       }
       resetForm();
@@ -251,7 +251,7 @@ export default function AdminUsersPage() {
               </div>
               <div className="space-y-2">
                 <Label htmlFor="role">Vai trò</Label>
-                <Select value={role} onValueChange={(value) => setRole(value as UserRole)} disabled={isSubmitting}>
+                <Select value={role} onValueChange={(value) => setRole(value as 'admin' | 'staff')} disabled={isSubmitting}>
                   <SelectTrigger id="role">
                     <SelectValue placeholder="Chọn một vai trò" />
                   </SelectTrigger>

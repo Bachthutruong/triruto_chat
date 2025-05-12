@@ -47,7 +47,7 @@ export function AdminSidebar() {
           </h2>
         </div>
       </SidebarHeader>
-      <SidebarContent asChild>
+      <SidebarContent>
         <ScrollArea className="h-full">
           <SidebarMenu className="py-2 px-2">
             {adminNavItems.map((item) => (

@@ -48,8 +48,7 @@ export default function AdminViewAppointmentsPage() {
   const [staffList, setStaffList] = useState<UserSession[]>([]);
   
   const [filterCustomerSearch, setFilterCustomerSearch] = useState('');
-  const [filterStaffId, setFilterStaffId] = useState(ALL_STAFF_FILTER_VALUE);
-
+  const [filterStaffId, setFilterStaffId] = useState(ALL_STAFF_FILTER_VALUE); 
 
   useEffect(() => {
     const sessionString = sessionStorage.getItem('aetherChatUserSession');
@@ -61,8 +60,10 @@ export default function AdminViewAppointmentsPage() {
             const [customers, staffMembers] = await Promise.all([
                 getCustomerListForSelect(),
                 getAllUsers()
-            ]);
-            setCustomerList(customers);
+ ]);
+            // Filter to include only 'staff' or 'admin' roles
+ const validStaffMembers = staffMembers.filter((u: UserSession) => u.role === 'staff' || u.role === 'admin');
+            setStaffList(validStaffMembers);
             setStaffList(staffMembers.filter(u => u.role === 'staff' || u.role === 'admin'));
         } catch (error) {
             toast({ title: "Lỗi tải dữ liệu", description: "Không thể tải danh sách khách hàng hoặc nhân viên.", variant: "destructive" });
@@ -72,7 +73,7 @@ export default function AdminViewAppointmentsPage() {
   }, [toast]);
   
   const fetchAppointments = useCallback(async () => {
-    if (!adminSession && !(adminSession?.role === 'admin')) return; 
+    if (!adminSession || !(adminSession.role === 'admin')) return; 
     setIsLoading(true);
     try {
       const filters: GetAppointmentsFilters = {};
@@ -275,7 +276,6 @@ export default function AdminViewAppointmentsPage() {
                 setSelectedDate(date);
               }}
               className="rounded-md border"
-              locale="vi"
             />
           </CardContent>
             <CardFooter>
