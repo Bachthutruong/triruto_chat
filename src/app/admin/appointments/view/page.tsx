@@ -12,6 +12,7 @@ import { useToast } from '@/hooks/use-toast';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogClose, DialogTrigger, DialogFooter } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { vi } from 'date-fns/locale'; // Import the locale directly
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { format, parseISO } from 'date-fns';
@@ -287,7 +288,7 @@ export default function AdminViewAppointmentsPage() {
 
         <Card className="md:col-span-2">
           <CardHeader>
-            <CardTitle>Lịch hẹn {selectedDate ? `ngày ${format(selectedDate, 'dd/MM/yyyy', { locale: require('date-fns/locale/vi')})}` : '(Tất cả ngày đã lọc)'}</CardTitle>
+            <CardTitle>Lịch hẹn {selectedDate ? `ngày ${format(selectedDate, 'dd/MM/yyyy', { locale: vi })}` : '(Tất cả ngày đã lọc)'}</CardTitle>
             <CardDescription>Danh sách các lịch hẹn đã đặt.</CardDescription>
           </CardHeader>
           <CardContent>
