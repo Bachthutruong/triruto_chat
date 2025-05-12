@@ -1,10 +1,11 @@
+// src/app/admin/appointments/view/page.tsx
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Calendar } from '@/components/ui/calendar'; 
-import { PlusCircle, ListFilter, Edit, Trash2, Save, Users, Clock } from 'lucide-react';
+import { PlusCircle, ListFilter, Edit, Trash2, Save, Users, Clock, Search } from 'lucide-react';
 import type { AppointmentDetails, UserSession, CustomerProfile } from '@/lib/types';
 import { getAppointments, createNewAppointment, updateExistingAppointment, deleteExistingAppointment, getCustomerListForSelect, getAllUsers } from '@/app/actions';
 import { useToast } from '@/hooks/use-toast';
@@ -20,22 +21,16 @@ const formatDateToYYYYMMDD = (date: Date | undefined): string => {
   return format(date, 'yyyy-MM-dd');
 };
 
-const parseDateFromYYYYMMDD = (dateString: string): Date => {
-  return parseISO(dateString);
-};
-
-
-export default function StaffAppointmentsPage() {
+export default function AdminViewAppointmentsPage() {
   const { toast } = useToast();
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(new Date());
   const [appointments, setAppointments] = useState<AppointmentDetails[]>([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [staffSession, setStaffSession] = useState<UserSession | null>(null);
+  const [adminSession, setAdminSession] = useState<UserSession | null>(null);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [currentAppointment, setCurrentAppointment] = useState<AppointmentDetails | null>(null);
   
-  // Form state for modal
   const [formCustomerId, setFormCustomerId] = useState('');
   const [formService, setFormService] = useState('');
   const [formDate, setFormDate] = useState(formatDateToYYYYMMDD(new Date()));
@@ -43,26 +38,26 @@ export default function StaffAppointmentsPage() {
   const [formBranch, setFormBranch] = useState('');
   const [formStatus, setFormStatus] = useState<AppointmentDetails['status']>('booked');
   const [formNotes, setFormNotes] = useState('');
-  const [formStaffId, setFormStaffId] = useState('');
+  const [formStaffId, setFormStaffId] = useState(''); // For assigning/filtering by staff
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [customerList, setCustomerList] = useState<{ id: string; name: string; phoneNumber: string }[]>([]);
   const [staffList, setStaffList] = useState<UserSession[]>([]);
+  
+  const [filterCustomerSearch, setFilterCustomerSearch] = useState('');
+  const [filterStaffId, setFilterStaffId] = useState('');
 
 
   useEffect(() => {
     const sessionString = sessionStorage.getItem('aetherChatUserSession');
     if (sessionString) {
-      const session = JSON.parse(sessionString);
-      setStaffSession(session);
-      setFormStaffId(session.id); // Default to self for new appointments
+      setAdminSession(JSON.parse(sessionString));
     }
-
     const fetchInitialData = async () => {
         try {
             const [customers, staffMembers] = await Promise.all([
                 getCustomerListForSelect(),
-                getAllUsers() // Assuming this gets staff/admins
+                getAllUsers()
             ]);
             setCustomerList(customers);
             setStaffList(staffMembers.filter(u => u.role === 'staff' || u.role === 'admin'));
@@ -71,32 +66,37 @@ export default function StaffAppointmentsPage() {
         }
     };
     fetchInitialData();
-
   }, [toast]);
   
   const fetchAppointments = useCallback(async () => {
-    if (!selectedDate || !staffSession) return;
+    if (!adminSession) return; // Ensure admin session is loaded
     setIsLoading(true);
     try {
-      const dateStr = formatDateToYYYYMMDD(selectedDate);
-      const filters: any = { date: dateStr };
-      // If staff should only see their own appointments uncomment next line
-      // if (staffSession.role === 'staff') filters.staffId = staffSession.id;
+      const filters: any = {};
+      if (selectedDate) filters.date = formatDateToYYYYMMDD(selectedDate);
+      if (filterStaffId) filters.staffId = filterStaffId;
+      // Customer search/filter will be applied client-side for now, or enhance getAppointments
       
       const data = await getAppointments(filters);
-      setAppointments(data);
+      let filteredData = data;
+      if (filterCustomerSearch) {
+        const searchTerm = filterCustomerSearch.toLowerCase();
+        filteredData = data.filter(appt => 
+            (appt.customerName?.toLowerCase().includes(searchTerm)) ||
+            (appt.customerPhoneNumber?.includes(searchTerm))
+        );
+      }
+      setAppointments(filteredData);
     } catch (error) {
       toast({ title: "Lỗi", description: "Không thể tải lịch hẹn.", variant: "destructive" });
     } finally {
       setIsLoading(false);
     }
-  }, [selectedDate, staffSession, toast]);
+  }, [selectedDate, adminSession, toast, filterCustomerSearch, filterStaffId]);
 
   useEffect(() => {
-    if (staffSession) { // Ensure session is loaded before fetching
-        fetchAppointments();
-    }
-  }, [fetchAppointments, staffSession]);
+    fetchAppointments();
+  }, [fetchAppointments]);
 
 
   const resetForm = () => {
@@ -108,7 +108,7 @@ export default function StaffAppointmentsPage() {
     setFormBranch('');
     setFormStatus('booked');
     setFormNotes('');
-    setFormStaffId(staffSession?.id || '');
+    setFormStaffId(''); // Admin might not default to self
   };
 
   const handleOpenModal = (appointment: AppointmentDetails | null = null) => {
@@ -117,16 +117,14 @@ export default function StaffAppointmentsPage() {
       setCurrentAppointment(appointment);
       setFormCustomerId(appointment.userId);
       setFormService(appointment.service);
-      setFormDate(appointment.date); // date is already YYYY-MM-DD
-      setFormTime(appointment.time.replace(/ AM| PM/i, '')); // Assuming time is like "09:00 AM", convert to "09:00" for input type="time"
+      setFormDate(appointment.date);
+      setFormTime(appointment.time.replace(/ AM| PM/i, ''));
       setFormBranch(appointment.branch || '');
       setFormStatus(appointment.status);
       setFormNotes(appointment.notes || '');
-      setFormStaffId(appointment.staffId || staffSession?.id || '');
+      setFormStaffId(appointment.staffId || '');
     } else {
-      // For new appointment, default date to selectedDate on calendar
       setFormDate(formatDateToYYYYMMDD(selectedDate || new Date()));
-      setFormStaffId(staffSession?.id || ''); // Default to current staff
     }
     setIsModalOpen(true);
   };
@@ -134,17 +132,16 @@ export default function StaffAppointmentsPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
-    if (!formCustomerId || !formService || !formDate || !formTime) {
+     if (!formCustomerId || !formService || !formDate || !formTime) {
         toast({ title: "Thiếu thông tin", description: "Vui lòng điền đầy đủ các trường bắt buộc (Khách hàng, Dịch vụ, Ngày, Giờ).", variant: "destructive" });
         setIsSubmitting(false);
         return;
     }
-    
     const appointmentData = {
       customerId: formCustomerId,
       service: formService,
       date: formDate,
-      time: formTime, // Store as "HH:mm"
+      time: formTime,
       branch: formBranch,
       status: formStatus,
       notes: formNotes,
@@ -189,61 +186,94 @@ export default function StaffAppointmentsPage() {
       default: return status;
     }
   };
+  
+  const handleApplyFilters = () => {
+      fetchAppointments();
+  };
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold">Quản lý Lịch hẹn</h1>
-          <p className="text-muted-foreground">Xem, tạo và quản lý lịch hẹn của khách hàng.</p>
+          <h1 className="text-3xl font-bold">Xem Lịch hẹn (Admin)</h1>
+          <p className="text-muted-foreground">Xem và quản lý tất cả lịch hẹn trong hệ thống.</p>
         </div>
         <Button onClick={() => handleOpenModal()}>
           <PlusCircle className="mr-2 h-4 w-4" /> Tạo Lịch hẹn Mới
         </Button>
       </div>
 
+      <Card>
+        <CardHeader>
+            <CardTitle>Bộ lọc</CardTitle>
+        </CardHeader>
+        <CardContent className="grid md:grid-cols-3 gap-4">
+            <div>
+                <Label htmlFor="filterCustomerSearch">Tìm Khách hàng (Tên/SĐT)</Label>
+                <Input id="filterCustomerSearch" placeholder="Nhập tên hoặc SĐT" value={filterCustomerSearch} onChange={e => setFilterCustomerSearch(e.target.value)} icon={<Search />} />
+            </div>
+            <div>
+                <Label htmlFor="filterStaffId">Nhân viên</Label>
+                <Select value={filterStaffId} onValueChange={setFilterStaffId}>
+                    <SelectTrigger><SelectValue placeholder="Tất cả nhân viên" /></SelectTrigger>
+                    <SelectContent>
+                        <SelectItem value="">Tất cả nhân viên</SelectItem>
+                        {staffList.map(s => <SelectItem key={s.id} value={s.id}>{s.name} ({s.phoneNumber})</SelectItem>)}
+                    </SelectContent>
+                </Select>
+            </div>
+            <div className="flex items-end">
+                <Button onClick={handleApplyFilters} className="w-full md:w-auto"><ListFilter className="mr-2 h-4 w-4" /> Áp dụng lọc</Button>
+            </div>
+        </CardContent>
+      </Card>
+
       <div className="grid md:grid-cols-3 gap-6">
         <Card className="md:col-span-1">
           <CardHeader>
             <CardTitle>Chọn Ngày</CardTitle>
+             <CardDescription>(Để trống để xem tất cả ngày)</CardDescription>
           </CardHeader>
           <CardContent className="flex justify-center">
             <Calendar
               mode="single"
               selected={selectedDate}
-              onSelect={setSelectedDate}
+              onSelect={(date) => {
+                setSelectedDate(date);
+                // fetchAppointments(); // Auto-fetch on date change
+              }}
               className="rounded-md border"
             />
           </CardContent>
+            <CardFooter>
+                <Button variant="outline" onClick={() => {setSelectedDate(undefined); /*fetchAppointments();*/}} className="w-full">
+                    Xem Tất cả Ngày
+                </Button>
+            </CardFooter>
         </Card>
 
         <Card className="md:col-span-2">
           <CardHeader>
-            <div className="flex items-center justify-between">
-              <div>
-                <CardTitle>Lịch hẹn ngày {selectedDate ? selectedDate.toLocaleDateString('vi-VN') : 'N/A'}</CardTitle>
-                <CardDescription>Danh sách các lịch hẹn đã đặt.</CardDescription>
-              </div>
-              {/* <Button variant="outline" size="sm"><ListFilter className="mr-2 h-4 w-4" /> Lọc</Button> */}
-            </div>
+            <CardTitle>Lịch hẹn {selectedDate ? `ngày ${selectedDate.toLocaleDateString('vi-VN')}` : '(Tất cả ngày đã lọc)'}</CardTitle>
+            <CardDescription>Danh sách các lịch hẹn đã đặt.</CardDescription>
           </CardHeader>
           <CardContent>
             {isLoading ? (
               <p>Đang tải lịch hẹn...</p>
             ) : appointments.length === 0 ? (
-              <p className="text-muted-foreground text-center py-8">Không có lịch hẹn nào cho ngày này.</p>
+              <p className="text-muted-foreground text-center py-8">Không có lịch hẹn nào phù hợp với bộ lọc.</p>
             ) : (
               <ul className="space-y-3 max-h-[60vh] overflow-y-auto">
                 {appointments.map(appt => (
                   <li key={appt.appointmentId} className="p-4 border rounded-lg bg-card shadow hover:shadow-md transition-shadow">
                     <div className="flex items-start justify-between">
-                      <div className="flex-grow">
-                        <h3 className="font-semibold text-base">{appt.service} - {appt.time}</h3>
+                       <div className="flex-grow">
+                        <h3 className="font-semibold text-base">{appt.service} - {appt.date} {appt.time}</h3>
                         <p className="text-sm text-muted-foreground">
                           <Users className="inline-block mr-1 h-3 w-3"/>KH: {appt.customerName || appt.userId} {appt.customerPhoneNumber && `(${appt.customerPhoneNumber})`}
                         </p>
                         {appt.branch && <p className="text-sm text-muted-foreground">Chi nhánh: {appt.branch}</p>}
-                         {appt.staffName && <p className="text-sm text-muted-foreground">NV: {appt.staffName}</p>}
+                        {appt.staffName && <p className="text-sm text-muted-foreground">NV: {appt.staffName}</p>}
                         <p className="text-sm mt-1">
                           <span className={`px-2 py-0.5 text-xs rounded-full ${
                             appt.status === 'booked' ? 'bg-blue-100 text-blue-700' : 
@@ -285,7 +315,7 @@ export default function StaffAppointmentsPage() {
             <DialogTitle>{currentAppointment ? 'Sửa Lịch hẹn' : 'Tạo Lịch hẹn Mới'}</DialogTitle>
           </DialogHeader>
           <form onSubmit={handleSubmit} className="space-y-4 max-h-[70vh] overflow-y-auto p-1">
-            <div>
+             <div>
               <Label htmlFor="formCustomerId">Khách hàng</Label>
               <Select value={formCustomerId} onValueChange={setFormCustomerId} disabled={isSubmitting}>
                 <SelectTrigger><SelectValue placeholder="Chọn khách hàng" /></SelectTrigger>
@@ -301,11 +331,11 @@ export default function StaffAppointmentsPage() {
             </div>
             <div><Label htmlFor="formBranch">Chi nhánh</Label><Input id="formBranch" value={formBranch} onChange={e => setFormBranch(e.target.value)} placeholder="ví dụ: Chi nhánh Chính" disabled={isSubmitting}/></div>
             <div>
-                <Label htmlFor="formStaffId">Nhân viên phụ trách (tùy chọn)</Label>
+                <Label htmlFor="formStaffIdModal">Nhân viên phụ trách</Label>
                 <Select value={formStaffId} onValueChange={setFormStaffId} disabled={isSubmitting}>
-                    <SelectTrigger><SelectValue placeholder="Chọn nhân viên" /></SelectTrigger>
+                    <SelectTrigger id="formStaffIdModal"><SelectValue placeholder="Chọn nhân viên (tùy chọn)" /></SelectTrigger>
                     <SelectContent>
-                        <SelectItem value="">Không chọn</SelectItem>
+                        <SelectItem value="">Không chọn/Bất kỳ</SelectItem>
                         {staffList.map(s => <SelectItem key={s.id} value={s.id}>{s.name} ({s.phoneNumber})</SelectItem>)}
                     </SelectContent>
                 </Select>

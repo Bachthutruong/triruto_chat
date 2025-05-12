@@ -7,9 +7,9 @@ import { generateSuggestedReplies } from '@/ai/flows/generate-suggested-replies'
 import { scheduleAppointment as scheduleAppointmentAIFlow } from '@/ai/flows/schedule-appointment';
 import type { ScheduleAppointmentOutput, AppointmentDetails as AIScheduleAppointmentDetails } from '@/ai/schemas/schedule-appointment-schemas';
 import { randomUUID } from 'crypto';
-import mongoose from 'mongoose';
+import mongoose, { Types } from 'mongoose';
 import dotenv from 'dotenv';
-dotenv.config();
+dotenv.config({ path: process.cwd() + '/.env' });
 
 
 import dbConnect from '@/lib/mongodb';
@@ -67,18 +67,33 @@ function transformMessageDocToMessage(msgDoc: IMessage): Message {
 }
 
 function transformAppointmentDocToDetails(apptDoc: IAppointment): AppointmentDetails {
+    let customerName: string | undefined = undefined;
+    let customerPhoneNumber: string | undefined = undefined;
+    if (apptDoc.customerId && typeof apptDoc.customerId === 'object' && 'name' in apptDoc.customerId && 'phoneNumber' in apptDoc.customerId) {
+        customerName = (apptDoc.customerId as ICustomer).name;
+        customerPhoneNumber = (apptDoc.customerId as ICustomer).phoneNumber;
+    }
+
+    let staffName: string | undefined = undefined;
+    if (apptDoc.staffId && typeof apptDoc.staffId === 'object' && 'name' in apptDoc.staffId) {
+        staffName = (apptDoc.staffId as IUser).name;
+    }
+
     return {
         appointmentId: apptDoc._id.toString(),
-        userId: apptDoc.customerId.toString(),
+        userId: typeof apptDoc.customerId === 'string' ? apptDoc.customerId : (apptDoc.customerId as any)?._id?.toString(),
         service: apptDoc.service,
         time: apptDoc.time,
-        date: apptDoc.date,
+        date: apptDoc.date, 
         branch: apptDoc.branch,
         status: apptDoc.status as AppointmentDetails['status'],
         notes: apptDoc.notes,
         createdAt: new Date(apptDoc.createdAt as Date),
         updatedAt: new Date(apptDoc.updatedAt as Date),
-        staffId: apptDoc.staffId?.toString(),
+        staffId: typeof apptDoc.staffId === 'string' ? apptDoc.staffId : (apptDoc.staffId as any)?._id?.toString(),
+        customerName,
+        customerPhoneNumber,
+        staffName,
     };
 }
 
@@ -264,7 +279,7 @@ export async function processUserMessage(
     content: userMessageContent,
     timestamp: new Date(),
     name: currentUserSession.name || 'Khách',
-    customerId: customerId as any, 
+    customerId: new mongoose.Types.ObjectId(customerId), 
   };
   const savedUserMessageDoc = await new MessageModel(userMessageData).save();
   const userMessage = transformMessageDocToMessage(savedUserMessageDoc);
@@ -288,7 +303,7 @@ export async function processUserMessage(
 
   if (hasSchedulingIntent) {
     try {
-      const customerAppointmentsDocs = await AppointmentModel.find({ customerId: customerId, status: { $ne: 'cancelled' } });
+      const customerAppointmentsDocs = await AppointmentModel.find({ customerId: new mongoose.Types.ObjectId(customerId), status: { $ne: 'cancelled' } });
       const customerAppointments = customerAppointmentsDocs.map(transformAppointmentDocToDetails);
       
       scheduleOutput = await scheduleAppointmentAIFlow({
@@ -303,7 +318,7 @@ export async function processUserMessage(
 
       if (scheduleOutput.intent === 'booked' && scheduleOutput.appointmentDetails) {
         const newAppointmentData: Omit<IAppointment, '_id' | 'createdAt' | 'updatedAt'> = {
-          customerId: customerId as any,
+          customerId: new mongoose.Types.ObjectId(customerId),
           service: scheduleOutput.appointmentDetails.service!,
           date: scheduleOutput.appointmentDetails.date!,
           time: scheduleOutput.appointmentDetails.time!,
@@ -316,13 +331,13 @@ export async function processUserMessage(
 
       } else if (scheduleOutput.intent === 'cancelled' && scheduleOutput.originalAppointmentIdToModify) {
         processedAppointmentDB = await AppointmentModel.findOneAndUpdate(
-          { _id: scheduleOutput.originalAppointmentIdToModify, customerId: customerId },
+          { _id: scheduleOutput.originalAppointmentIdToModify, customerId: new mongoose.Types.ObjectId(customerId) },
           { status: 'cancelled', updatedAt: new Date() },
           { new: true }
         );
       } else if (scheduleOutput.intent === 'rescheduled' && scheduleOutput.originalAppointmentIdToModify && scheduleOutput.appointmentDetails) {
          processedAppointmentDB = await AppointmentModel.findOneAndUpdate(
-            { _id: scheduleOutput.originalAppointmentIdToModify, customerId: customerId },
+            { _id: scheduleOutput.originalAppointmentIdToModify, customerId: new mongoose.Types.ObjectId(customerId) },
             { 
               service: scheduleOutput.appointmentDetails.service!,
               date: scheduleOutput.appointmentDetails.date!,
@@ -335,7 +350,7 @@ export async function processUserMessage(
          );
          if (!processedAppointmentDB) { 
             const newAppointmentData: Omit<IAppointment, '_id' | 'createdAt' | 'updatedAt'> = {
-              customerId: customerId as any,
+              customerId: new mongoose.Types.ObjectId(customerId),
               service: scheduleOutput.appointmentDetails.service!,
               date: scheduleOutput.appointmentDetails.date!,
               time: scheduleOutput.appointmentDetails.time!,
@@ -380,7 +395,7 @@ export async function processUserMessage(
     }
   }
   
-  const appSettings = await getAppSettings(); // Fetch app settings to get brandName
+  const appSettings = await getAppSettings(); 
   const brandNameForAI = appSettings?.brandName || 'AetherChat';
 
 
@@ -389,7 +404,7 @@ export async function processUserMessage(
     content: aiResponseContent,
     timestamp: new Date(),
     name: `${brandNameForAI} AI`,
-    customerId: customerId as any,
+    customerId: new mongoose.Types.ObjectId(customerId),
   };
   const savedAiMessageDoc = await new MessageModel(aiMessageData).save();
   finalAiMessage = transformMessageDocToMessage(savedAiMessageDoc);
@@ -400,13 +415,12 @@ export async function processUserMessage(
   });
 
   let newSuggestedReplies: string[] = [];
-  // appSettings already fetched above
   const defaultSuggestedReplies = appSettings?.suggestedQuestions || [];
 
   try {
     let contextForReplies = aiResponseContent;
     if (scheduleOutput?.intent === 'pending_alternatives' && scheduleOutput.suggestedSlots?.length) {
-        contextForReplies = `AI: ${aiResponseContent} Bạn có thể chọn một trong các gợi ý sau: ${scheduleOutput.suggestedSlots.map(s => `${s.service || scheduleOutput.appointmentDetails?.service} vào ${s.date} lúc ${s.time}`).join(', ')}. Hoặc hỏi các lựa chọn khác.`;
+        contextForReplies = `AI: ${aiResponseContent} Bạn có thể chọn một trong các gợi ý sau: ${scheduleOutput.suggestedSlots.map(s => `${scheduleOutput.appointmentDetails?.service || 'dịch vụ'} vào ${s.date} lúc ${s.time}`).join(', ')}. Hoặc hỏi các lựa chọn khác.`;
     } else if (scheduleOutput?.intent === 'clarification_needed' && scheduleOutput.missingInformation) {
         contextForReplies = `AI: ${aiResponseContent} Vui lòng cung cấp: ${scheduleOutput.missingInformation}.`;
     }
@@ -473,7 +487,10 @@ export async function getCustomerDetails(customerId: string): Promise<{customer:
     }
 
     const messageDocs = await MessageModel.find({ customerId: customerDoc._id }).sort({ timestamp: 1 });
-    const appointmentDocs = await AppointmentModel.find({ customerId: customerDoc._id }).sort({ date: 1, time: 1 });
+    const appointmentDocs = await AppointmentModel.find({ customerId: customerDoc._id })
+      .populate<{ customerId: ICustomer }>('customerId', 'name phoneNumber')
+      .populate<{ staffId: IUser }>('staffId', 'name')
+      .sort({ date: 1, time: 1 });
 
     const customerProfile: CustomerProfile = {
         id: customerDoc._id.toString(),
@@ -484,8 +501,8 @@ export async function getCustomerDetails(customerId: string): Promise<{customer:
         appointmentIds: customerDoc.appointmentIds.map(id => id.toString()),
         productIds: customerDoc.productIds,
         noteIds: customerDoc.noteIds.map(id => id.toString()),
-        tags: customerDoc.tags,
-        assignedStaffId: customerDoc.assignedStaffId?.toString(),
+        tags: doc.tags,
+        assignedStaffId: doc.assignedStaffId?.toString(),
         lastInteractionAt: new Date(customerDoc.lastInteractionAt),
         createdAt: new Date(customerDoc.createdAt as Date),
     };
@@ -530,7 +547,7 @@ export async function updateUser(userId: string, data: Partial<Pick<IUser, 'name
 
     if (data.name) user.name = data.name;
     if (data.role) user.role = data.role;
-    if (data.password) { // If password is being updated, it will be hashed by the pre-save hook
+    if (data.password) { 
         user.password = data.password;
     }
     
@@ -542,7 +559,8 @@ export async function deleteUser(userId: string): Promise<{ success: boolean, me
     await dbConnect();
     const result = await UserModel.findByIdAndDelete(userId);
     if (!result) throw new Error("Không tìm thấy người dùng để xóa.");
-    // TODO: Consider implications: unassign customers, etc.
+    await CustomerModel.updateMany({ assignedStaffId: userId }, { $unset: { assignedStaffId: "" } });
+    await AppointmentModel.updateMany({ staffId: userId }, { $unset: { staffId: "" } });
     return { success: true, message: "Người dùng đã được xóa." };
 }
 
@@ -551,7 +569,7 @@ export async function assignStaffToCustomer(customerId: string, staffId: string)
   await dbConnect();
   const updatedCustomer = await CustomerModel.findByIdAndUpdate(
     customerId,
-    { assignedStaffId: staffId, lastInteractionAt: new Date() },
+    { assignedStaffId: new mongoose.Types.ObjectId(staffId), lastInteractionAt: new Date() },
     { new: true }
   );
   if (!updatedCustomer) throw new Error("Không tìm thấy khách hàng.");
@@ -772,6 +790,140 @@ export async function updateCustomerInternalName(customerId: string, internalNam
         tags: updatedCustomer.tags,
         assignedStaffId: updatedCustomer.assignedStaffId?.toString(),
         lastInteractionAt: new Date(updatedCustomer.lastInteractionAt),
-        createdAt: new Date(updatedCustomer.createdAt as Date),
+        createdAt: new Date(customer.createdAt as Date),
   };
+}
+
+// --- Appointment Management Actions ---
+type GetAppointmentsFilters = {
+  date?: string; // YYYY-MM-DD
+  customerId?: string;
+  staffId?: string;
+  status?: string[]; // Array of AppointmentStatus
+};
+
+export async function getAppointments(filters: GetAppointmentsFilters): Promise<AppointmentDetails[]> {
+  await dbConnect();
+  const query: any = {};
+
+  if (filters.date) {
+    query.date = filters.date;
+  }
+  if (filters.customerId) {
+    query.customerId = new mongoose.Types.ObjectId(filters.customerId);
+  }
+  if (filters.staffId) {
+    query.staffId = new mongoose.Types.ObjectId(filters.staffId);
+  }
+  if (filters.status && filters.status.length > 0) {
+    query.status = { $in: filters.status };
+  } else {
+    // Default to not showing cancelled unless specified
+    // query.status = { $ne: 'cancelled' }; 
+  }
+  
+  const appointmentDocs = await AppointmentModel.find(query)
+    .populate<{ customerId: ICustomer }>('customerId', 'name phoneNumber')
+    .populate<{ staffId: IUser }>('staffId', 'name')
+    .sort({ date: 1, time: 1 });
+
+  return appointmentDocs.map(transformAppointmentDocToDetails);
+}
+
+export async function createNewAppointment(
+  data: Omit<AppointmentDetails, 'appointmentId' | 'createdAt' | 'updatedAt' | 'customerName' | 'customerPhoneNumber' | 'staffName' | 'userId'> & { customerId: string }
+): Promise<AppointmentDetails> {
+  await dbConnect();
+  if (!Types.ObjectId.isValid(data.customerId)) {
+    throw new Error("Mã khách hàng không hợp lệ.");
+  }
+  
+  const customer = await CustomerModel.findById(data.customerId);
+  if (!customer) {
+    throw new Error("Không tìm thấy khách hàng.");
+  }
+
+  const appointmentData: Partial<IAppointment> = {
+    ...data,
+    customerId: new Types.ObjectId(data.customerId),
+    status: data.status || 'booked', // Default status if not provided
+  };
+  if (data.staffId && Types.ObjectId.isValid(data.staffId)) {
+    appointmentData.staffId = new Types.ObjectId(data.staffId);
+  } else {
+    delete appointmentData.staffId;
+  }
+
+
+  const newAppointmentDoc = new AppointmentModel(appointmentData);
+  await newAppointmentDoc.save();
+  
+  // Add appointmentId to customer's record
+  await CustomerModel.findByIdAndUpdate(data.customerId, {
+    $addToSet: { appointmentIds: newAppointmentDoc._id }
+  });
+  
+  const populatedAppointment = await AppointmentModel.findById(newAppointmentDoc._id)
+    .populate<{ customerId: ICustomer }>('customerId', 'name phoneNumber')
+    .populate<{ staffId: IUser }>('staffId', 'name');
+
+  if (!populatedAppointment) throw new Error("Không thể tạo hoặc tìm lại lịch hẹn.");
+
+  return transformAppointmentDocToDetails(populatedAppointment);
+}
+
+export async function updateExistingAppointment(
+  appointmentId: string,
+  data: Partial<Omit<AppointmentDetails, 'appointmentId' | 'createdAt' | 'updatedAt' | 'customerName' | 'customerPhoneNumber' | 'staffName' | 'userId'>>
+): Promise<AppointmentDetails | null> {
+  await dbConnect();
+
+  const updateData: any = { ...data };
+  if (data.customerId && Types.ObjectId.isValid(data.customerId)) {
+    updateData.customerId = new Types.ObjectId(data.customerId);
+  }
+  if (data.staffId && Types.ObjectId.isValid(data.staffId)) {
+    updateData.staffId = new Types.ObjectId(data.staffId);
+  } else if (data.staffId === null || data.staffId === '') { // Allow unsetting staffId
+    updateData.$unset = { staffId: "" };
+    delete updateData.staffId;
+  }
+
+
+  const updatedAppointmentDoc = await AppointmentModel.findByIdAndUpdate(
+    appointmentId,
+    updateData,
+    { new: true }
+  )
+  .populate<{ customerId: ICustomer }>('customerId', 'name phoneNumber')
+  .populate<{ staffId: IUser }>('staffId', 'name');
+
+  return updatedAppointmentDoc ? transformAppointmentDocToDetails(updatedAppointmentDoc) : null;
+}
+
+export async function deleteExistingAppointment(appointmentId: string): Promise<{ success: boolean }> {
+  await dbConnect();
+  const appointment = await AppointmentModel.findById(appointmentId);
+  if (!appointment) {
+    return { success: false };
+  }
+  await AppointmentModel.findByIdAndDelete(appointmentId);
+  // Remove appointmentId from customer's record
+  if (appointment.customerId) {
+    await CustomerModel.findByIdAndUpdate(appointment.customerId, {
+      $pull: { appointmentIds: appointment._id }
+    });
+  }
+  return { success: true };
+}
+
+// Helper to get a list of customers for select dropdowns
+export async function getCustomerListForSelect(): Promise<{ id: string; name: string; phoneNumber: string }[]> {
+    await dbConnect();
+    const customers = await CustomerModel.find({}, 'name phoneNumber').sort({ name: 1 });
+    return customers.map(c => ({
+        id: c._id.toString(),
+        name: c.name || `Khách ${c.phoneNumber.slice(-4)}`,
+        phoneNumber: c.phoneNumber
+    }));
 }

@@ -22,6 +22,9 @@ export type AppointmentDetails = {
   createdAt: Date;
   updatedAt: Date;
   staffId?: string; // Staff member who handled/created the appointment
+  staffName?: string;
+  customerName?: string;
+  customerPhoneNumber?: string;
 };
 
 export type Product = {
