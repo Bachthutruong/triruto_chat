@@ -77,11 +77,11 @@ export default function StaffDashboardPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 px-2 sm:px-4">
       <h1 className="text-3xl font-bold">Bảng điều khiển Nhân viên</h1>
       <p className="text-muted-foreground">Quản lý tương tác khách hàng và lịch hẹn của bạn.</p>
 
-       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+       <div className="grid gap-6 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Chat của bạn hôm nay</CardTitle>
@@ -123,34 +123,57 @@ export default function StaffDashboardPage() {
           {customers.length === 0 ? (
             <p className="text-muted-foreground">Không có khách hàng nào trong hàng đợi của bạn.</p>
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Tên</TableHead>
-                  <TableHead>Điện thoại</TableHead>
-                  <TableHead>Tương tác cuối</TableHead>
-                  <TableHead>Được giao cho</TableHead>
-                  <TableHead className="text-right">Hành động</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {customers.slice(0, 10).map((customer) => ( 
-                  <TableRow key={customer.id}>
-                    <TableCell className="font-medium">{customer.name || `Khách ${customer.phoneNumber.slice(-4)}`}</TableCell>
-                    <TableCell>{customer.phoneNumber}</TableCell>
-                    <TableCell>{format(new Date(customer.lastInteractionAt), 'dd/MM/yyyy HH:mm', { locale: vi })}</TableCell>
-                    <TableCell>{customer.assignedStaffName || <span className="italic text-muted-foreground">Chưa giao</span>}</TableCell>
-                    <TableCell className="text-right">
+            <>
+              {/* Mobile: Stacked cards */}
+              <div className="block md:hidden space-y-4">
+                {customers.slice(0, 10).map((customer) => (
+                  <div key={customer.id} className="border rounded-lg p-4 flex flex-col gap-2 bg-muted/50">
+                    <div><span className="font-semibold">Tên: </span>{customer.name || `Khách ${customer.phoneNumber.slice(-4)}`}</div>
+                    <div><span className="font-semibold">Điện thoại: </span>{customer.phoneNumber}</div>
+                    <div><span className="font-semibold">Tương tác cuối: </span>{format(new Date(customer.lastInteractionAt), 'dd/MM/yyyy HH:mm', { locale: vi })}</div>
+                    <div><span className="font-semibold">Được giao cho: </span>{customer.assignedStaffName || <span className="italic text-muted-foreground">Chưa giao</span>}</div>
+                    <div className="mt-2 text-right">
                       <Button asChild variant="outline" size="sm">
-                        <Link href={`/staff/chat/${customer.id}`}>
+                        <Link href={`/staff/chat/${customer.id}`} className="flex items-center justify-end">
                           Mở Chat <ArrowRight className="ml-2 h-3 w-3" />
                         </Link>
                       </Button>
-                    </TableCell>
-                  </TableRow>
+                    </div>
+                  </div>
                 ))}
-              </TableBody>
-            </Table>
+              </div>
+              {/* Desktop: Table */}
+              <div className="hidden md:block overflow-x-auto">
+                <Table className="min-w-[600px]">
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Tên</TableHead>
+                      <TableHead>Điện thoại</TableHead>
+                      <TableHead>Tương tác cuối</TableHead>
+                      <TableHead>Được giao cho</TableHead>
+                      <TableHead className="text-right">Hành động</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {customers.slice(0, 10).map((customer) => (
+                      <TableRow key={customer.id}>
+                        <TableCell className="font-medium max-w-[120px] truncate">{customer.name || `Khách ${customer.phoneNumber.slice(-4)}`}</TableCell>
+                        <TableCell className="max-w-[110px] truncate">{customer.phoneNumber}</TableCell>
+                        <TableCell className="whitespace-nowrap">{format(new Date(customer.lastInteractionAt), 'dd/MM/yyyy HH:mm', { locale: vi })}</TableCell>
+                        <TableCell className="max-w-[110px] truncate">{customer.assignedStaffName || <span className="italic text-muted-foreground">Chưa giao</span>}</TableCell>
+                        <TableCell className="text-right">
+                          <Button asChild variant="outline" size="sm">
+                            <Link href={`/staff/chat/${customer.id}`} className="flex items-center">
+                              Mở Chat <ArrowRight className="ml-2 h-3 w-3" />
+                            </Link>
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            </>
           )}
            {customers.length > 10 && (
              <div className="mt-4 text-center">

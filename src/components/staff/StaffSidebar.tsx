@@ -19,10 +19,10 @@ import {
 const staffNavItems = [
   { href: '/staff/dashboard', label: 'Bảng điều khiển', icon: LayoutDashboard },
   { href: '/staff/chat', label: 'Live Chats', icon: MessageSquare },
-  // { href: '/staff/customers', label: 'Khách hàng', icon: User }, // Temporarily hide if not fully implemented
+  { href: '/staff/customers', label: 'Khách hàng', icon: User },
   { href: '/staff/appointments', label: 'Lịch hẹn', icon: CalendarDays },
-  // { href: '/staff/products', label: 'Sản phẩm/Dịch vụ', icon: Package }, 
-  // { href: '/staff/reminders', label: 'Nhắc nhở Chăm sóc', icon: BellRing }, 
+  { href: '/staff/products', label: 'Sản phẩm/Dịch vụ', icon: Package }, 
+  { href: '/staff/reminders', label: 'Nhắc nhở Chăm sóc', icon: BellRing }, 
 ];
 
 export function StaffSidebar() {

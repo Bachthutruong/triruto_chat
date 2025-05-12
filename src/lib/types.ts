@@ -169,3 +169,36 @@ export type StaffDashboardStats = {
   myAppointmentsTodayCount: number;
   totalAssignedToMeCount: number;
 };
+
+// New types for Products
+export type ProductItem = {
+  id: string;
+  name: string;
+  description: string;
+  price: number;
+  category: string;
+  imageUrl?: string;
+  isActive: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+// New types for Reminders
+export type ReminderStatus = 'pending' | 'completed' | 'cancelled';
+export type ReminderPriority = 'low' | 'medium' | 'high';
+
+export type Reminder = {
+  id: string;
+  customerId: string;
+  staffId: string;
+  customerName?: string;
+  staffName?: string;
+  title: string;
+  description: string;
+  dueDate: Date;
+  status: ReminderStatus;
+  priority: ReminderPriority;
+  completedAt?: Date;
+  createdAt: Date;
+  updatedAt: Date;
+};
