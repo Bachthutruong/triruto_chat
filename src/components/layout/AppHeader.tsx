@@ -1,8 +1,13 @@
+
+'use client';
+
 import Link from 'next/link';
+import Image from 'next/image';
 import { Logo } from '@/components/icons/Logo';
 import { Button } from '@/components/ui/button';
 import type { UserSession } from '@/lib/types';
 import { LogOut, UserCircle, LayoutDashboard, LogIn } from 'lucide-react'; 
+import { useAppSettingsContext } from '@/contexts/AppSettingsContext';
 
 type AppHeaderProps = {
   userSession: UserSession | null;
@@ -10,13 +15,22 @@ type AppHeaderProps = {
 };
 
 export function AppHeader({ userSession, onLogout }: AppHeaderProps) {
+  const appSettings = useAppSettingsContext();
+
+  const brandName = appSettings?.brandName || 'AetherChat';
+  const logoUrl = appSettings?.logoUrl;
+
   return (
     <header className="py-4 px-6 border-b bg-card shadow-sm sticky top-0 z-50">
       <div className="container mx-auto flex items-center justify-between">
         <Link href="/" className="flex items-center gap-3">
-          <Logo />
+          {logoUrl ? (
+            <Image src={logoUrl} alt={`${brandName} Logo`} width={40} height={40} className="rounded-md" data-ai-hint="logo brand" />
+          ) : (
+            <Logo />
+          )}
           <div>
-            <h1 className="text-2xl font-bold text-primary">AetherChat</h1>
+            <h1 className="text-2xl font-bold text-primary">{brandName}</h1>
             <p className="text-sm text-muted-foreground">Hỗ trợ trực tuyến thông minh</p>
           </div>
         </Link>
@@ -59,4 +73,3 @@ export function AppHeader({ userSession, onLogout }: AppHeaderProps) {
     </header>
   );
 }
-
