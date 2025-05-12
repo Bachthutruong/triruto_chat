@@ -31,9 +31,17 @@ export default function StaffAppointmentsPage() {
       const dayEnd = new Date(selectedDate);
       dayEnd.setHours(23,59,59,999);
 
+      // Simulate API call delay
+      await new Promise(resolve => setTimeout(resolve, 500));
+
       const filtered = MOCK_APPOINTMENTS_STAFF.filter(appt => {
-        const apptDate = new Date(appt.date); 
-        return apptDate >= dayStart && apptDate <= dayEnd;
+        // Ensure date comparison is robust, assuming appt.date is YYYY-MM-DD
+        const apptDateParts = appt.date.split('-');
+        const apptDate = new Date(parseInt(apptDateParts[0]), parseInt(apptDateParts[1]) - 1, parseInt(apptDateParts[2]));
+        
+        return apptDate.getFullYear() === dayStart.getFullYear() &&
+               apptDate.getMonth() === dayStart.getMonth() &&
+               apptDate.getDate() === dayStart.getDate();
       });
       setAppointments(filtered);
       setIsLoading(false);
@@ -75,7 +83,7 @@ export default function StaffAppointmentsPage() {
               selected={selectedDate}
               onSelect={setSelectedDate}
               className="rounded-md border"
-              locale="vi" // Add locale for Vietnamese day/month names if react-day-picker supports it well
+              // locale="vi" prop removed as it's handled internally by Calendar component
             />
           </CardContent>
         </Card>
@@ -120,4 +128,3 @@ export default function StaffAppointmentsPage() {
     </div>
   );
 }
-

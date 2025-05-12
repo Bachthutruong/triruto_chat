@@ -3,6 +3,7 @@
 import * as React from "react"
 import { ChevronLeft, ChevronRight } from "lucide-react"
 import { DayPicker } from "react-day-picker"
+import { vi } from "date-fns/locale"; // Import Vietnamese locale
 
 import { cn } from "@/lib/utils"
 import { buttonVariants } from "@/components/ui/button"
@@ -13,10 +14,14 @@ function Calendar({
   className,
   classNames,
   showOutsideDays = true,
+  // locale prop is intentionally destructured here to prevent it from being passed via ...props,
+  // as we are hardcoding the Vietnamese locale below.
+  locale: _locale, 
   ...props
 }: CalendarProps) {
   return (
     <DayPicker
+      locale={vi} // Use the imported Vietnamese locale object
       showOutsideDays={showOutsideDays}
       className={cn("p-3", className)}
       classNames={{
