@@ -21,31 +21,35 @@ export async function generateSuggestedReplies(input: GenerateSuggestedRepliesIn
 }
 
 const prompt = ai.definePrompt({
-  name: 'generateSuggestedRepliesPrompt',
+  name: 'generateSuggestedRepliesPromptVietnamese', // Changed name
   input: {schema: GenerateSuggestedRepliesInputSchema},
   output: {schema: GenerateSuggestedRepliesOutputSchema},
-  prompt: `You are a chatbot assistant helping users by providing suggested replies to the latest message in the chat.
+  prompt: `Bạn là một trợ lý chatbot giúp người dùng bằng cách cung cấp các câu trả lời gợi ý cho tin nhắn mới nhất trong cuộc trò chuyện.
 
-  Generate three suggested replies to the following message:
+  Tạo ba câu trả lời gợi ý bằng tiếng Việt cho tin nhắn sau:
 
   {{latestMessage}}
 
-  The suggested replies should be short and relevant to the message.
-  Ensure suggested replies are diverse and cover different aspects of the message.
-  Consider the user's intent and generate replies that would help them achieve their goals.
-  Do not include greeting or closing remarks in the suggested replies.
-  Use a list format for the suggested replies.
+  Các câu trả lời gợi ý nên ngắn gọn và liên quan đến tin nhắn.
+  Đảm bảo các câu trả lời gợi ý đa dạng và bao gồm các khía cạnh khác nhau của tin nhắn.
+  Xem xét ý định của người dùng và tạo ra các câu trả lời giúp họ đạt được mục tiêu.
+  Không bao gồm lời chào hoặc lời kết trong các câu trả lời gợi ý.
+  Sử dụng định dạng danh sách cho các câu trả lời gợi ý.
   `,
 });
 
 const generateSuggestedRepliesFlow = ai.defineFlow(
   {
-    name: 'generateSuggestedRepliesFlow',
+    name: 'generateSuggestedRepliesFlowVietnamese', // Changed name
     inputSchema: GenerateSuggestedRepliesInputSchema,
     outputSchema: GenerateSuggestedRepliesOutputSchema,
   },
   async input => {
     const {output} = await prompt(input);
-    return output!;
+     if (!output || !output.suggestedReplies) {
+      return { suggestedReplies: ["Tôi có thể giúp gì khác?", "Cảm ơn bạn!", "Bạn muốn biết thêm về điều gì?"] };
+    }
+    return output;
   }
 );
+

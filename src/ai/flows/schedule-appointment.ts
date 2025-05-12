@@ -22,78 +22,76 @@ export async function scheduleAppointment(input: ScheduleAppointmentInput): Prom
 }
 
 const prompt = ai.definePrompt({
-  name: 'scheduleAppointmentPrompt',
+  name: 'scheduleAppointmentPromptVietnamese', // Changed name
   input: {schema: ScheduleAppointmentInputSchema},
   output: {schema: ScheduleAppointmentOutputSchema},
-  prompt: `You are an AI assistant for a salon/spa, helping users manage appointments.
-User's phone number: {{{phoneNumber}}}. User ID: {{{userId}}}. Current date/time: {{{currentDateTime}}}.
+  prompt: `Bạn là một trợ lý AI cho một salon/spa, giúp người dùng quản lý lịch hẹn bằng tiếng Việt.
+Số điện thoại của người dùng: {{{phoneNumber}}}. ID người dùng: {{{userId}}}. Ngày/giờ hiện tại: {{{currentDateTime}}}.
 
-User Input: {{{userInput}}}
+Nội dung người dùng nhập: {{{userInput}}}
 
 {{#if existingAppointments}}
-User's existing appointments:
+Các lịch hẹn hiện có của người dùng:
 {{#each existingAppointments}}
-- ID: {{appointmentId}}, Service: {{service}}, Date: {{date}}, Time: {{time}}, Status: {{status}}{{#if branch}}, Branch: {{branch}}{{/if}}
+- ID: {{appointmentId}}, Dịch vụ: {{service}}, Ngày: {{date}}, Giờ: {{time}}, Trạng thái: {{status}}{{#if branch}}, Chi nhánh: {{branch}}{{/if}}
 {{/each}}
 {{else}}
-User has no existing appointments.
+Người dùng không có lịch hẹn nào.
 {{/if}}
 
-Available services: Haircut, Styling, Coloring, Manicure, Pedicure, Facial, Massage.
-Operating Hours: 9 AM - 6 PM daily. Appointments are typically 1 hour long.
-Branches: "Main Street Branch", "Oak Avenue Annex". If branch is not specified, user might pick or you can suggest Main Street Branch.
+Các dịch vụ có sẵn: Cắt tóc, Tạo kiểu, Nhuộm tóc, Làm móng tay, Làm móng chân, Chăm sóc da mặt, Massage.
+Giờ hoạt động: 9 giờ sáng - 6 giờ tối hàng ngày. Các lịch hẹn thường kéo dài 1 tiếng.
+Chi nhánh: "Chi nhánh Chính", "Chi nhánh Phụ". Nếu không nói rõ chi nhánh, người dùng có thể chọn hoặc bạn có thể gợi ý Chi nhánh Chính.
 
-Your tasks:
-1.  Determine Intent: Is the user trying to book a new appointment, reschedule an existing one, or cancel one?
-2.  Extract Details: For new bookings/reschedules, identify service, preferred date, time, and branch.
-3.  Simulate Availability:
-    *   You MUST assume some slots are busy. Do NOT always say a slot is available.
-    *   If a specific slot (e.g., "Haircut tomorrow at 3 PM") is requested:
-        *   50% chance it's available: set 'intent: "booked"', provide 'appointmentDetails'.
-        *   50% chance it's busy: set 'intent: "pending_alternatives"', provide 'suggestedSlots' (2-3 realistic future slots, e.g., different time same day, or next day).
-    *   If the request is vague (e.g., "I want a massage next week"): set 'intent: "pending_alternatives"' and provide 2-3 'suggestedSlots'.
-4.  Handle Reschedules:
-    *   Identify which appointment to reschedule using 'originalAppointmentIdToModify'. If unclear, ask for clarification.
-    *   Ask for new preferred date/time if not provided.
-    *   Then, simulate availability as above for the new slot. If available, 'intent: "rescheduled"'. If not, 'intent: "pending_alternatives"'.
-5.  Handle Cancellations:
-    *   Identify which appointment to cancel using 'originalAppointmentIdToModify'. If unclear, ask for clarification.
-    *   Set 'intent: "cancelled"'.
-6.  Clarification: If crucial information is missing (e.g., service for a new booking, which appointment to modify), set 'intent: "clarification_needed"' and specify 'missingInformation'.
-7.  Error/Assistance: If the request is too complex or completely unrelated to appointments, set 'intent: "error"' or 'requiresAssistance: true'.
+Nhiệm vụ của bạn:
+1.  Xác định ý định: Người dùng đang cố gắng đặt lịch hẹn mới, đổi lịch hẹn hiện có hay hủy lịch?
+2.  Trích xuất chi tiết: Đối với đặt mới/đổi lịch, xác định dịch vụ, ngày, giờ và chi nhánh ưu tiên.
+3.  Mô phỏng tình trạng lịch trống:
+    *   BẠN PHẢI giả định một số khung giờ đã bận. KHÔNG được luôn nói rằng lịch trống.
+    *   Nếu một khung giờ cụ thể được yêu cầu (ví dụ: "Cắt tóc ngày mai lúc 3 giờ chiều"):
+        *   50% khả năng lịch trống: đặt 'intent: "booked"', cung cấp 'appointmentDetails'.
+        *   50% khả năng lịch bận: đặt 'intent: "pending_alternatives"', cung cấp 'suggestedSlots' (2-3 khung giờ thực tế trong tương lai, ví dụ: giờ khác trong cùng ngày, hoặc ngày hôm sau).
+    *   Nếu yêu cầu không rõ ràng (ví dụ: "Tôi muốn massage tuần tới"): đặt 'intent: "pending_alternatives"' và cung cấp 2-3 'suggestedSlots'.
+4.  Xử lý đổi lịch:
+    *   Xác định lịch hẹn nào cần đổi bằng 'originalAppointmentIdToModify'. Nếu không rõ, hãy hỏi để làm rõ.
+    *   Hỏi ngày/giờ ưu tiên mới nếu chưa được cung cấp.
+    *   Sau đó, mô phỏng tình trạng lịch trống như trên cho khung giờ mới. Nếu trống, 'intent: "rescheduled"'. Nếu không, 'intent: "pending_alternatives"'.
+5.  Xử lý hủy lịch:
+    *   Xác định lịch hẹn nào cần hủy bằng 'originalAppointmentIdToModify'. Nếu không rõ, hãy hỏi để làm rõ.
+    *   Đặt 'intent: "cancelled"'.
+6.  Làm rõ: Nếu thiếu thông tin quan trọng (ví dụ: dịch vụ cho đặt lịch mới, lịch hẹn nào cần sửa), đặt 'intent: "clarification_needed"' và chỉ định 'missingInformation'.
+7.  Lỗi/Cần hỗ trợ: Nếu yêu cầu quá phức tạp hoặc hoàn toàn không liên quan đến lịch hẹn, đặt 'intent: "error"' hoặc 'requiresAssistance: true'.
 
-Response Fields:
+Các trường phản hồi:
 - intent: "booked", "rescheduled", "cancelled", "pending_alternatives", "clarification_needed", "error", "no_action_needed".
-- confirmationMessage: Your friendly textual response to the user. This is what the user will see.
-- appointmentDetails: Object with {service, date, time, branch, status}. For 'booked'/'rescheduled', status should be 'booked'. For initial output for a new booking, 'appointmentId' can be omitted by you as the system will generate it.
-- originalAppointmentIdToModify: ID of appointment being changed/cancelled.
-- suggestedSlots: Array of {date, time, branch} for "pending_alternatives".
-- missingInformation: String describing what's needed for "clarification_needed".
+- confirmationMessage: Tin nhắn thân thiện của bạn gửi cho người dùng bằng tiếng Việt. Đây là nội dung người dùng sẽ thấy.
+- appointmentDetails: Đối tượng với {service, date, time, branch, status}. Đối với 'booked'/'rescheduled', status phải là 'booked'. Đối với kết quả ban đầu cho đặt lịch mới, bạn có thể bỏ qua 'appointmentId' vì hệ thống sẽ tạo nó.
+- originalAppointmentIdToModify: ID của lịch hẹn đang được thay đổi/hủy.
+- suggestedSlots: Mảng các {date, time, branch} cho "pending_alternatives".
+- missingInformation: Chuỗi mô tả những gì cần thiết cho "clarification_needed" bằng tiếng Việt.
 - requiresAssistance: Boolean.
 
-Example for new booking: User says "Book a haircut for tomorrow at 2 PM".
-If available: intent="booked", confirmationMessage="OK! I've booked a Haircut for you tomorrow at 2:00 PM.", appointmentDetails={service:"Haircut", date:"<tomorrow's_date>", time:"2:00 PM", status:"booked"}.
-If busy: intent="pending_alternatives", confirmationMessage="Sorry, 2 PM is booked. How about 4 PM or the day after at 2 PM?", suggestedSlots=[{date:"<tomorrow's_date>", time:"4:00 PM"}, {date:"<day_after_tomorrow_date>", time:"2:00 PM"}].
+Ví dụ đặt lịch mới: Người dùng nói "Đặt lịch cắt tóc cho tôi vào ngày mai lúc 2 giờ chiều".
+Nếu lịch trống: intent="booked", confirmationMessage="OK! Tôi đã đặt lịch Cắt tóc cho bạn vào ngày mai lúc 2:00 chiều.", appointmentDetails={service:"Cắt tóc", date:"<ngày_mai>", time:"2:00 chiều", status:"booked"}.
+Nếu lịch bận: intent="pending_alternatives", confirmationMessage="Xin lỗi, 2 giờ chiều đã có người đặt. Bạn thấy 4 giờ chiều hoặc ngày kia lúc 2 giờ chiều thì sao?", suggestedSlots=[{date:"<ngày_mai>", time:"4:00 chiều"}, {date:"<ngày_kia>", time:"2:00 chiều"}].
 
-Example for cancellation: User says "Cancel my appointment for tomorrow." (Assume one appointment for tomorrow with ID 'appt123')
-intent="cancelled", confirmationMessage="Your appointment for tomorrow has been cancelled.", originalAppointmentIdToModify="appt123".
+Ví dụ hủy lịch: Người dùng nói "Hủy lịch hẹn ngày mai của tôi." (Giả sử có một lịch hẹn vào ngày mai với ID 'appt123')
+intent="cancelled", confirmationMessage="Lịch hẹn ngày mai của bạn đã được hủy.", originalAppointmentIdToModify="appt123".
 
-Provide dates in YYYY-MM-DD format.
-Be concise and helpful in your confirmationMessage.
-If the user input is not related to appointments (e.g. "What's the weather?"), set intent to "no_action_needed" and provide a polite message.
+Cung cấp ngày theo định dạng YYYY-MM-DD.
+Hãy súc tích và hữu ích trong confirmationMessage của bạn.
+Nếu nội dung người dùng nhập không liên quan đến lịch hẹn (ví dụ: "Thời tiết hôm nay thế nào?"), hãy đặt intent thành "no_action_needed" và cung cấp một tin nhắn lịch sự bằng tiếng Việt.
 `,
 });
 
 const scheduleAppointmentFlow = ai.defineFlow(
   {
-    name: 'scheduleAppointmentFlow',
+    name: 'scheduleAppointmentFlowVietnamese', // Changed name
     inputSchema: ScheduleAppointmentInputSchema,
     outputSchema: ScheduleAppointmentOutputSchema,
   },
   async (input) => {
-    // Add a check to ensure input.currentDateTime is valid if necessary
     if (!input.currentDateTime) {
-        // Fallback or throw error if currentDateTime is crucial and missing
         console.warn("CurrentDateTime is missing, using server's current time as fallback.");
         input.currentDateTime = new Date().toISOString();
     }
@@ -101,30 +99,25 @@ const scheduleAppointmentFlow = ai.defineFlow(
     const {output} = await prompt(input);
     
     if (!output) {
-      // Handle cases where the prompt might not return an output (e.g. model error, safety block)
       return {
         intent: 'error',
-        confirmationMessage: "I'm having trouble processing your request right now. Please try again later.",
+        confirmationMessage: "Tôi đang gặp sự cố khi xử lý yêu cầu của bạn. Vui lòng thử lại sau.",
         requiresAssistance: true,
       };
     }
     
-    // Post-processing: If AI marks as booked/rescheduled, ensure appointmentDetails has status 'booked'.
     if (output.intent === 'booked' || output.intent === 'rescheduled') {
       if (output.appointmentDetails) {
         output.appointmentDetails.status = 'booked';
       } else {
-        // This case implies an issue with the AI's output if it says booked but provides no details.
         console.warn("AI indicated 'booked' or 'rescheduled' intent but no appointmentDetails were provided.");
-        // Potentially change intent to error or clarification_needed
       }
     }
     if (output.intent === 'cancelled' && output.originalAppointmentIdToModify && output.appointmentDetails) {
-        // For cancellation, appointmentDetails can reflect the cancelled appointment's state
         output.appointmentDetails.status = 'cancelled';
     }
-
 
     return output;
   }
 );
+

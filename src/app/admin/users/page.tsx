@@ -6,7 +6,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Button } from '@/components/ui/button';
 import { PlusCircle, Edit, Trash2 } from 'lucide-react';
 import type { UserSession } from '@/lib/types';
-import { getAllUsers } from '@/app/actions'; // Assuming this action fetches all user types
+import { getAllUsers } from '@/app/actions'; 
 
 export default function AdminUsersPage() {
   const [users, setUsers] = useState<UserSession[]>([]);
@@ -19,8 +19,8 @@ export default function AdminUsersPage() {
         const fetchedUsers = await getAllUsers();
         setUsers(fetchedUsers);
       } catch (error) {
-        console.error("Failed to fetch users:", error);
-        // Add toast notification here
+        console.error("Không thể tải người dùng:", error);
+        // Thêm thông báo toast ở đây
       } finally {
         setIsLoading(false);
       }
@@ -28,43 +28,49 @@ export default function AdminUsersPage() {
     fetchUsers();
   }, []);
 
+  const getRoleName = (role: UserSession['role']) => {
+    if (role === 'admin') return 'Quản trị';
+    if (role === 'staff') return 'Nhân viên';
+    return 'Khách hàng';
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold">User Management</h1>
-          <p className="text-muted-foreground">Manage staff, admins, and view customer roles.</p>
+          <h1 className="text-3xl font-bold">Quản lý Người dùng</h1>
+          <p className="text-muted-foreground">Quản lý nhân viên, quản trị viên và xem vai trò khách hàng.</p>
         </div>
         <Button>
-          <PlusCircle className="mr-2 h-4 w-4" /> Add New User
+          <PlusCircle className="mr-2 h-4 w-4" /> Thêm Người dùng Mới
         </Button>
       </div>
       
       <Card>
         <CardHeader>
-          <CardTitle>All Users</CardTitle>
-          <CardDescription>List of all registered users in the system.</CardDescription>
+          <CardTitle>Tất cả Người dùng</CardTitle>
+          <CardDescription>Danh sách tất cả người dùng đã đăng ký trong hệ thống.</CardDescription>
         </CardHeader>
         <CardContent>
           {isLoading ? (
-            <p>Loading users...</p>
+            <p>Đang tải người dùng...</p>
           ) : users.length === 0 ? (
-            <p>No users found.</p>
+            <p>Không tìm thấy người dùng nào.</p>
           ) : (
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Phone Number</TableHead>
-                  <TableHead>Role</TableHead>
-                  <TableHead>User ID</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
+                  <TableHead>Tên</TableHead>
+                  <TableHead>Số điện thoại</TableHead>
+                  <TableHead>Vai trò</TableHead>
+                  <TableHead>ID Người dùng</TableHead>
+                  <TableHead className="text-right">Hành động</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {users.map((user) => (
                   <TableRow key={user.id}>
-                    <TableCell className="font-medium">{user.name || 'N/A'}</TableCell>
+                    <TableCell className="font-medium">{user.name || 'Chưa có'}</TableCell>
                     <TableCell>{user.phoneNumber}</TableCell>
                     <TableCell>
                       <span className={`px-2 py-1 text-xs font-semibold rounded-full ${
@@ -72,7 +78,7 @@ export default function AdminUsersPage() {
                         user.role === 'staff' ? 'bg-blue-100 text-blue-700' :
                         'bg-green-100 text-green-700'
                       }`}>
-                        {user.role.charAt(0).toUpperCase() + user.role.slice(1)}
+                        {getRoleName(user.role)}
                       </span>
                     </TableCell>
                     <TableCell>{user.id}</TableCell>
@@ -94,3 +100,4 @@ export default function AdminUsersPage() {
     </div>
   );
 }
+

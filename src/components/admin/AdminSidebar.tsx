@@ -5,24 +5,24 @@ import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { LayoutDashboard, Users, Settings, MessageSquareText, CalendarCog, ShieldAlert } from 'lucide-react'; // Added ShieldAlert for Q&A/Keywords
+import { LayoutDashboard, Users, Settings, MessageSquareText, CalendarCog, ShieldAlert } from 'lucide-react'; 
 import { Logo } from '@/components/icons/Logo';
 
 const adminNavItems = [
-  { href: '/admin/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { href: '/admin/users', label: 'User Management', icon: Users },
-  { href: '/admin/qna', label: 'Q&A / Keywords', icon: MessageSquareText },
-  { href: '/admin/appointments', label: 'Appointment Rules', icon: CalendarCog },
-  { href: '/admin/settings', label: 'Settings', icon: Settings },
+  { href: '/admin/dashboard', label: 'Bảng điều khiển', icon: LayoutDashboard },
+  { href: '/admin/users', label: 'Quản lý Người dùng', icon: Users },
+  { href: '/admin/qna', label: 'Hỏi & Đáp / Từ khóa', icon: MessageSquareText },
+  { href: '/admin/appointments', label: 'Quy tắc Đặt lịch', icon: CalendarCog },
+  { href: '/admin/settings', label: 'Cài đặt', icon: Settings },
 ];
 
 export function AdminSidebar() {
   const pathname = usePathname();
 
   return (
-    <aside className="fixed top-16 left-0 z-30 w-64 h-[calc(100vh-4rem)] transition-transform -translate-x-full bg-card border-r sm:translate-x-0"> {/* Adjust top and height */}
+    <aside className="fixed top-16 left-0 z-30 w-64 h-[calc(100vh-4rem)] transition-transform -translate-x-full bg-card border-r sm:translate-x-0"> 
       <ScrollArea className="h-full py-4 px-3 overflow-y-auto">
-        <div className="flex items-center mb-6 px-2 mt-2"> {/* Optional: Add some margin top if needed */}
+        <div className="flex items-center mb-6 px-2 mt-2"> 
           <Logo />
           <h2 className="ml-2 text-xl font-semibold text-primary">Admin Panel</h2>
         </div>
@@ -46,3 +46,4 @@ export function AdminSidebar() {
     </aside>
   );
 }
+

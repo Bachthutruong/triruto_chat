@@ -9,23 +9,23 @@ import { LayoutDashboard, MessageSquare, User, CalendarDays, Package, BellRing }
 import { Logo } from '@/components/icons/Logo';
 
 const staffNavItems = [
-  { href: '/staff/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+  { href: '/staff/dashboard', label: 'Bảng điều khiển', icon: LayoutDashboard },
   { href: '/staff/chat', label: 'Live Chats', icon: MessageSquare },
-  { href: '/staff/customers', label: 'Customers', icon: User }, // Placeholder, page needs to be created
-  { href: '/staff/appointments', label: 'Appointments', icon: CalendarDays },
-  { href: '/staff/products', label: 'Products/Services', icon: Package }, // Placeholder
-  { href: '/staff/reminders', label: 'Care Reminders', icon: BellRing }, // Placeholder
+  { href: '/staff/customers', label: 'Khách hàng', icon: User }, 
+  { href: '/staff/appointments', label: 'Lịch hẹn', icon: CalendarDays },
+  { href: '/staff/products', label: 'Sản phẩm/Dịch vụ', icon: Package }, 
+  { href: '/staff/reminders', label: 'Nhắc nhở Chăm sóc', icon: BellRing }, 
 ];
 
 export function StaffSidebar() {
   const pathname = usePathname();
 
   return (
-    <aside className="fixed top-16 left-0 z-30 w-64 h-[calc(100vh-4rem)] transition-transform -translate-x-full bg-card border-r sm:translate-x-0"> {/* Adjust top and height */}
+    <aside className="fixed top-16 left-0 z-30 w-64 h-[calc(100vh-4rem)] transition-transform -translate-x-full bg-card border-r sm:translate-x-0"> 
       <ScrollArea className="h-full py-4 px-3 overflow-y-auto">
-        <div className="flex items-center mb-6 px-2 mt-2"> {/* Optional: Add some margin top if needed */}
+        <div className="flex items-center mb-6 px-2 mt-2"> 
           <Logo />
-          <h2 className="ml-2 text-xl font-semibold text-primary">Staff Panel</h2>
+          <h2 className="ml-2 text-xl font-semibold text-primary">Nhân viên Panel</h2>
         </div>
         <ul className="space-y-2 font-medium">
           {staffNavItems.map((item) => (
@@ -47,3 +47,4 @@ export function StaffSidebar() {
     </aside>
   );
 }
+

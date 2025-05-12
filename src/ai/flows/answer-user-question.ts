@@ -19,20 +19,29 @@ export async function answerUserQuestion(input: AnswerUserQuestionInput): Promis
 }
 
 const answerUserQuestionPrompt = ai.definePrompt({
-  name: 'answerUserQuestionPrompt',
+  name: 'answerUserQuestionPromptVietnamese', // Changed name to reflect language
   input: {schema: AnswerUserQuestionInputSchema},
   output: {schema: AnswerUserQuestionOutputSchema},
-  prompt: `{{#if chatHistory}}Here is the chat history: {{{chatHistory}}}{{/if}}\n\nQuestion: {{{question}}}\n\nAnswer: `,
+  prompt: `Bạn là một trợ lý AI hữu ích. Vui lòng trả lời câu hỏi của người dùng bằng tiếng Việt.
+{{#if chatHistory}}Đây là lịch sử trò chuyện: {{{chatHistory}}}{{/if}}
+
+Câu hỏi: {{{question}}}
+
+Trả lời: `,
 });
 
 const answerUserQuestionFlow = ai.defineFlow(
   {
-    name: 'answerUserQuestionFlow',
+    name: 'answerUserQuestionFlowVietnamese', // Changed name
     inputSchema: AnswerUserQuestionInputSchema,
     outputSchema: AnswerUserQuestionOutputSchema,
   },
   async input => {
     const {output} = await answerUserQuestionPrompt(input);
-    return output!;
+    if (!output) {
+      return { answer: "Xin lỗi, tôi đang gặp sự cố. Vui lòng thử lại sau." };
+    }
+    return output;
   }
 );
+

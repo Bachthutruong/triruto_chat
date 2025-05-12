@@ -37,10 +37,9 @@ export function ChatWindow({
   }, [messages]);
 
   if (!userSession) {
-    // This state should ideally be handled by the parent, showing a loading or auth screen
     return (
       <div className="flex-grow flex items-center justify-center p-4">
-        <p className="text-muted-foreground">Initializing chat...</p>
+        <p className="text-muted-foreground">Đang khởi tạo cuộc trò chuyện...</p>
       </div>
     );
   }
@@ -49,7 +48,8 @@ export function ChatWindow({
     <div className="flex items-end gap-2 my-2 justify-start">
       <Skeleton className="h-8 w-8 rounded-full bg-accent" />
       <div className="max-w-[70%] rounded-lg px-4 py-2 shadow-md bg-accent">
-        <Skeleton className="h-4 w-20" />
+        <Skeleton className="h-4 w-20" /> 
+        {/* This is a visual skeleton, no text to translate directly unless you add a label here */}
       </div>
     </div>
   );
@@ -74,3 +74,4 @@ export function ChatWindow({
     </div>
   );
 }
+

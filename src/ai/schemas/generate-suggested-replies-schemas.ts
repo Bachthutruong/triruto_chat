@@ -10,11 +10,12 @@
 import { z } from 'genkit';
 
 export const GenerateSuggestedRepliesInputSchema = z.object({
-  latestMessage: z.string().describe('The latest message in the chat.'),
+  latestMessage: z.string().describe('Tin nhắn mới nhất trong cuộc trò chuyện.'),
 });
 export type GenerateSuggestedRepliesInput = z.infer<typeof GenerateSuggestedRepliesInputSchema>;
 
 export const GenerateSuggestedRepliesOutputSchema = z.object({
-  suggestedReplies: z.array(z.string()).describe('An array of suggested replies.'),
+  suggestedReplies: z.array(z.string()).describe('Một mảng các câu trả lời gợi ý bằng tiếng Việt.'),
 });
 export type GenerateSuggestedRepliesOutput = z.infer<typeof GenerateSuggestedRepliesOutputSchema>;
+

@@ -30,24 +30,23 @@ export default function LoginPage() {
       if (session) {
         sessionStorage.setItem('aetherChatUserSession', JSON.stringify(session));
         toast({
-          title: 'Login Successful',
-          description: `Welcome back, ${session.name || session.phoneNumber}!`,
+          title: 'Đăng nhập thành công',
+          description: `Chào mừng quay trở lại, ${session.name || session.phoneNumber}!`,
         });
         if (session.role === 'admin') {
           router.push('/admin/dashboard');
         } else if (session.role === 'staff') {
           router.push('/staff/dashboard');
         } else {
-          // Should not happen for login page, but as a fallback
           router.push('/');
         }
       } else {
-        throw new Error('Invalid credentials or user not found.');
+        throw new Error('Thông tin đăng nhập không hợp lệ hoặc người dùng không tồn tại.');
       }
     } catch (error: any) {
       toast({
-        title: 'Login Failed',
-        description: error.message || 'An unexpected error occurred.',
+        title: 'Đăng nhập thất bại',
+        description: error.message || 'Đã xảy ra lỗi không mong muốn.',
         variant: 'destructive',
       });
     } finally {
@@ -62,32 +61,32 @@ export default function LoginPage() {
         <Card className="w-full max-w-md shadow-xl">
           <CardHeader className="text-center">
             <CardTitle className="text-2xl flex items-center justify-center">
-                <LogIn className="mr-2 h-6 w-6 text-primary" /> Staff & Admin Login
+                <LogIn className="mr-2 h-6 w-6 text-primary" /> Đăng nhập Nhân viên & Admin
             </CardTitle>
-            <CardDescription>Access your AetherChat dashboard.</CardDescription>
+            <CardDescription>Truy cập bảng điều khiển AetherChat của bạn.</CardDescription>
           </CardHeader>
           <form onSubmit={handleSubmit}>
             <CardContent className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="phone">Phone Number</Label>
+                <Label htmlFor="phone">Số điện thoại</Label>
                 <Input
                   id="phone"
                   type="tel"
                   value={phoneNumber}
                   onChange={(e) => setPhoneNumber(e.target.value)}
-                  placeholder="Enter your phone number"
+                  placeholder="Nhập số điện thoại của bạn"
                   required
                   disabled={isLoading}
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="password">Password</Label>
+                <Label htmlFor="password">Mật khẩu</Label>
                 <Input
                   id="password"
                   type="password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  placeholder="Enter your password"
+                  placeholder="Nhập mật khẩu của bạn"
                   required
                   disabled={isLoading}
                 />
@@ -95,13 +94,13 @@ export default function LoginPage() {
             </CardContent>
             <CardFooter className="flex flex-col gap-4">
               <Button type="submit" className="w-full" disabled={isLoading}>
-                {isLoading ? 'Logging in...' : 'Login'}
+                {isLoading ? 'Đang đăng nhập...' : 'Đăng nhập'}
               </Button>
               <p className="text-sm text-muted-foreground">
-                Don't have an account? <Link href="/register" className="text-primary hover:underline">Register here</Link>
+                Chưa có tài khoản? <Link href="/register" className="text-primary hover:underline">Đăng ký tại đây</Link>
               </p>
               <p className="text-sm text-muted-foreground">
-                Are you a customer? <Link href="/" className="text-primary hover:underline">Go to Chat</Link>
+                Bạn là khách hàng? <Link href="/" className="text-primary hover:underline">Đến trang Chat</Link>
               </p>
             </CardFooter>
           </form>
@@ -111,3 +110,4 @@ export default function LoginPage() {
     </div>
   );
 }
+

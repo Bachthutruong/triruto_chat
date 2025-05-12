@@ -27,15 +27,16 @@ export function MessageInputForm({ onSubmit, isLoading }: MessageInputFormProps)
         type="text"
         value={message}
         onChange={(e) => setMessage(e.target.value)}
-        placeholder="Type your message..."
+        placeholder="Nhập tin nhắn của bạn..."
         className="flex-grow"
         disabled={isLoading}
         autoComplete="off"
       />
       <Button type="submit" size="icon" disabled={isLoading || !message.trim()}>
         <Send className="h-5 w-5" />
-        <span className="sr-only">Send message</span>
+        <span className="sr-only">Gửi tin nhắn</span>
       </Button>
     </form>
   );
 }
+

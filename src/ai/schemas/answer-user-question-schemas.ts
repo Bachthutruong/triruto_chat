@@ -10,12 +10,13 @@
 import { z } from 'genkit';
 
 export const AnswerUserQuestionInputSchema = z.object({
-  question: z.string().describe('The question from the user.'),
-  chatHistory: z.string().optional().describe('The chat history of the user.'),
+  question: z.string().describe('Câu hỏi từ người dùng.'),
+  chatHistory: z.string().optional().describe('Lịch sử trò chuyện của người dùng.'),
 });
 export type AnswerUserQuestionInput = z.infer<typeof AnswerUserQuestionInputSchema>;
 
 export const AnswerUserQuestionOutputSchema = z.object({
-  answer: z.string().describe('The answer to the user question.'),
+  answer: z.string().describe('Câu trả lời cho câu hỏi của người dùng bằng tiếng Việt.'),
 });
 export type AnswerUserQuestionOutput = z.infer<typeof AnswerUserQuestionOutputSchema>;
+

@@ -19,11 +19,9 @@ export default function StaffChatPage() {
       setIsLoading(true);
       try {
         const customers = await getCustomersForStaffView();
-        // Filter for customers who might need attention or are unassigned
-        // This logic would be more complex in a real app (e.g., based on unread messages, assignment status)
         setActiveCustomers(customers.filter(c => !c.assignedStaffId || Math.random() > 0.5).slice(0, 10));
       } catch (error) {
-        console.error("Failed to fetch active customers:", error);
+        console.error("Không thể tải danh sách khách hàng đang hoạt động:", error);
       } finally {
         setIsLoading(false);
       }
@@ -37,15 +35,14 @@ export default function StaffChatPage() {
   );
 
   return (
-    <div className="flex h-[calc(100vh-var(--header-height,4rem)-2rem)]"> {/* Adjust height based on your header */}
-      {/* Customer List / Queue */}
+    <div className="flex h-[calc(100vh-var(--header-height,4rem)-2rem)]">
       <Card className="w-1/3 lg:w-1/4 h-full flex flex-col mr-4">
         <CardHeader>
-          <CardTitle className="flex items-center"><Users className="mr-2 h-5 w-5" /> Customer Queue</CardTitle>
-          <CardDescription>Customers waiting or in active chats.</CardDescription>
+          <CardTitle className="flex items-center"><Users className="mr-2 h-5 w-5" /> Hàng đợi Khách hàng</CardTitle>
+          <CardDescription>Khách hàng đang chờ hoặc đang trong cuộc trò chuyện.</CardDescription>
           <div className="flex gap-2 pt-2">
             <Input 
-              placeholder="Search by name or phone..." 
+              placeholder="Tìm theo tên hoặc SĐT..." 
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="h-9"
@@ -58,8 +55,8 @@ export default function StaffChatPage() {
         </CardHeader>
         <ScrollArea className="flex-grow">
           <CardContent className="p-0">
-            {isLoading && <p className="p-4 text-muted-foreground">Loading customers...</p>}
-            {!isLoading && filteredCustomers.length === 0 && <p className="p-4 text-muted-foreground">No active customers found.</p>}
+            {isLoading && <p className="p-4 text-muted-foreground">Đang tải khách hàng...</p>}
+            {!isLoading && filteredCustomers.length === 0 && <p className="p-4 text-muted-foreground">Không tìm thấy khách hàng nào đang hoạt động.</p>}
             <ul className="divide-y">
               {filteredCustomers.map(customer => (
                 <li key={customer.id}>
@@ -68,10 +65,9 @@ export default function StaffChatPage() {
                       <div className="flex flex-col items-start text-left">
                         <span className="font-semibold">{customer.name || customer.phoneNumber}</span>
                         <span className="text-xs text-muted-foreground">
-                          Last active: {new Date(customer.lastInteractionAt).toLocaleTimeString()}
-                          {customer.tags && customer.tags.length > 0 && ` | Tags: ${customer.tags.join(', ')}`}
+                          Hoạt động cuối: {new Date(customer.lastInteractionAt).toLocaleTimeString('vi-VN')}
+                          {customer.tags && customer.tags.length > 0 && ` | Nhãn: ${customer.tags.join(', ')}`}
                         </span>
-                         {/* Add unread message indicator here */}
                       </div>
                     </Link>
                   </Button>
@@ -82,15 +78,15 @@ export default function StaffChatPage() {
         </ScrollArea>
       </Card>
 
-      {/* Chat Window Area (placeholder) */}
       <Card className="flex-grow h-full flex flex-col items-center justify-center">
         <CardContent className="text-center">
           <MessageSquarePlus className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
-          <h2 className="text-xl font-semibold">Select a chat</h2>
-          <p className="text-muted-foreground">Choose a customer from the list to start or continue a conversation.</p>
-          <p className="text-sm mt-2">Or, <Link href="/staff/customers" className="text-primary hover:underline">view all customers</Link>.</p>
+          <h2 className="text-xl font-semibold">Chọn một cuộc trò chuyện</h2>
+          <p className="text-muted-foreground">Chọn một khách hàng từ danh sách để bắt đầu hoặc tiếp tục cuộc trò chuyện.</p>
+          <p className="text-sm mt-2">Hoặc, <Link href="/staff/customers" className="text-primary hover:underline">xem tất cả khách hàng</Link>.</p>
         </CardContent>
       </Card>
     </div>
   );
 }
+

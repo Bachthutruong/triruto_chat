@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { Logo } from '@/components/icons/Logo';
 import { Button } from '@/components/ui/button';
 import type { UserSession } from '@/lib/types';
-import { LogOut, UserCircle, LayoutDashboard, LogIn } from 'lucide-react'; // Added LogIn
+import { LogOut, UserCircle, LayoutDashboard, LogIn } from 'lucide-react'; 
 
 type AppHeaderProps = {
   userSession: UserSession | null;
@@ -17,17 +17,17 @@ export function AppHeader({ userSession, onLogout }: AppHeaderProps) {
           <Logo />
           <div>
             <h1 className="text-2xl font-bold text-primary">AetherChat</h1>
-            <p className="text-sm text-muted-foreground">Intelligent Live Support</p>
+            <p className="text-sm text-muted-foreground">Hỗ trợ trực tuyến thông minh</p>
           </div>
         </Link>
         
         <nav className="flex items-center gap-4">
-          {userSession ? ( // User is logged in
+          {userSession ? ( 
             <>
               <span className="text-sm text-muted-foreground hidden sm:inline">
                 <UserCircle className="inline mr-1 h-4 w-4" />
                 {userSession.name || userSession.phoneNumber} 
-                {userSession.role !== 'customer' && ` (${userSession.role})`}
+                {userSession.role !== 'customer' && ` (${userSession.role === 'admin' ? 'Quản trị' : 'Nhân viên'})`}
               </span>
               {userSession.role === 'admin' && (
                 <Button variant="outline" size="sm" asChild>
@@ -39,18 +39,18 @@ export function AppHeader({ userSession, onLogout }: AppHeaderProps) {
               {userSession.role === 'staff' && (
                 <Button variant="outline" size="sm" asChild>
                   <Link href="/staff/dashboard">
-                    <LayoutDashboard className="mr-2 h-4 w-4" /> Staff
+                    <LayoutDashboard className="mr-2 h-4 w-4" /> Nhân viên
                   </Link>
                 </Button>
               )}
               <Button variant="ghost" size="sm" onClick={onLogout}>
-                <LogOut className="mr-2 h-4 w-4" /> Logout
+                <LogOut className="mr-2 h-4 w-4" /> Đăng xuất
               </Button>
             </>
-          ) : ( // No user session (not logged in)
+          ) : ( 
              <Button variant="outline" size="sm" asChild>
                <Link href="/login">
-                 <LogIn className="mr-2 h-4 w-4" /> Staff/Admin Login
+                 <LogIn className="mr-2 h-4 w-4" /> Đăng nhập Nhân viên/Admin
                </Link>
              </Button>
           )}
@@ -59,3 +59,4 @@ export function AppHeader({ userSession, onLogout }: AppHeaderProps) {
     </header>
   );
 }
+

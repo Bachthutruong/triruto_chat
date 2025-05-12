@@ -30,16 +30,16 @@ export default function RegisterPage() {
     e.preventDefault();
     if (password !== confirmPassword) {
       toast({
-        title: 'Registration Failed',
-        description: 'Passwords do not match.',
+        title: 'Đăng ký thất bại',
+        description: 'Mật khẩu không khớp.',
         variant: 'destructive',
       });
       return;
     }
     if (!role) {
       toast({
-        title: 'Registration Failed',
-        description: 'Please select a role.',
+        title: 'Đăng ký thất bại',
+        description: 'Vui lòng chọn vai trò.',
         variant: 'destructive',
       });
       return;
@@ -50,17 +50,17 @@ export default function RegisterPage() {
       const newUser = await registerUser(name, phoneNumber, password, role as UserRole);
       if (newUser) {
         toast({
-          title: 'Registration Successful',
-          description: `User ${newUser.name} created. Please login.`,
+          title: 'Đăng ký thành công',
+          description: `Người dùng ${newUser.name} đã được tạo. Vui lòng đăng nhập.`,
         });
         router.push('/login');
       } else {
-        throw new Error('Failed to register user.');
+        throw new Error('Không thể đăng ký người dùng.');
       }
     } catch (error: any) {
       toast({
-        title: 'Registration Failed',
-        description: error.message || 'An unexpected error occurred.',
+        title: 'Đăng ký thất bại',
+        description: error.message || 'Đã xảy ra lỗi không mong muốn.',
         variant: 'destructive',
       });
     } finally {
@@ -75,68 +75,68 @@ export default function RegisterPage() {
         <Card className="w-full max-w-md shadow-xl">
           <CardHeader className="text-center">
             <CardTitle className="text-2xl flex items-center justify-center">
-                <UserPlus className="mr-2 h-6 w-6 text-primary" /> Register New User
+                <UserPlus className="mr-2 h-6 w-6 text-primary" /> Đăng ký Người dùng Mới
             </CardTitle>
-            <CardDescription>Create an account for AetherChat (Staff/Admin).</CardDescription>
+            <CardDescription>Tạo tài khoản cho AetherChat (Nhân viên/Admin).</CardDescription>
           </CardHeader>
           <form onSubmit={handleSubmit}>
             <CardContent className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="name">Full Name</Label>
+                <Label htmlFor="name">Họ và Tên</Label>
                 <Input
                   id="name"
                   type="text"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  placeholder="Enter your full name"
+                  placeholder="Nhập họ và tên của bạn"
                   required
                   disabled={isLoading}
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="phone">Phone Number</Label>
+                <Label htmlFor="phone">Số điện thoại</Label>
                 <Input
                   id="phone"
                   type="tel"
                   value={phoneNumber}
                   onChange={(e) => setPhoneNumber(e.target.value)}
-                  placeholder="Enter your phone number"
+                  placeholder="Nhập số điện thoại của bạn"
                   required
                   disabled={isLoading}
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="password">Password</Label>
+                <Label htmlFor="password">Mật khẩu</Label>
                 <Input
                   id="password"
                   type="password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  placeholder="Create a password"
+                  placeholder="Tạo mật khẩu"
                   required
                   disabled={isLoading}
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="confirmPassword">Confirm Password</Label>
+                <Label htmlFor="confirmPassword">Xác nhận Mật khẩu</Label>
                 <Input
                   id="confirmPassword"
                   type="password"
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
-                  placeholder="Confirm your password"
+                  placeholder="Xác nhận mật khẩu của bạn"
                   required
                   disabled={isLoading}
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="role">Role</Label>
+                <Label htmlFor="role">Vai trò</Label>
                 <Select value={role} onValueChange={(value) => setRole(value as UserRole)} disabled={isLoading}>
                   <SelectTrigger id="role">
-                    <SelectValue placeholder="Select a role" />
+                    <SelectValue placeholder="Chọn một vai trò" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="staff">Staff</SelectItem>
+                    <SelectItem value="staff">Nhân viên</SelectItem>
                     <SelectItem value="admin">Admin</SelectItem>
                   </SelectContent>
                 </Select>
@@ -144,10 +144,10 @@ export default function RegisterPage() {
             </CardContent>
             <CardFooter className="flex flex-col gap-4">
               <Button type="submit" className="w-full" disabled={isLoading}>
-                {isLoading ? 'Registering...' : 'Register'}
+                {isLoading ? 'Đang đăng ký...' : 'Đăng ký'}
               </Button>
                <p className="text-sm text-muted-foreground">
-                Already have an account? <Link href="/login" className="text-primary hover:underline">Login here</Link>
+                Đã có tài khoản? <Link href="/login" className="text-primary hover:underline">Đăng nhập tại đây</Link>
               </p>
             </CardFooter>
           </form>
@@ -157,3 +157,4 @@ export default function RegisterPage() {
     </div>
   );
 }
+
