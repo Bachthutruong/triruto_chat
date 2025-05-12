@@ -39,11 +39,12 @@ export type Product = {
 
 export type Note = {
   id: string;
+  customerId: string;
+  staffId: string;
+  staffName?: string; // Name of the staff who created/last edited
   content: string;
-  createdBy: string; // userId or staffId
   createdAt: Date;
-  isInternal: boolean; // True if it's an internal note not visible to the customer
-  targetCustomerId: string; // ID of the customer this note is about
+  updatedAt: Date;
 };
 
 export type UserRole = 'customer' | 'admin' | 'staff';
@@ -60,6 +61,7 @@ export type CustomerProfile = {
   noteIds: string[]; // IDs of notes
   tags?: string[]; // e.g., "VIP", "Needs Follow-up"
   assignedStaffId?: string; // ID of staff member assigned to this customer
+  assignedStaffName?: string; // Name of the assigned staff member
   lastInteractionAt: Date;
   createdAt: Date;
 };
@@ -150,4 +152,20 @@ export type GetAppointmentsFilters = {
   customerId?: string;
   staffId?: string;
   status?: string[]; // Array of AppointmentStatus
+};
+
+
+export type AdminDashboardStats = {
+  activeUserCount: number;
+  chatsTodayCount: number;
+  openIssuesCount: number;
+  recentAppointments: AppointmentDetails[];
+  recentCustomers: Pick<CustomerProfile, 'id' | 'name' | 'phoneNumber' | 'createdAt'>[];
+  systemStatus: 'Optimal' | 'Degraded' | 'Error'; // Example system status
+};
+
+export type StaffDashboardStats = {
+  activeChatsAssignedToMeCount: number;
+  myAppointmentsTodayCount: number;
+  totalAssignedToMeCount: number;
 };

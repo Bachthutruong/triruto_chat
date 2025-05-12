@@ -1,15 +1,15 @@
 // src/app/staff/chat/[customerId]/page.tsx
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useParams } from 'next/navigation';
 import { Card, CardHeader, CardTitle, CardContent, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Send, Paperclip, Smile, UserCircle, Edit2, Tag, Clock, Phone, Info, X } from 'lucide-react';
-import type { CustomerProfile, Message, AppointmentDetails, UserSession } from '@/lib/types';
+import { Send, Paperclip, Smile, UserCircle, Edit2, Tag, Clock, Phone, Info, X, StickyNote, PlusCircle, Trash2 } from 'lucide-react';
+import type { CustomerProfile, Message, AppointmentDetails, UserSession, Note } from '@/lib/types';
 import { 
   getCustomerDetails, 
   sendStaffMessage, 
@@ -17,10 +17,16 @@ import {
   addTagToCustomer, 
   unassignStaffFromCustomer, 
   removeTagFromCustomer,
-  updateCustomerInternalName 
+  updateCustomerInternalName,
+  addNoteToCustomer,
+  deleteCustomerNote, 
+  updateCustomerNote
 } from '@/app/actions';
 import { Textarea } from '@/components/ui/textarea'; 
 import { useToast } from '@/hooks/use-toast';
+import { format } from 'date-fns';
+import { vi } from 'date-fns/locale';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 
 export default function StaffIndividualChatPage() {
   const params = useParams();
@@ -30,6 +36,7 @@ export default function StaffIndividualChatPage() {
   const [customer, setCustomer] = useState<CustomerProfile | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [appointments, setAppointments] = useState<AppointmentDetails[]>([]);
+  const [notes, setNotes] = useState<Note[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [newMessage, setNewMessage] = useState('');
   const [staffSession, setStaffSession] = useState<UserSession | null>(null);
@@ -37,6 +44,20 @@ export default function StaffIndividualChatPage() {
   const [newTagName, setNewTagName] = useState('');
   const [editingInternalName, setEditingInternalName] = useState(false);
   const [internalNameInput, setInternalNameInput] = useState('');
+  const [newNoteContent, setNewNoteContent] = useState('');
+  const [editingNote, setEditingNote] = useState<Note | null>(null);
+  const [editingNoteContent, setEditingNoteContent] = useState('');
+
+  const chatScrollAreaRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (chatScrollAreaRef.current) {
+      const viewport = chatScrollAreaRef.current.querySelector('div[data-radix-scroll-area-viewport]');
+      if (viewport) {
+        viewport.scrollTop = viewport.scrollHeight;
+      }
+    }
+  }, [messages]);
 
 
   useEffect(() => {
@@ -51,14 +72,15 @@ export default function StaffIndividualChatPage() {
       const fetchData = async () => {
         setIsLoading(true);
         try {
-          const { customer: fetchedCustomer, messages: fetchedMessages, appointments: fetchedAppointments } = await getCustomerDetails(customerId);
+          const { customer: fetchedCustomer, messages: fetchedMessages, appointments: fetchedAppointments, notes: fetchedNotes } = await getCustomerDetails(customerId);
           setCustomer(fetchedCustomer);
           setMessages(fetchedMessages || []);
           setAppointments(fetchedAppointments || []);
+          setNotes(fetchedNotes || []);
           if (fetchedCustomer?.internalName) {
             setInternalNameInput(fetchedCustomer.internalName);
           } else if (fetchedCustomer) {
-            setInternalNameInput(''); // Explicitly set to empty if no internal name
+            setInternalNameInput(''); 
           }
         } catch (error) {
           console.error("Không thể tải chi tiết khách hàng:", error);
@@ -111,7 +133,7 @@ export default function StaffIndividualChatPage() {
   }
   
   const handleAddTag = async () => {
-    if (!customer || !newTagName.trim()) return;
+    if (!customer || !newTagName.trim() || !staffSession) return;
     try {
         const updatedCustomer = await addTagToCustomer(customer.id, newTagName.trim());
         setCustomer(updatedCustomer);
@@ -123,7 +145,7 @@ export default function StaffIndividualChatPage() {
   };
 
   const handleRemoveTag = async (tagToRemove: string) => {
-    if (!customer) return;
+    if (!customer || !staffSession) return;
     try {
         const updatedCustomer = await removeTagFromCustomer(customer.id, tagToRemove);
         setCustomer(updatedCustomer);
@@ -134,18 +156,60 @@ export default function StaffIndividualChatPage() {
   };
 
   const handleSaveInternalName = async () => {
-    if (!customer) return;
+    if (!customer || !staffSession) return;
     setEditingInternalName(false);
-    if (customer.internalName === internalNameInput) return; // No change
+    if (customer.internalName === internalNameInput.trim()) return; 
 
     try {
-        const updatedCustomer = await updateCustomerInternalName(customer.id, internalNameInput);
+        const updatedCustomer = await updateCustomerInternalName(customer.id, internalNameInput.trim());
         setCustomer(updatedCustomer);
         toast({title: "Thành công", description: "Đã cập nhật tên nội bộ."});
     } catch (error: any) {
         toast({title: "Lỗi", description: `Không thể cập nhật tên nội bộ: ${error.message}`, variant: "destructive"});
-        // Revert input if save fails
         setInternalNameInput(customer.internalName || '');
+    }
+  };
+
+  const handleAddNote = async () => {
+    if (!newNoteContent.trim() || !customer || !staffSession) return;
+    try {
+      const newNote = await addNoteToCustomer(customer.id, staffSession.id, newNoteContent.trim());
+      setNotes(prev => [newNote, ...prev]);
+      setNewNoteContent('');
+      toast({ title: "Thành công", description: "Đã thêm ghi chú." });
+    } catch (error: any) {
+      toast({ title: "Lỗi", description: `Không thể thêm ghi chú: ${error.message}`, variant: "destructive" });
+    }
+  };
+
+  const handleEditNote = (note: Note) => {
+    setEditingNote(note);
+    setEditingNoteContent(note.content);
+  };
+
+  const handleSaveEditedNote = async () => {
+    if (!editingNote || !staffSession || !editingNoteContent.trim()) return;
+    try {
+      const updatedNote = await updateCustomerNote(editingNote.id, staffSession.id, editingNoteContent.trim());
+      if (updatedNote) {
+        setNotes(prevNotes => prevNotes.map(n => n.id === updatedNote.id ? updatedNote : n));
+      }
+      setEditingNote(null);
+      setEditingNoteContent('');
+      toast({ title: "Thành công", description: "Đã cập nhật ghi chú." });
+    } catch (error: any) {
+      toast({ title: "Lỗi", description: `Không thể cập nhật ghi chú: ${error.message}`, variant: "destructive" });
+    }
+  };
+  
+  const handleDeleteNote = async (noteId: string) => {
+    if (!staffSession) return;
+    try {
+      await deleteCustomerNote(noteId, staffSession.id);
+      setNotes(prevNotes => prevNotes.filter(n => n.id !== noteId));
+      toast({ title: "Thành công", description: "Đã xóa ghi chú." });
+    } catch (error: any) {
+      toast({ title: "Lỗi", description: `Không thể xóa ghi chú: ${error.message}`, variant: "destructive" });
     }
   };
   
@@ -168,7 +232,7 @@ export default function StaffIndividualChatPage() {
 
 
   return (
-    <div className="flex h-[calc(100vh-var(--header-height,4rem)-2rem)] gap-4">
+    <div className="flex flex-col md:flex-row h-[calc(100vh-var(--header-height,4rem)-2rem)] gap-4">
       <Card className="flex-grow h-full flex flex-col">
         <CardHeader className="flex flex-row items-center justify-between border-b p-4">
           <div className="flex items-center gap-3">
@@ -178,8 +242,8 @@ export default function StaffIndividualChatPage() {
             </Avatar>
             <div>
               <CardTitle className="text-lg">{customer.name || customer.phoneNumber}</CardTitle>
-              <p className="text-xs text-muted-foreground">Hoạt động cuối: {new Date(customer.lastInteractionAt).toLocaleTimeString('vi-VN')} 
-                {customer.assignedStaffId ? ` (Giao cho: ${customer.assignedStaffId === staffSession?.id ? 'Bạn' : customer.assignedStaffId})` : "(Chưa giao)"}
+              <p className="text-xs text-muted-foreground">Hoạt động cuối: {format(new Date(customer.lastInteractionAt), 'HH:mm dd/MM/yy', { locale: vi })}
+                {customer.assignedStaffId ? ` (Giao cho: ${customer.assignedStaffId === staffSession?.id ? 'Bạn' : customer.assignedStaffName || 'NV khác'})` : "(Chưa giao)"}
               </p>
             </div>
           </div>
@@ -197,14 +261,14 @@ export default function StaffIndividualChatPage() {
           </div>
         </CardHeader>
 
-        <ScrollArea className="flex-grow p-4 bg-muted/20">
+        <ScrollArea className="flex-grow p-4 bg-muted/20" ref={chatScrollAreaRef}>
           <div className="space-y-3">
             {messages.map(msg => (
               <div key={msg.id} className={`flex ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}>
                 <div className={`max-w-[70%] p-3 rounded-lg ${msg.sender === 'user' ? 'bg-primary text-primary-foreground' : 'bg-background shadow'}`}>
                   <p className="text-sm font-semibold mb-0.5">{msg.name || (msg.sender === 'user' ? 'Khách hàng' : 'Hệ thống')}</p>
-                  <p className="text-sm">{msg.content}</p>
-                  <p className="text-xs mt-1 opacity-70 text-right">{new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
+                  <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
+                  <p className="text-xs mt-1 opacity-70 text-right">{format(new Date(msg.timestamp), 'HH:mm', { locale: vi })}</p>
                 </div>
               </div>
             ))}
@@ -230,7 +294,7 @@ export default function StaffIndividualChatPage() {
         </CardFooter>
       </Card>
 
-      <Card className="w-1/3 lg:w-1/4 h-full flex flex-col">
+      <Card className="w-full md:w-1/3 lg:w-1/4 h-full flex flex-col">
         <CardHeader className="border-b">
           <CardTitle className="flex items-center"><Info className="mr-2 h-5 w-5" /> Thông tin Khách hàng</CardTitle>
         </CardHeader>
@@ -283,16 +347,69 @@ export default function StaffIndividualChatPage() {
               <h4 className="font-semibold text-sm flex items-center mb-1"><Clock className="mr-2 h-4 w-4 text-primary" />Lịch hẹn ({appointments.length})</h4>
               {appointments.slice(0,2).map(appt => (
                 <div key={appt.appointmentId} className="text-xs p-1.5 bg-muted/50 rounded mb-1">
-                    <p>{appt.service} - {new Date(appt.date).toLocaleDateString('vi-VN')} lúc {appt.time} ({getStatusLabel(appt.status)})</p>
+                    <p>{appt.service} - {format(new Date(appt.date), 'dd/MM/yy', { locale: vi })} lúc {appt.time} ({getStatusLabel(appt.status)})</p>
                 </div>
               ))}
-              {appointments.length > 2 && <Button variant="link" size="sm" className="p-0 h-auto">Xem tất cả</Button>}
+              {appointments.length > 2 && <Button variant="link" size="sm" className="p-0 h-auto text-primary">Xem tất cả</Button>}
+              {/* Consider linking to /staff/appointments?customerId=... for staff */}
               <Button variant="outline" size="sm" className="w-full mt-1">Lịch hẹn mới</Button>
             </div>
             <div className="border-t pt-3">
-              <h4 className="font-semibold text-sm flex items-center mb-1">Ghi chú nội bộ</h4>
-              <Textarea placeholder="Thêm ghi chú nội bộ cho khách hàng này..." rows={3} className="text-xs"/>
-              <Button size="sm" className="mt-1 w-full">Thêm Ghi chú</Button>
+              <h4 className="font-semibold text-sm flex items-center mb-1"><StickyNote className="mr-2 h-4 w-4 text-primary" />Ghi chú nội bộ ({notes.length})</h4>
+              <div className="space-y-2 mb-2 max-h-48 overflow-y-auto">
+                {notes.map(note => (
+                  <div key={note.id} className="text-xs p-1.5 bg-muted/50 rounded">
+                    {editingNote?.id === note.id ? (
+                      <>
+                        <Textarea 
+                            value={editingNoteContent} 
+                            onChange={e => setEditingNoteContent(e.target.value)} 
+                            rows={2} 
+                            className="text-xs mb-1"
+                        />
+                        <div className="flex gap-1 justify-end">
+                            <Button size="xs" variant="ghost" onClick={() => setEditingNote(null)}>Hủy</Button>
+                            <Button size="xs" onClick={handleSaveEditedNote}>Lưu</Button>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <p className="whitespace-pre-wrap">{note.content}</p>
+                        <div className="flex justify-between items-center mt-1">
+                            <p className="text-muted-foreground">{note.staffName || 'Nhân viên'} - {format(new Date(note.createdAt), 'dd/MM HH:mm', { locale: vi })}</p>
+                            {note.staffId === staffSession?.id && (
+                                <div className="flex gap-1">
+                                    <Button variant="ghost" size="icon" className="h-5 w-5" onClick={() => handleEditNote(note)}><Edit2 className="h-3 w-3"/></Button>
+                                    <AlertDialog>
+                                      <AlertDialogTrigger asChild>
+                                        <Button variant="ghost" size="icon" className="h-5 w-5 text-destructive hover:text-destructive"><Trash2 className="h-3 w-3"/></Button>
+                                      </AlertDialogTrigger>
+                                      <AlertDialogContent>
+                                        <AlertDialogHeader><AlertDialogTitle>Xác nhận xóa ghi chú</AlertDialogTitle><AlertDialogDescription>Bạn có chắc muốn xóa ghi chú này?</AlertDialogDescription></AlertDialogHeader>
+                                        <AlertDialogFooter>
+                                          <AlertDialogCancel>Hủy</AlertDialogCancel>
+                                          <AlertDialogAction onClick={() => handleDeleteNote(note.id)} className="bg-destructive hover:bg-destructive/90">Xóa</AlertDialogAction>
+                                        </AlertDialogFooter>
+                                      </AlertDialogContent>
+                                    </AlertDialog>
+                                </div>
+                            )}
+                        </div>
+                      </>
+                    )}
+                  </div>
+                ))}
+              </div>
+              <Textarea 
+                placeholder="Thêm ghi chú nội bộ mới..." 
+                rows={2} 
+                className="text-xs"
+                value={newNoteContent}
+                onChange={e => setNewNoteContent(e.target.value)}
+              />
+              <Button size="sm" className="mt-1 w-full" onClick={handleAddNote} disabled={!newNoteContent.trim()}>
+                <PlusCircle className="mr-1 h-3 w-3"/>Thêm Ghi chú
+              </Button>
             </div>
           </CardContent>
         </ScrollArea>

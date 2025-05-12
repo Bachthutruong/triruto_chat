@@ -2,8 +2,9 @@
 import type { CustomerProfile } from '@/lib/types';
 import mongoose, { Schema, Document, models, Model } from 'mongoose';
 
-export interface ICustomer extends Document, Omit<CustomerProfile, 'id'> {
+export interface ICustomer extends Document, Omit<CustomerProfile, 'id' | 'assignedStaffName'> {
   // id is managed by MongoDB as _id
+  // assignedStaffName will be populated
 }
 
 const CustomerSchema: Schema<ICustomer> = new Schema({
@@ -13,12 +14,11 @@ const CustomerSchema: Schema<ICustomer> = new Schema({
   chatHistoryIds: [{ type: Schema.Types.ObjectId, ref: 'Message' }],
   appointmentIds: [{ type: Schema.Types.ObjectId, ref: 'Appointment' }],
   productIds: [{ type: String }], // For now, keeping product IDs simple, can be ObjectId if Product collection exists
-  noteIds: [{ type: Schema.Types.ObjectId, ref: 'Note' }], // Assuming a Note model
-  tags: [{ type: String }],
-  assignedStaffId: { type: Schema.Types.ObjectId, ref: 'User' },
-  lastInteractionAt: { type: Date, default: Date.now },
+  noteIds: [{ type: Schema.Types.ObjectId, ref: 'Note' }],
+  tags: [{ type: String, index: true }],
+  assignedStaffId: { type: Schema.Types.ObjectId, ref: 'User', index: true },
+  lastInteractionAt: { type: Date, default: Date.now, index: true },
   createdAt: { type: Date, default: Date.now },
-  // userId: { type: Schema.Types.ObjectId, ref: 'User', required: true, unique: true }, // This links a customer profile to a User record if they are a user
 }, { timestamps: true });
 
 
