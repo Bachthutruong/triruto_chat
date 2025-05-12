@@ -7,7 +7,7 @@ export interface IAppSettings extends Document, Omit<AppSettings, 'id'> {
 }
 
 const AppSettingsSchema: Schema<IAppSettings> = new Schema({
-  greetingMessage: { type: String, default: 'Chào mừng đến với AetherChat! Tôi có thể giúp gì cho bạn?' },
+  greetingMessage: { type: String, default: 'Tôi là trợ lý AI của bạn. Tôi có thể giúp gì cho bạn hôm nay? Bạn có thể hỏi về dịch vụ hoặc đặt lịch hẹn.' }, // Customizable part
   suggestedQuestions: [{ type: String, default: ['Dịch vụ của bạn là gì?', 'Làm thế nào để đặt lịch hẹn?'] }],
   brandName: { type: String, default: 'AetherChat' },
   logoUrl: { type: String, default: '' },
@@ -19,10 +19,6 @@ const AppSettingsSchema: Schema<IAppSettings> = new Schema({
   robotsTxtContent: {type: String},
   sitemapXmlContent: {type: String}
 }, { timestamps: true, versionKey: false }); // versionKey: false to disable __v field
-
-// Ensure a single document for settings.
-// This can be enforced by application logic (e.g., always findOneAndUpdate with upsert)
-// or by creating a unique index on a dummy field if strictly one document is required.
 
 const AppSettingsModel = models.AppSettings as Model<IAppSettings> || mongoose.model<IAppSettings>('AppSettings', AppSettingsSchema);
 

@@ -14,6 +14,7 @@ import Link from 'next/link';
 import { AppHeader } from '@/components/layout/AppHeader';
 import { AppFooter } from '@/components/layout/AppFooter';
 import { LogIn } from 'lucide-react';
+import { useAppSettingsContext } from '@/contexts/AppSettingsContext';
 
 export default function LoginPage() {
   const [phoneNumber, setPhoneNumber] = useState('');
@@ -21,6 +22,8 @@ export default function LoginPage() {
   const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
   const { toast } = useToast();
+  const appSettings = useAppSettingsContext();
+  const brandName = appSettings?.brandName || 'AetherChat';
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -63,7 +66,7 @@ export default function LoginPage() {
             <CardTitle className="text-2xl flex items-center justify-center">
                 <LogIn className="mr-2 h-6 w-6 text-primary" /> Đăng nhập Nhân viên & Admin
             </CardTitle>
-            <CardDescription>Truy cập bảng điều khiển AetherChat của bạn.</CardDescription>
+            <CardDescription>Truy cập bảng điều khiển {brandName} của bạn.</CardDescription>
           </CardHeader>
           <form onSubmit={handleSubmit}>
             <CardContent className="space-y-4">
@@ -100,7 +103,7 @@ export default function LoginPage() {
                 Chưa có tài khoản? <Link href="/register" className="text-primary hover:underline">Đăng ký tại đây</Link>
               </p>
               <p className="text-sm text-muted-foreground">
-                Bạn là khách hàng? <Link href="/" className="text-primary hover:underline">Đến trang Chat</Link>
+                Bạn là khách hàng? <Link href="/enter-phone" className="text-primary hover:underline">Đến trang Chat</Link>
               </p>
             </CardFooter>
           </form>
@@ -110,4 +113,3 @@ export default function LoginPage() {
     </div>
   );
 }
-

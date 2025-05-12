@@ -1,13 +1,17 @@
+// src/app/admin/dashboard/page.tsx
 'use client';
 
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { BarChart, Users, MessageSquare, Settings } from 'lucide-react';
+import { useAppSettingsContext } from '@/contexts/AppSettingsContext';
 
 export default function AdminDashboardPage() {
+  const appSettings = useAppSettingsContext();
+  const brandName = appSettings?.brandName || 'AetherChat';
   return (
     <div className="space-y-6">
       <h1 className="text-3xl font-bold">Bảng điều khiển Admin</h1>
-      <p className="text-muted-foreground">Tổng quan về ứng dụng AetherChat của bạn.</p>
+      <p className="text-muted-foreground">Tổng quan về ứng dụng {brandName} của bạn.</p>
       
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
         <Card>
@@ -64,4 +68,3 @@ export default function AdminDashboardPage() {
     </div>
   );
 }
-

@@ -15,6 +15,7 @@ import Link from 'next/link';
 import { AppHeader } from '@/components/layout/AppHeader';
 import { AppFooter } from '@/components/layout/AppFooter';
 import { UserPlus } from 'lucide-react';
+import { useAppSettingsContext } from '@/contexts/AppSettingsContext';
 
 export default function RegisterPage() {
   const [name, setName] = useState('');
@@ -25,6 +26,8 @@ export default function RegisterPage() {
   const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
   const { toast } = useToast();
+  const appSettings = useAppSettingsContext();
+  const brandName = appSettings?.brandName || 'AetherChat';
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -77,7 +80,7 @@ export default function RegisterPage() {
             <CardTitle className="text-2xl flex items-center justify-center">
                 <UserPlus className="mr-2 h-6 w-6 text-primary" /> Đăng ký Người dùng Mới
             </CardTitle>
-            <CardDescription>Tạo tài khoản cho AetherChat (Nhân viên/Admin).</CardDescription>
+            <CardDescription>Tạo tài khoản cho {brandName} (Nhân viên/Admin).</CardDescription>
           </CardHeader>
           <form onSubmit={handleSubmit}>
             <CardContent className="space-y-4">
@@ -157,4 +160,3 @@ export default function RegisterPage() {
     </div>
   );
 }
-

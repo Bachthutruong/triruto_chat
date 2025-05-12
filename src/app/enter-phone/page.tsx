@@ -13,12 +13,15 @@ import { AppFooter } from '@/components/layout/AppFooter';
 import { Phone, LogIn, MessageSquare } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { handleCustomerAccess } from '@/app/actions';
+import { useAppSettingsContext } from '@/contexts/AppSettingsContext';
 
 export default function EnterPhonePage() {
   const [phoneNumber, setPhoneNumber] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
   const { toast } = useToast();
+  const appSettings = useAppSettingsContext();
+  const brandName = appSettings?.brandName || 'AetherChat';
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -33,7 +36,7 @@ export default function EnterPhonePage() {
         sessionStorage.setItem('aetherChatUserSession', JSON.stringify(custSession));
         toast({
           title: "Bắt đầu trò chuyện",
-          description: custSession.name ? `Chào mừng quay trở lại, ${custSession.name}!` : "Chào mừng đến với AetherChat!",
+          description: custSession.name ? `Chào mừng quay trở lại, ${custSession.name}!` : `Chào mừng đến với ${brandName}!`,
         });
         router.push('/'); // Redirect to chat page
       } else {
@@ -59,7 +62,7 @@ export default function EnterPhonePage() {
             <div className="mx-auto bg-primary/10 p-3 rounded-full w-fit mb-3">
                 <Phone className="h-8 w-8 text-primary" />
             </div>
-            <CardTitle className="text-2xl">Chào mừng đến AetherChat!</CardTitle>
+            <CardTitle className="text-2xl">Chào mừng đến {brandName}!</CardTitle>
             <CardDescription>
               Nhập số điện thoại để bắt đầu hoặc tiếp tục cuộc trò chuyện của bạn.
             </CardDescription>

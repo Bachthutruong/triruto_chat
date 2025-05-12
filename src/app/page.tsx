@@ -8,21 +8,24 @@ import { AppHeader } from '@/components/layout/AppHeader';
 import { AppFooter } from '@/components/layout/AppFooter';
 import { ChatWindow } from '@/components/chat/ChatWindow';
 import type { Message, UserSession } from '@/lib/types';
-import { handleCustomerAccess, processUserMessage } from './actions'; // handleCustomerAccess will be used to re-fetch if session exists
+import { handleCustomerAccess, processUserMessage } from './actions'; 
 import { useToast } from '@/hooks/use-toast';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { LogIn, Loader2 } from 'lucide-react';
+import { useAppSettingsContext } from '@/contexts/AppSettingsContext';
 
 export default function HomePage() {
   const [userSession, setUserSession] = useState<UserSession | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [suggestedReplies, setSuggestedReplies] = useState<string[]>([]);
-  const [isLoading, setIsLoading] = useState<boolean>(true); // Initial loading state
-  const [isChatLoading, setIsChatLoading] = useState<boolean>(false); // For message sending
+  const [isLoading, setIsLoading] = useState<boolean>(true); 
+  const [isChatLoading, setIsChatLoading] = useState<boolean>(false); 
   
   const { toast } = useToast();
   const router = useRouter();
+  const appSettings = useAppSettingsContext();
+  const brandName = appSettings?.brandName || 'AetherChat';
 
   useEffect(() => {
     const storedSessionString = sessionStorage.getItem('aetherChatUserSession');
@@ -31,14 +34,11 @@ export default function HomePage() {
         const session: UserSession = JSON.parse(storedSessionString);
         if (session.role === 'customer') {
           setUserSession(session);
-          initializeCustomerChat(session.phoneNumber); // Load chat history for existing session
+          initializeCustomerChat(session.phoneNumber); 
         } else if (session.role === 'admin' || session.role === 'staff') {
-          // If admin/staff lands here, they might have logged out from their dashboard
-          // or directly navigated. Show a message and link to their dashboard.
-          setUserSession(session); // Set session to render appropriate message
+          setUserSession(session); 
           setIsLoading(false);
         } else {
-           // Invalid role in session, clear and redirect
            sessionStorage.removeItem('aetherChatUserSession');
            router.replace('/enter-phone');
         }
@@ -48,17 +48,16 @@ export default function HomePage() {
         router.replace('/enter-phone');
       }
     } else {
-      router.replace('/enter-phone'); // No session, redirect to enter phone
+      router.replace('/enter-phone'); 
     }
   }, [router]);
 
   const initializeCustomerChat = async (phoneNumber: string) => {
-    setIsLoading(true); // For initial chat loading
+    setIsLoading(true); 
     try {
-      // Re-fetch customer data to ensure it's up-to-date, especially messages
       const { initialMessages, initialSuggestedReplies, userSession: updatedSession } = await handleCustomerAccess(phoneNumber);
       
-      setUserSession(updatedSession); // Update session state with potentially new name/tags
+      setUserSession(updatedSession); 
       sessionStorage.setItem('aetherChatUserSession', JSON.stringify(updatedSession));
 
       setMessages(initialMessages || []);
@@ -70,7 +69,6 @@ export default function HomePage() {
         description: "Không thể tải dữ liệu trò chuyện. Vui lòng thử lại.",
         variant: "destructive",
       });
-      // Optionally, redirect back to /enter-phone or clear session
       sessionStorage.removeItem('aetherChatUserSession');
       setUserSession(null);
       router.replace('/enter-phone');
@@ -119,7 +117,7 @@ export default function HomePage() {
       const { aiMessage, newSuggestedReplies, updatedAppointment } = await processUserMessage(
         messageContent,
         userSession, 
-        [...messages, userMessage] // Pass the most current message list
+        [...messages, userMessage] 
       );
       
       setMessages((prevMessages) => [...prevMessages, aiMessage]);
@@ -156,7 +154,7 @@ export default function HomePage() {
       return (
         <div className="flex flex-col items-center justify-center h-full">
           <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />
-          <p className="text-muted-foreground">Đang tải AetherChat...</p>
+          <p className="text-muted-foreground">Đang tải {brandName}...</p>
         </div>
       );
     }
@@ -200,7 +198,6 @@ export default function HomePage() {
         );
       }
       
-      // Customer is logged in and chat is ready
       return (
         <Card className="w-full max-w-2xl h-[70vh] shadow-2xl rounded-lg flex flex-col">
           <CardContent className="p-0 flex-grow flex flex-col overflow-hidden">
@@ -210,14 +207,13 @@ export default function HomePage() {
               suggestedReplies={suggestedReplies}
               onSendMessage={handleSendMessage}
               onSuggestedReplyClick={handleSendMessage} 
-              isLoading={isChatLoading} // Use isChatLoading for message input disabling
+              isLoading={isChatLoading} 
             />
           </CardContent>
         </Card>
       );
     }
     
-    // Fallback, though useEffect should redirect.
     return (
         <div className="flex flex-col items-center justify-center h-full">
           <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />

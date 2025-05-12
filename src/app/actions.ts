@@ -8,6 +8,9 @@ import { scheduleAppointment as scheduleAppointmentAIFlow } from '@/ai/flows/sch
 import type { ScheduleAppointmentOutput, AppointmentDetails as AIScheduleAppointmentDetails } from '@/ai/schemas/schedule-appointment-schemas';
 import { randomUUID } from 'crypto';
 import mongoose from 'mongoose';
+import dotenv from 'dotenv';
+dotenv.config();
+
 
 import dbConnect from '@/lib/mongodb';
 import UserModel from '@/models/User.model';
@@ -28,8 +31,6 @@ import type { IKeywordMapping } from '@/models/KeywordMapping.model';
 import type { ITrainingData } from '@/models/TrainingData.model';
 import type { IAppointmentRule } from '@/models/AppointmentRule.model';
 
-// Old KEYWORD_RESPONSES will be replaced by KeywordMappingModel
-// const KEYWORD_RESPONSES: Record<string, string> = { ... };
 
 function formatChatHistoryForAI(messages: Message[]): string {
   return messages
@@ -173,12 +174,15 @@ export async function handleCustomerAccess(phoneNumber: string): Promise<{
   }
 
   const appSettings = await getAppSettings();
-  const greetingMessage = appSettings?.greetingMessage || `Chào mừng bạn đến với AetherChat! Tôi là trợ lý AI của bạn. Tôi có thể giúp gì cho bạn hôm nay? Bạn có thể hỏi về dịch vụ hoặc đặt lịch hẹn.`;
+  const brandName = appSettings?.brandName || 'AetherChat';
+  const customizableGreetingPart = appSettings?.greetingMessage || 'Tôi là trợ lý AI của bạn. Tôi có thể giúp gì cho bạn hôm nay? Bạn có thể hỏi về dịch vụ hoặc đặt lịch hẹn.';
+  const finalGreetingMessage = `Chào mừng bạn đến với ${brandName}! ${customizableGreetingPart}`;
+  
   let defaultSuggestedReplies = appSettings?.suggestedQuestions || ['Các dịch vụ của bạn?', 'Đặt lịch hẹn', 'Địa chỉ của bạn ở đâu?'];
 
 
   const welcomeMessageContent = initialMessages.length === 0
-    ? greetingMessage
+    ? finalGreetingMessage
     : `Chào mừng bạn quay trở lại${userSession.name ? ', ' + userSession.name : ''}! Lịch sử trò chuyện của bạn đã được tải. Tôi có thể hỗ trợ gì cho bạn hôm nay?`;
 
   const welcomeMessage: Message = {
@@ -375,12 +379,16 @@ export async function processUserMessage(
       }
     }
   }
+  
+  const appSettings = await getAppSettings(); // Fetch app settings to get brandName
+  const brandNameForAI = appSettings?.brandName || 'AetherChat';
+
 
   const aiMessageData: Partial<IMessage> = {
     sender: 'ai',
     content: aiResponseContent,
     timestamp: new Date(),
-    name: 'AetherChat AI',
+    name: `${brandNameForAI} AI`,
     customerId: customerId as any,
   };
   const savedAiMessageDoc = await new MessageModel(aiMessageData).save();
@@ -392,7 +400,7 @@ export async function processUserMessage(
   });
 
   let newSuggestedReplies: string[] = [];
-  const appSettings = await getAppSettings();
+  // appSettings already fetched above
   const defaultSuggestedReplies = appSettings?.suggestedQuestions || [];
 
   try {
@@ -651,7 +659,7 @@ export async function sendStaffMessage(
     throw new Error("Không tìm thấy khách hàng.");
   }
   const staffMessageData: Partial<IMessage> = {
-    sender: 'ai', 
+    sender: 'ai', // Staff messages are still considered 'ai' to the customer for consistency of appearance
     content: messageContent,
     timestamp: new Date(),
     name: staffSession.name || 'Nhân viên', 

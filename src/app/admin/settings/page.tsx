@@ -13,16 +13,20 @@ import { useToast } from '@/hooks/use-toast';
 import { getAppSettings, updateAppSettings } from '@/app/actions';
 import type { AppSettings } from '@/lib/types';
 
+const defaultInitialBrandName = 'AetherChat';
+
 const initialSettingsState: Partial<AppSettings> = {
-  brandName: 'AetherChat',
+  brandName: defaultInitialBrandName,
   logoUrl: '',
-  footerText: `© ${new Date().getFullYear()} AetherChat. Đã đăng ký Bản quyền.`,
-  metaTitle: 'AetherChat - Live Chat Thông Minh',
+  greetingMessage: 'Tôi là trợ lý AI của bạn. Tôi có thể giúp gì cho bạn hôm nay? Bạn có thể hỏi về dịch vụ hoặc đặt lịch hẹn.', // Customizable part
+  suggestedQuestions: ['Các dịch vụ của bạn?', 'Đặt lịch hẹn', 'Địa chỉ của bạn ở đâu?'],
+  footerText: `© ${new Date().getFullYear()} ${defaultInitialBrandName}. Đã đăng ký Bản quyền.`,
+  metaTitle: `${defaultInitialBrandName} - Live Chat Thông Minh`,
   metaDescription: 'Live chat tích hợp AI cho giao tiếp khách hàng liền mạch.',
   metaKeywords: [],
   openGraphImageUrl: '',
   robotsTxtContent: "User-agent: *\nAllow: /",
-  sitemapXmlContent: "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\">\n  <url>\n    <loc>YOUR_DOMAIN_HERE</loc>\n    <lastmod>YYYY-MM-DD</lastmod>\n  </url>\n</urlset>",
+  sitemapXmlContent: `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n  <url>\n    <loc>YOUR_DOMAIN_HERE</loc>\n    <lastmod>${new Date().toISOString().split('T')[0]}</lastmod>\n  </url>\n</urlset>`,
 };
 
 export default function AdminSettingsPage() {
@@ -36,13 +40,22 @@ export default function AdminSettingsPage() {
     try {
       const fetchedSettings = await getAppSettings();
       if (fetchedSettings) {
+        // Merge fetched settings with initial defaults to ensure all form fields have a value
         setSettings({
-          ...initialSettingsState, // Start with defaults
-          ...fetchedSettings, // Override with fetched values
-          metaKeywords: fetchedSettings.metaKeywords || [], // Ensure array
+            brandName: fetchedSettings.brandName || initialSettingsState.brandName,
+            logoUrl: fetchedSettings.logoUrl || initialSettingsState.logoUrl,
+            greetingMessage: fetchedSettings.greetingMessage || initialSettingsState.greetingMessage,
+            suggestedQuestions: fetchedSettings.suggestedQuestions && fetchedSettings.suggestedQuestions.length > 0 ? fetchedSettings.suggestedQuestions : initialSettingsState.suggestedQuestions,
+            footerText: fetchedSettings.footerText || initialSettingsState.footerText,
+            metaTitle: fetchedSettings.metaTitle || initialSettingsState.metaTitle,
+            metaDescription: fetchedSettings.metaDescription || initialSettingsState.metaDescription,
+            metaKeywords: fetchedSettings.metaKeywords && fetchedSettings.metaKeywords.length > 0 ? fetchedSettings.metaKeywords : initialSettingsState.metaKeywords,
+            openGraphImageUrl: fetchedSettings.openGraphImageUrl || initialSettingsState.openGraphImageUrl,
+            robotsTxtContent: fetchedSettings.robotsTxtContent || initialSettingsState.robotsTxtContent,
+            sitemapXmlContent: fetchedSettings.sitemapXmlContent || initialSettingsState.sitemapXmlContent,
         });
       } else {
-        setSettings(initialSettingsState); // Fallback to initial if nothing in DB
+        setSettings(initialSettingsState); 
       }
     } catch (error) {
       toast({ title: "Lỗi", description: "Không thể tải cài đặt ứng dụng.", variant: "destructive" });
@@ -60,6 +73,10 @@ export default function AdminSettingsPage() {
     const { name, value } = e.target;
     setSettings(prev => ({ ...prev, [name]: value }));
   };
+  
+  const handleSuggestedQuestionsChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    setSettings(prev => ({ ...prev, suggestedQuestions: e.target.value.split('\n').map(q => q.trim()).filter(Boolean) }));
+  };
 
   const handleMetaKeywordsChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setSettings(prev => ({ ...prev, metaKeywords: e.target.value.split(',').map(kw => kw.trim()).filter(Boolean) }));
@@ -68,11 +85,10 @@ export default function AdminSettingsPage() {
   const handleSaveSettings = async () => {
     setIsSubmitting(true);
     try {
-      // Ensure settings being sent are only the updatable ones, not including id or updatedAt
       const { id, updatedAt, ...settingsToSave } = settings;
-      await updateAppSettings(settingsToSave);
+      await updateAppSettings(settingsToSave as Omit<AppSettings, 'id' | 'updatedAt'>); // Type assertion
       toast({ title: "Thành công", description: "Cài đặt đã được lưu." });
-      fetchSettings(); // Refetch to confirm
+      fetchSettings(); 
     } catch (error: any) {
       toast({ title: "Lỗi", description: error.message || "Không thể lưu cài đặt.", variant: "destructive" });
     } finally {
@@ -91,8 +107,8 @@ export default function AdminSettingsPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center"><Palette className="mr-2 h-5 w-5 text-primary" /> Cài đặt Giao diện</CardTitle>
-          <CardDescription>Tùy chỉnh giao diện và cảm nhận của ứng dụng.</CardDescription>
+          <CardTitle className="flex items-center"><Palette className="mr-2 h-5 w-5 text-primary" /> Cài đặt Giao diện & Chào hỏi</CardTitle>
+          <CardDescription>Tùy chỉnh giao diện và cảm nhận của ứng dụng, lời chào và câu hỏi gợi ý.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-2">
@@ -106,6 +122,14 @@ export default function AdminSettingsPage() {
            <div className="space-y-2">
             <Label htmlFor="footerText">Chữ Chân trang</Label>
             <Input id="footerText" name="footerText" value={settings.footerText || ''} onChange={handleInputChange} disabled={isSubmitting} />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="greetingMessage">Lời chào tùy chỉnh (Phần sau "Chào mừng đến [Tên Thương Hiệu]!")</Label>
+            <Textarea id="greetingMessage" name="greetingMessage" value={settings.greetingMessage || ''} onChange={handleInputChange} disabled={isSubmitting} placeholder="Ví dụ: Tôi là trợ lý AI của bạn..." />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="suggestedQuestions">Câu hỏi gợi ý (Mỗi câu một dòng)</Label>
+            <Textarea id="suggestedQuestions" name="suggestedQuestions" value={(settings.suggestedQuestions || []).join('\n')} onChange={handleSuggestedQuestionsChange} disabled={isSubmitting} placeholder="Dịch vụ của bạn là gì?\nĐặt lịch hẹn"/>
           </div>
         </CardContent>
       </Card>
