@@ -130,20 +130,20 @@ export default function AdminUsersPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold">Quản lý Người dùng</h1>
-          <p className="text-muted-foreground">Quản lý nhân viên và quản trị viên.</p>
+          <h1 className="text-2xl sm:text-3xl font-bold">Quản lý Người dùng</h1>
+          <p className="text-muted-foreground text-sm sm:text-base">Quản lý nhân viên và quản trị viên.</p>
         </div>
-        <Button onClick={() => handleOpenModal()}>
+        <Button className="w-full sm:w-auto" onClick={() => handleOpenModal()}>
           <PlusCircle className="mr-2 h-4 w-4" /> Thêm Người dùng Mới
         </Button>
       </div>
       
       <Card>
         <CardHeader>
-          <CardTitle>Tất cả Người dùng (Nhân viên/Admin)</CardTitle>
-          <CardDescription>Danh sách tất cả nhân viên và quản trị viên trong hệ thống.</CardDescription>
+          <CardTitle className="text-base sm:text-lg">Tất cả Người dùng (Nhân viên/Admin)</CardTitle>
+          <CardDescription className="text-xs sm:text-sm">Danh sách tất cả nhân viên và quản trị viên trong hệ thống.</CardDescription>
         </CardHeader>
         <CardContent>
           {isLoading ? (
@@ -151,59 +151,61 @@ export default function AdminUsersPage() {
           ) : users.length === 0 ? (
             <p>Không tìm thấy người dùng nào.</p>
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Tên</TableHead>
-                  <TableHead>Số điện thoại</TableHead>
-                  <TableHead>Vai trò</TableHead>
-                  <TableHead>ID Người dùng</TableHead>
-                  <TableHead className="text-right">Hành động</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {users.map((user) => (
-                  <TableRow key={user.id}>
-                    <TableCell className="font-medium">{user.name || 'Chưa có'}</TableCell>
-                    <TableCell>{user.phoneNumber}</TableCell>
-                    <TableCell>
-                      <span className={`px-2 py-1 text-xs font-semibold rounded-full ${
-                        user.role === 'admin' ? 'bg-red-100 text-red-700' :
-                        user.role === 'staff' ? 'bg-blue-100 text-blue-700' :
-                        'bg-green-100 text-green-700' // Should not see 'customer' here
-                      }`}>
-                        {getRoleName(user.role)}
-                      </span>
-                    </TableCell>
-                    <TableCell className="text-xs">{user.id}</TableCell>
-                    <TableCell className="text-right">
-                      <Button variant="ghost" size="icon" className="mr-2" onClick={() => handleOpenModal(user)}>
-                        <Edit className="h-4 w-4" />
-                      </Button>
-                      <AlertDialog>
-                        <AlertDialogTrigger asChild>
-                          <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive">
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </AlertDialogTrigger>
-                        <AlertDialogContent>
-                          <AlertDialogHeader>
-                            <AlertDialogTitle>Bạn có chắc chắn muốn xóa?</AlertDialogTitle>
-                            <AlertDialogDescription>
-                              Hành động này không thể hoàn tác. Người dùng "{user.name || user.phoneNumber}" sẽ bị xóa vĩnh viễn.
-                            </AlertDialogDescription>
-                          </AlertDialogHeader>
-                          <AlertDialogFooter>
-                            <AlertDialogCancel>Hủy</AlertDialogCancel>
-                            <AlertDialogAction onClick={() => handleDeleteUser(user.id)} className="bg-destructive hover:bg-destructive/90">Xóa</AlertDialogAction>
-                          </AlertDialogFooter>
-                        </AlertDialogContent>
-                      </AlertDialog>
-                    </TableCell>
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Tên</TableHead>
+                    <TableHead>Số điện thoại</TableHead>
+                    <TableHead>Vai trò</TableHead>
+                    <TableHead className="hidden md:table-cell">ID Người dùng</TableHead>
+                    <TableHead className="text-right">Hành động</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                </TableHeader>
+                <TableBody>
+                  {users.map((user) => (
+                    <TableRow key={user.id}>
+                      <TableCell className="font-medium">{user.name || 'Chưa có'}</TableCell>
+                      <TableCell>{user.phoneNumber}</TableCell>
+                      <TableCell>
+                        <span className={`px-2 py-1 text-xs font-semibold rounded-full ${
+                          user.role === 'admin' ? 'bg-red-100 text-red-700' :
+                          user.role === 'staff' ? 'bg-blue-100 text-blue-700' :
+                          'bg-green-100 text-green-700' // Should not see 'customer' here
+                        }`}>
+                          {getRoleName(user.role)}
+                        </span>
+                      </TableCell>
+                      <TableCell className="text-xs hidden md:table-cell">{user.id}</TableCell>
+                      <TableCell className="text-right">
+                        <Button variant="ghost" size="icon" className="mr-2" onClick={() => handleOpenModal(user)}>
+                          <Edit className="h-4 w-4" />
+                        </Button>
+                        <AlertDialog>
+                          <AlertDialogTrigger asChild>
+                            <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive">
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent>
+                            <AlertDialogHeader>
+                              <AlertDialogTitle>Bạn có chắc chắn muốn xóa?</AlertDialogTitle>
+                              <AlertDialogDescription>
+                                Hành động này không thể hoàn tác. Người dùng "{user.name || user.phoneNumber}" sẽ bị xóa vĩnh viễn.
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel>Hủy</AlertDialogCancel>
+                              <AlertDialogAction onClick={() => handleDeleteUser(user.id)} className="bg-destructive hover:bg-destructive/90">Xóa</AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
           )}
         </CardContent>
       </Card>
