@@ -8,9 +8,17 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Send, Paperclip, Smile, UserCircle, Edit2, Tag, Clock, Phone, Info } from 'lucide-react';
+import { Send, Paperclip, Smile, UserCircle, Edit2, Tag, Clock, Phone, Info, X } from 'lucide-react';
 import type { CustomerProfile, Message, AppointmentDetails, UserSession } from '@/lib/types';
-import { getCustomerDetails, sendStaffMessage, assignStaffToCustomer, addTagToCustomer, unassignStaffFromCustomer, removeTagFromCustomer } from '@/app/actions';
+import { 
+  getCustomerDetails, 
+  sendStaffMessage, 
+  assignStaffToCustomer, 
+  addTagToCustomer, 
+  unassignStaffFromCustomer, 
+  removeTagFromCustomer,
+  updateCustomerInternalName 
+} from '@/app/actions';
 import { Textarea } from '@/components/ui/textarea'; 
 import { useToast } from '@/hooks/use-toast';
 
@@ -49,6 +57,8 @@ export default function StaffIndividualChatPage() {
           setAppointments(fetchedAppointments || []);
           if (fetchedCustomer?.internalName) {
             setInternalNameInput(fetchedCustomer.internalName);
+          } else if (fetchedCustomer) {
+            setInternalNameInput(''); // Explicitly set to empty if no internal name
           }
         } catch (error) {
           console.error("Không thể tải chi tiết khách hàng:", error);
@@ -120,6 +130,22 @@ export default function StaffIndividualChatPage() {
         toast({title: "Thành công", description: "Đã xóa nhãn."});
     } catch (error: any) {
         toast({title: "Lỗi", description: `Không thể xóa nhãn: ${error.message}`, variant: "destructive"});
+    }
+  };
+
+  const handleSaveInternalName = async () => {
+    if (!customer) return;
+    setEditingInternalName(false);
+    if (customer.internalName === internalNameInput) return; // No change
+
+    try {
+        const updatedCustomer = await updateCustomerInternalName(customer.id, internalNameInput);
+        setCustomer(updatedCustomer);
+        toast({title: "Thành công", description: "Đã cập nhật tên nội bộ."});
+    } catch (error: any) {
+        toast({title: "Lỗi", description: `Không thể cập nhật tên nội bộ: ${error.message}`, variant: "destructive"});
+        // Revert input if save fails
+        setInternalNameInput(customer.internalName || '');
     }
   };
   
@@ -219,15 +245,15 @@ export default function StaffIndividualChatPage() {
                     <Input 
                         value={internalNameInput}
                         onChange={(e) => setInternalNameInput(e.target.value)}
-                        onBlur={() => { /* TODO: Save internal name */ setEditingInternalName(false); }}
-                        onKeyPress={(e) => { if (e.key === 'Enter') { /* TODO: Save internal name */ setEditingInternalName(false); }}}
+                        onBlur={handleSaveInternalName}
+                        onKeyPress={(e) => { if (e.key === 'Enter') handleSaveInternalName(); }}
                         className="h-6 text-xs p-1"
                         autoFocus
                     />
                 ) : (
-                    <span>{customer.internalName || 'Chưa có'}</span>
+                    <span className="truncate max-w-[150px]">{customer.internalName || 'Chưa có'}</span>
                 )}
-                 <Button variant="ghost" size="icon" className="h-5 w-5 ml-1" onClick={() => setEditingInternalName(!editingInternalName)}><Edit2 className="h-3 w-3"/></Button>
+                 <Button variant="ghost" size="icon" className="h-5 w-5 ml-1 shrink-0" onClick={() => setEditingInternalName(!editingInternalName)}><Edit2 className="h-3 w-3"/></Button>
               </div>
               <div>
                 <h5 className="font-semibold text-xs mt-2 mb-1 flex items-center"><Tag className="mr-2 h-3 w-3 text-primary" />Nhãn</h5>
@@ -235,7 +261,7 @@ export default function StaffIndividualChatPage() {
                     {(customer.tags || []).map(tag => (
                         <span key={tag} className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full flex items-center">
                             {tag}
-                            <Button variant="ghost" size="icon" className="h-4 w-4 ml-1 p-0" onClick={() => handleRemoveTag(tag)}>
+                            <Button variant="ghost" size="icon" className="h-4 w-4 ml-1 p-0 hover:bg-blue-200" onClick={() => handleRemoveTag(tag)}>
                                 <X className="h-3 w-3" />
                             </Button>
                         </span>
@@ -247,8 +273,9 @@ export default function StaffIndividualChatPage() {
                         onChange={(e) => setNewTagName(e.target.value)} 
                         placeholder="Thêm nhãn mới"
                         className="h-7 text-xs"
+                        onKeyPress={(e) => { if (e.key === 'Enter') handleAddTag(); }}
                     />
-                    <Button size="sm" onClick={handleAddTag} className="h-7 text-xs px-2">Thêm</Button>
+                    <Button size="sm" onClick={handleAddTag} className="h-7 text-xs px-2 shrink-0">Thêm</Button>
                 </div>
               </div>
             </div>
@@ -273,8 +300,3 @@ export default function StaffIndividualChatPage() {
     </div>
   );
 }
-
-import React from 'react';
-import { X } from 'lucide-react';
-
-

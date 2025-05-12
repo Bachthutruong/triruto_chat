@@ -89,37 +89,53 @@ export type AdminDetails = {
 };
 
 export type KeywordMapping = {
-  id: string;
+  id: string; // Corresponds to MongoDB _id
   keywords: string[];
   response: string;
-  createdAt: Date;
-  updatedAt: Date;
+  createdAt?: Date;
+  updatedAt?: Date;
 };
 
+export type TrainingDataStatus = 'pending_review' | 'approved' | 'rejected';
 export type TrainingData = {
-  id: string;
+  id: string; // Corresponds to MongoDB _id
   userInput: string;
   idealResponse?: string; // Could be AI generated then corrected
   label: string; // e.g., "Needs Assistance", "Service Inquiry"
-  status: 'pending_review' | 'approved' | 'rejected';
-  createdAt: Date;
+  status: TrainingDataStatus;
+  createdAt?: Date;
+  updatedAt?: Date;
 };
 
-export type InterfaceSettings = {
-  logoUrl?: string;
+export type AppointmentRule = {
+  id: string; // MongoDB _id
+  name: string;
+  keywords: string[];
+  conditions: string; 
+  aiPromptInstructions: string;
+  createdAt?: Date;
+  updatedAt?: Date;
+};
+
+export type AppSettings = {
+  id: string; // For the single document in MongoDB, will be _id
+  // Q&A settings
+  greetingMessage?: string;
+  suggestedQuestions?: string[]; // Stored as an array of strings
+
+  // Interface settings (from AdminSettingsPage)
   brandName?: string;
-  shortDescription?: string;
-  footerCopyright?: string;
-  footerEmail?: string;
-  footerHotline?: string;
-  footerPoliciesLink?: string;
-};
+  logoUrl?: string;
+  footerText?: string;
 
-export type SeoSettings = {
+  // SEO settings (from AdminSettingsPage)
   metaTitle?: string;
   metaDescription?: string;
   metaKeywords?: string[];
   openGraphImageUrl?: string;
-  robotsTxtContent?: string;
-  sitemapXmlContent?: string;
+  robotsTxtContent?: string; // Consider if this is too large for a single field
+  sitemapXmlContent?: string; // Consider if this is too large for a single field
+  
+  // Add other global settings as needed
+  updatedAt?: Date; // To know when settings were last updated
 };

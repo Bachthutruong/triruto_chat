@@ -1,32 +1,35 @@
 // src/app/actions.ts
 'use server';
 
-import type { Message, UserSession, AppointmentDetails, Product, Note, CustomerProfile, UserRole } from '@/lib/types';
+import type { Message, UserSession, AppointmentDetails, Product, Note, CustomerProfile, UserRole, KeywordMapping, TrainingData, TrainingDataStatus, AppointmentRule, AppSettings } from '@/lib/types';
 import { answerUserQuestion } from '@/ai/flows/answer-user-question';
 import { generateSuggestedReplies } from '@/ai/flows/generate-suggested-replies';
 import { scheduleAppointment as scheduleAppointmentAIFlow } from '@/ai/flows/schedule-appointment';
 import type { ScheduleAppointmentOutput, AppointmentDetails as AIScheduleAppointmentDetails } from '@/ai/schemas/schedule-appointment-schemas';
-import { randomUUID } from 'crypto'; // For generating unique IDs if needed for non-DB items
+import { randomUUID } from 'crypto';
+import mongoose from 'mongoose';
 
 import dbConnect from '@/lib/mongodb';
 import UserModel from '@/models/User.model';
 import CustomerModel from '@/models/Customer.model';
 import MessageModel from '@/models/Message.model';
 import AppointmentModel from '@/models/Appointment.model';
+import AppSettingsModel from '@/models/AppSettings.model';
+import KeywordMappingModel from '@/models/KeywordMapping.model';
+import TrainingDataModel from '@/models/TrainingData.model';
+import AppointmentRuleModel from '@/models/AppointmentRule.model';
+
 import type { IUser } from '@/models/User.model';
 import type { ICustomer } from '@/models/Customer.model';
 import type { IMessage } from '@/models/Message.model';
 import type { IAppointment } from '@/models/Appointment.model';
+import type { IAppSettings } from '@/models/AppSettings.model';
+import type { IKeywordMapping } from '@/models/KeywordMapping.model';
+import type { ITrainingData } from '@/models/TrainingData.model';
+import type { IAppointmentRule } from '@/models/AppointmentRule.model';
 
-const KEYWORD_RESPONSES: Record<string, string> = {
-  "giờ mở cửa": "Chúng tôi mở cửa từ 9 giờ sáng đến 6 giờ tối, tất cả các ngày trong tuần.",
-  "dịch vụ": "Chúng tôi cung cấp các dịch vụ cắt tóc, tạo kiểu, nhuộm tóc, làm móng, chăm sóc da mặt và massage. Bạn có muốn biết thêm về một dịch vụ cụ thể không?",
-  "địa chỉ": "Chi nhánh chính của chúng tôi ở 123 Đường Chính (Main Street Branch). Chúng tôi cũng có một chi nhánh ở 456 Đường Sồi (Oak Avenue Annex).",
-  "chi nhánh": "Chúng tôi có 2 chi nhánh: Chi nhánh Chính (123 Đường Chính) và Chi nhánh Phụ (456 Đường Sồi).",
-  "giá": "Giá dịch vụ của chúng tôi rất cạnh tranh. Bạn quan tâm đến dịch vụ nào để tôi báo giá chi tiết?",
-  "khuyến mãi": "Hiện tại chúng tôi đang có chương trình giảm giá 10% cho dịch vụ chăm sóc da mặt. Bạn có muốn đặt lịch không?",
-};
-
+// Old KEYWORD_RESPONSES will be replaced by KeywordMappingModel
+// const KEYWORD_RESPONSES: Record<string, string> = { ... };
 
 function formatChatHistoryForAI(messages: Message[]): string {
   return messages
@@ -40,7 +43,6 @@ function transformCustomerToSession(customerDoc: ICustomer): UserSession {
         phoneNumber: customerDoc.phoneNumber,
         role: 'customer',
         name: customerDoc.name || `Khách ${customerDoc.phoneNumber.slice(-4)}`,
-        // chatHistory, appointments, etc. will be loaded separately or populated if needed
     };
 }
 
@@ -66,7 +68,7 @@ function transformMessageDocToMessage(msgDoc: IMessage): Message {
 function transformAppointmentDocToDetails(apptDoc: IAppointment): AppointmentDetails {
     return {
         appointmentId: apptDoc._id.toString(),
-        userId: apptDoc.customerId.toString(), // In AppointmentDetails, userId refers to the customer
+        userId: apptDoc.customerId.toString(),
         service: apptDoc.service,
         time: apptDoc.time,
         date: apptDoc.date,
@@ -79,8 +81,73 @@ function transformAppointmentDocToDetails(apptDoc: IAppointment): AppointmentDet
     };
 }
 
+function transformKeywordMappingDoc(doc: IKeywordMapping): KeywordMapping {
+    return {
+        id: doc._id.toString(),
+        keywords: doc.keywords,
+        response: doc.response,
+        createdAt: new Date(doc.createdAt as Date),
+        updatedAt: new Date(doc.updatedAt as Date),
+    };
+}
 
-// For customer identification via phone number on main page
+function transformTrainingDataDoc(doc: ITrainingData): TrainingData {
+    return {
+        id: doc._id.toString(),
+        userInput: doc.userInput,
+        idealResponse: doc.idealResponse,
+        label: doc.label,
+        status: doc.status as TrainingDataStatus,
+        createdAt: new Date(doc.createdAt as Date),
+        updatedAt: new Date(doc.updatedAt as Date),
+    };
+}
+
+function transformAppointmentRuleDoc(doc: IAppointmentRule): AppointmentRule {
+    return {
+        id: doc._id.toString(),
+        name: doc.name,
+        keywords: doc.keywords,
+        conditions: doc.conditions,
+        aiPromptInstructions: doc.aiPromptInstructions,
+        createdAt: new Date(doc.createdAt as Date),
+        updatedAt: new Date(doc.updatedAt as Date),
+    };
+}
+
+function transformAppSettingsDoc(doc: IAppSettings | null): AppSettings | null {
+    if (!doc) return null;
+    return {
+        id: doc._id.toString(),
+        greetingMessage: doc.greetingMessage,
+        suggestedQuestions: doc.suggestedQuestions,
+        brandName: doc.brandName,
+        logoUrl: doc.logoUrl,
+        footerText: doc.footerText,
+        metaTitle: doc.metaTitle,
+        metaDescription: doc.metaDescription,
+        metaKeywords: doc.metaKeywords,
+        openGraphImageUrl: doc.openGraphImageUrl,
+        robotsTxtContent: doc.robotsTxtContent,
+        sitemapXmlContent: doc.sitemapXmlContent,
+        updatedAt: new Date(doc.updatedAt as Date),
+    };
+}
+
+
+export async function getAppSettings(): Promise<AppSettings | null> {
+    await dbConnect();
+    const settingsDoc = await AppSettingsModel.findOne({});
+    return transformAppSettingsDoc(settingsDoc);
+}
+
+export async function updateAppSettings(settings: Partial<Omit<AppSettings, 'id' | 'updatedAt'>>): Promise<AppSettings | null> {
+    await dbConnect();
+    const updatedSettingsDoc = await AppSettingsModel.findOneAndUpdate({}, { $set: settings }, { new: true, upsert: true });
+    return transformAppSettingsDoc(updatedSettingsDoc);
+}
+
+
 export async function handleCustomerAccess(phoneNumber: string): Promise<{
   userSession: UserSession;
   initialMessages: Message[];
@@ -98,15 +165,20 @@ export async function handleCustomerAccess(phoneNumber: string): Promise<{
   } else {
     const newCustomerDoc = new CustomerModel({
       phoneNumber,
-      name: `Khách ${phoneNumber.slice(-4)}`, // Default name in Vietnamese
+      name: `Khách ${phoneNumber.slice(-4)}`,
       lastInteractionAt: new Date(),
     });
     customer = await newCustomerDoc.save();
     userSession = transformCustomerToSession(customer);
   }
 
+  const appSettings = await getAppSettings();
+  const greetingMessage = appSettings?.greetingMessage || `Chào mừng bạn đến với AetherChat! Tôi là trợ lý AI của bạn. Tôi có thể giúp gì cho bạn hôm nay? Bạn có thể hỏi về dịch vụ hoặc đặt lịch hẹn.`;
+  let defaultSuggestedReplies = appSettings?.suggestedQuestions || ['Các dịch vụ của bạn?', 'Đặt lịch hẹn', 'Địa chỉ của bạn ở đâu?'];
+
+
   const welcomeMessageContent = initialMessages.length === 0
-    ? `Chào mừng bạn đến với AetherChat! Tôi là trợ lý AI của bạn. Tôi có thể giúp gì cho bạn hôm nay? Bạn có thể hỏi về dịch vụ hoặc đặt lịch hẹn.`
+    ? greetingMessage
     : `Chào mừng bạn quay trở lại${userSession.name ? ', ' + userSession.name : ''}! Lịch sử trò chuyện của bạn đã được tải. Tôi có thể hỗ trợ gì cho bạn hôm nay?`;
 
   const welcomeMessage: Message = {
@@ -124,7 +196,7 @@ export async function handleCustomerAccess(phoneNumber: string): Promise<{
     suggestedReplies = repliesResult.suggestedReplies;
   } catch (error) {
     console.error('Error generating initial suggested replies:', error);
-    suggestedReplies = ['Các dịch vụ của bạn?', 'Đặt lịch hẹn', 'Địa chỉ của bạn ở đâu?'];
+    suggestedReplies = defaultSuggestedReplies;
   }
   
   return {
@@ -281,9 +353,10 @@ export async function processUserMessage(
     }
   } else { 
     let keywordFound = false;
-    for (const keyword in KEYWORD_RESPONSES) {
-      if (lowerCaseUserMessage.includes(keyword)) {
-        aiResponseContent = KEYWORD_RESPONSES[keyword];
+    const keywordMappings = await getKeywordMappings();
+    for (const mapping of keywordMappings) {
+      if (mapping.keywords.some(kw => lowerCaseUserMessage.includes(kw.toLowerCase()))) {
+        aiResponseContent = mapping.response;
         keywordFound = true;
         break;
       }
@@ -319,6 +392,9 @@ export async function processUserMessage(
   });
 
   let newSuggestedReplies: string[] = [];
+  const appSettings = await getAppSettings();
+  const defaultSuggestedReplies = appSettings?.suggestedQuestions || [];
+
   try {
     let contextForReplies = aiResponseContent;
     if (scheduleOutput?.intent === 'pending_alternatives' && scheduleOutput.suggestedSlots?.length) {
@@ -344,9 +420,13 @@ export async function processUserMessage(
     console.error('Error generating new suggested replies:', error);
     newSuggestedReplies = (hasSchedulingIntent && scheduleOutput?.intent !== 'booked' && scheduleOutput?.intent !== 'cancelled')
       ? ['Xác nhận giờ gợi ý', 'Hỏi giờ khác', 'Hủy yêu cầu'] 
-      : ['Kể thêm cho tôi', 'Hỏi câu khác', 'Cảm ơn!'];
+      : defaultSuggestedReplies.length > 0 ? defaultSuggestedReplies : ['Kể thêm cho tôi', 'Hỏi câu khác', 'Cảm ơn!'];
   }
   newSuggestedReplies = [...new Set(newSuggestedReplies)].slice(0, 3);
+  if (newSuggestedReplies.length === 0 && defaultSuggestedReplies.length > 0) {
+    newSuggestedReplies = defaultSuggestedReplies.slice(0,3);
+  }
+
 
   const updatedAppointmentClient = processedAppointmentDB ? transformAppointmentDocToDetails(processedAppointmentDB) : undefined;
 
@@ -368,7 +448,7 @@ export async function getCustomersForStaffView(): Promise<CustomerProfile[]> {
         internalName: doc.internalName,
         chatHistoryIds: doc.chatHistoryIds.map(id => id.toString()),
         appointmentIds: doc.appointmentIds.map(id => id.toString()),
-        productIds: doc.productIds, // Assuming productIds are stored directly as strings
+        productIds: doc.productIds,
         noteIds: doc.noteIds.map(id => id.toString()),
         tags: doc.tags,
         assignedStaffId: doc.assignedStaffId?.toString(),
@@ -394,7 +474,7 @@ export async function getCustomerDetails(customerId: string): Promise<{customer:
         internalName: customerDoc.internalName,
         chatHistoryIds: customerDoc.chatHistoryIds.map(id => id.toString()),
         appointmentIds: customerDoc.appointmentIds.map(id => id.toString()),
-        productIds: customerDoc.productIds, // Assuming productIds are stored directly as strings
+        productIds: customerDoc.productIds,
         noteIds: customerDoc.noteIds.map(id => id.toString()),
         tags: customerDoc.tags,
         assignedStaffId: customerDoc.assignedStaffId?.toString(),
@@ -419,7 +499,7 @@ export async function createStaffOrAdminUser(
   name: string,
   phoneNumber: string,
   role: 'staff' | 'admin',
-  tempPassword?: string 
+  password?: string 
 ): Promise<UserSession | null> {
   await dbConnect();
   if (await UserModel.findOne({ phoneNumber })) {
@@ -429,21 +509,44 @@ export async function createStaffOrAdminUser(
     name,
     phoneNumber,
     role,
-    password: tempPassword || randomUUID(), 
+    password: password || randomUUID(), 
   });
   await newUser.save();
   return transformUserToSession(newUser);
 }
 
+export async function updateUser(userId: string, data: Partial<Pick<IUser, 'name' | 'role' | 'password'>>): Promise<UserSession | null> {
+    await dbConnect();
+    const user = await UserModel.findById(userId);
+    if (!user) throw new Error("Không tìm thấy người dùng.");
+
+    if (data.name) user.name = data.name;
+    if (data.role) user.role = data.role;
+    if (data.password) { // If password is being updated, it will be hashed by the pre-save hook
+        user.password = data.password;
+    }
+    
+    await user.save();
+    return transformUserToSession(user);
+}
+
+export async function deleteUser(userId: string): Promise<{ success: boolean, message?: string }> {
+    await dbConnect();
+    const result = await UserModel.findByIdAndDelete(userId);
+    if (!result) throw new Error("Không tìm thấy người dùng để xóa.");
+    // TODO: Consider implications: unassign customers, etc.
+    return { success: true, message: "Người dùng đã được xóa." };
+}
+
+
 export async function assignStaffToCustomer(customerId: string, staffId: string): Promise<CustomerProfile | null> {
   await dbConnect();
   const updatedCustomer = await CustomerModel.findByIdAndUpdate(
     customerId,
-    { assignedStaffId: staffId, lastInteractionAt: new Date() }, // also update last interaction
+    { assignedStaffId: staffId, lastInteractionAt: new Date() },
     { new: true }
   );
   if (!updatedCustomer) throw new Error("Không tìm thấy khách hàng.");
-  // TODO: Notify staff if needed
   return {
         id: updatedCustomer._id.toString(),
         phoneNumber: updatedCustomer.phoneNumber,
@@ -464,11 +567,10 @@ export async function unassignStaffFromCustomer(customerId: string): Promise<Cus
   await dbConnect();
   const updatedCustomer = await CustomerModel.findByIdAndUpdate(
     customerId,
-    { $unset: { assignedStaffId: "" }, lastInteractionAt: new Date() }, // remove assignedStaffId
+    { $unset: { assignedStaffId: "" }, lastInteractionAt: new Date() },
     { new: true }
   );
   if (!updatedCustomer) throw new Error("Không tìm thấy khách hàng.");
-  // TODO: Notify relevant parties if customer is back in general queue
    return {
         id: updatedCustomer._id.toString(),
         phoneNumber: updatedCustomer.phoneNumber,
@@ -534,43 +636,134 @@ export async function removeTagFromCustomer(customerId: string, tagToRemove: str
   };
 }
 
-// This is a staff action, sending message to a customer
+
 export async function sendStaffMessage(
-  staffSession: UserSession, // Staff's session
+  staffSession: UserSession,
   customerId: string,
   messageContent: string
 ): Promise<Message> {
   await dbConnect();
-
-  // Ensure staff is authorized (basic check)
   if (staffSession.role !== 'staff' && staffSession.role !== 'admin') {
     throw new Error("Không được phép gửi tin nhắn.");
   }
-
-  // Find customer to ensure they exist
   const customer = await CustomerModel.findById(customerId);
   if (!customer) {
     throw new Error("Không tìm thấy khách hàng.");
   }
-
   const staffMessageData: Partial<IMessage> = {
-    sender: 'ai', // 'ai' sender type is used for system/staff messages to customer in current model
+    sender: 'ai', 
     content: messageContent,
     timestamp: new Date(),
-    name: staffSession.name || 'Nhân viên', // Staff's name
-    customerId: customer._id, // Link to customer
-    userId: new mongoose.Types.ObjectId(staffSession.id), // Staff's user ID
+    name: staffSession.name || 'Nhân viên', 
+    customerId: customer._id, 
+    userId: new mongoose.Types.ObjectId(staffSession.id), 
   };
-
   const savedStaffMessageDoc = await new MessageModel(staffMessageData).save();
-
-  // Update customer's last interaction and add message to their history
   await CustomerModel.findByIdAndUpdate(customerId, {
     $push: { chatHistoryIds: savedStaffMessageDoc._id },
     lastInteractionAt: new Date(),
   });
-  
-  // TODO: Implement real-time notification to the customer if they are online
-  // For now, just return the saved message
   return transformMessageDocToMessage(savedStaffMessageDoc);
+}
+
+// --- Q&A Management Actions ---
+export async function getKeywordMappings(): Promise<KeywordMapping[]> {
+    await dbConnect();
+    const docs = await KeywordMappingModel.find({}).sort({ createdAt: -1 });
+    return docs.map(transformKeywordMappingDoc);
+}
+
+export async function createKeywordMapping(data: Omit<KeywordMapping, 'id' | 'createdAt' | 'updatedAt'>): Promise<KeywordMapping> {
+    await dbConnect();
+    const newDoc = new KeywordMappingModel(data);
+    await newDoc.save();
+    return transformKeywordMappingDoc(newDoc);
+}
+
+export async function updateKeywordMapping(id: string, data: Partial<Omit<KeywordMapping, 'id' | 'createdAt' | 'updatedAt'>>): Promise<KeywordMapping | null> {
+    await dbConnect();
+    const updatedDoc = await KeywordMappingModel.findByIdAndUpdate(id, data, { new: true });
+    return updatedDoc ? transformKeywordMappingDoc(updatedDoc) : null;
+}
+
+export async function deleteKeywordMapping(id: string): Promise<{ success: boolean }> {
+    await dbConnect();
+    await KeywordMappingModel.findByIdAndDelete(id);
+    return { success: true };
+}
+
+export async function getTrainingDataItems(): Promise<TrainingData[]> {
+    await dbConnect();
+    const docs = await TrainingDataModel.find({}).sort({ createdAt: -1 });
+    return docs.map(transformTrainingDataDoc);
+}
+
+export async function createTrainingData(data: Omit<TrainingData, 'id' | 'createdAt' | 'updatedAt' | 'status'> & { status?: TrainingDataStatus }): Promise<TrainingData> {
+    await dbConnect();
+    const newDoc = new TrainingDataModel({ ...data, status: data.status || 'pending_review' });
+    await newDoc.save();
+    return transformTrainingDataDoc(newDoc);
+}
+
+export async function updateTrainingDataItem(id: string, data: Partial<Omit<TrainingData, 'id' | 'createdAt' | 'updatedAt'>>): Promise<TrainingData | null> {
+    await dbConnect();
+    const updatedDoc = await TrainingDataModel.findByIdAndUpdate(id, data, { new: true });
+    return updatedDoc ? transformTrainingDataDoc(updatedDoc) : null;
+}
+
+export async function deleteTrainingDataItem(id: string): Promise<{ success: boolean }> {
+    await dbConnect();
+    await TrainingDataModel.findByIdAndDelete(id);
+    return { success: true };
+}
+
+// --- Appointment Rule Management Actions ---
+export async function getAppointmentRules(): Promise<AppointmentRule[]> {
+    await dbConnect();
+    const docs = await AppointmentRuleModel.find({}).sort({ name: 1 });
+    return docs.map(transformAppointmentRuleDoc);
+}
+
+export async function createAppointmentRule(data: Omit<AppointmentRule, 'id' | 'createdAt' | 'updatedAt'>): Promise<AppointmentRule> {
+    await dbConnect();
+    const newDoc = new AppointmentRuleModel(data);
+    await newDoc.save();
+    return transformAppointmentRuleDoc(newDoc);
+}
+
+export async function updateAppointmentRule(id: string, data: Partial<Omit<AppointmentRule, 'id' | 'createdAt' | 'updatedAt'>>): Promise<AppointmentRule | null> {
+    await dbConnect();
+    const updatedDoc = await AppointmentRuleModel.findByIdAndUpdate(id, data, { new: true });
+    return updatedDoc ? transformAppointmentRuleDoc(updatedDoc) : null;
+}
+
+export async function deleteAppointmentRule(id: string): Promise<{ success: boolean }> {
+    await dbConnect();
+    await AppointmentRuleModel.findByIdAndDelete(id);
+    return { success: true };
+}
+
+// --- Staff: Update Customer Internal Name ---
+export async function updateCustomerInternalName(customerId: string, internalName: string): Promise<CustomerProfile | null> {
+    await dbConnect();
+    const updatedCustomer = await CustomerModel.findByIdAndUpdate(
+        customerId,
+        { internalName: internalName, lastInteractionAt: new Date() },
+        { new: true }
+    );
+    if (!updatedCustomer) throw new Error("Không tìm thấy khách hàng.");
+    return {
+        id: updatedCustomer._id.toString(),
+        phoneNumber: updatedCustomer.phoneNumber,
+        name: updatedCustomer.name,
+        internalName: updatedCustomer.internalName,
+        chatHistoryIds: updatedCustomer.chatHistoryIds.map(id => id.toString()),
+        appointmentIds: updatedCustomer.appointmentIds.map(id => id.toString()),
+        productIds: updatedCustomer.productIds,
+        noteIds: updatedCustomer.noteIds.map(id => id.toString()),
+        tags: updatedCustomer.tags,
+        assignedStaffId: updatedCustomer.assignedStaffId?.toString(),
+        lastInteractionAt: new Date(updatedCustomer.lastInteractionAt),
+        createdAt: new Date(updatedCustomer.createdAt as Date),
+  };
 }
