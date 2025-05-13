@@ -1,7 +1,7 @@
 // src/components/chat/ChatWindow.tsx
 'use client';
 
-import type { Message, UserSession, MessageViewerRole } from '@/lib/types';
+import type { Message, UserSession, MessageViewerRole, MessageEditState } from '@/lib/types';
 import { MessageBubble } from './MessageBubble';
 import { MessageInputForm } from './MessageInputForm';
 import { SuggestedReplies } from './SuggestedReplies';
@@ -20,6 +20,9 @@ type ChatWindowProps = {
   viewerRole: MessageViewerRole;
   onPinMessage?: (messageId: string) => void;
   onUnpinMessage?: (messageId: string) => void;
+  onDeleteMessage?: (messageId: string) => void;
+  onEditMessage?: (messageId: string, currentContent: string) => void;
+  currentStaffSessionId?: string;
 };
 
 export function ChatWindow({
@@ -33,6 +36,9 @@ export function ChatWindow({
   viewerRole,
   onPinMessage,
   onUnpinMessage,
+  onDeleteMessage,
+  onEditMessage,
+  currentStaffSessionId,
 }: ChatWindowProps) {
   const scrollAreaRef = useRef<HTMLDivElement>(null);
 
@@ -65,8 +71,8 @@ export function ChatWindow({
   return (
     <div className="flex-grow flex flex-col bg-background overflow-hidden">
       {pinnedMessages.length > 0 && (
-        <div className="p-2 border-b bg-amber-50">
-          <h4 className="text-xs font-semibold text-amber-700 mb-1">Tin nhắn đã ghim:</h4>
+        <div className="p-2 border-b bg-amber-50 max-h-48 overflow-y-auto"> {/* Added max-h and overflow */}
+          <h4 className="text-xs font-semibold text-amber-700 mb-1 sticky top-0 bg-amber-50 py-1 z-10">Tin nhắn đã ghim:</h4>
           {pinnedMessages.map((msg) => (
             <MessageBubble 
               key={`pinned-${msg.id}`} 
@@ -74,6 +80,9 @@ export function ChatWindow({
               viewerRole={viewerRole} 
               onPinMessage={onPinMessage}
               onUnpinMessage={onUnpinMessage}
+              onDeleteMessage={onDeleteMessage}
+              onEditMessage={onEditMessage}
+              currentStaffSessionId={currentStaffSessionId}
             />
           ))}
         </div>
@@ -87,6 +96,9 @@ export function ChatWindow({
               viewerRole={viewerRole} 
               onPinMessage={onPinMessage}
               onUnpinMessage={onUnpinMessage}
+              onDeleteMessage={onDeleteMessage}
+              onEditMessage={onEditMessage}
+              currentStaffSessionId={currentStaffSessionId}
             />
           ))}
           {isLoading && messages[messages.length-1]?.sender === 'user' && <AILoadingIndicator />}

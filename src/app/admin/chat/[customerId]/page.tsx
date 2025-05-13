@@ -22,6 +22,6 @@ export default function AdminIndividualCustomerChatPage() {
   }, []);
   
   // StaffIndividualChatPage now internally uses sessionStorage to get the session,
-  // so no need to pass props explicitly.
+  // and also handles pinning logic internally.
   return <StaffIndividualChatPage />;
 }

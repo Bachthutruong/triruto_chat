@@ -36,8 +36,7 @@ import { vi } from 'date-fns/locale';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Dialog, DialogHeader, DialogFooter, DialogContent, DialogTitle, DialogDescription, DialogClose } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { MessageBubble } from '@/components/chat/MessageBubble'; 
-import { MessageInputForm } from '@/components/chat/MessageInputForm';
+import { ChatWindow } from '@/components/chat/ChatWindow'; 
 import { Label } from '@/components/ui/label';
 
 export default function StaffIndividualChatPage() {
@@ -67,41 +66,6 @@ export default function StaffIndividualChatPage() {
   const [messageEditState, setMessageEditState] = useState<MessageEditState>(null);
   const [editedMessageContent, setEditedMessageContent] = useState('');
 
-
-  const chatScrollAreaRef = useRef<HTMLDivElement>(null);
-
-  const scrollToBottom = useCallback(() => {
-    if (chatScrollAreaRef.current) {
-      const viewport = chatScrollAreaRef.current.querySelector('div[data-radix-scroll-area-viewport]');
-      if (viewport) {
-        viewport.scrollTop = viewport.scrollHeight;
-      }
-    }
-  }, []);
-
-  useEffect(() => {
-    scrollToBottom();
-  }, [messages, scrollToBottom]);
-
-
-  useEffect(() => {
-    const sessionString = sessionStorage.getItem('aetherChatUserSession');
-    if (sessionString) {
-      const session = JSON.parse(sessionString);
-      setStaffSession(session);
-      if (session.role === 'admin') {
-        const fetchStaff = async () => {
-          try {
-            const staff = await getStaffList();
-            setAllStaff(staff);
-          } catch (error) {
-            toast({ title: "Lỗi", description: "Không thể tải danh sách nhân viên.", variant: "destructive" });
-          }
-        };
-        fetchStaff();
-      }
-    }
-  }, [toast]);
 
   const fetchChatData = useCallback(async () => {
     if (customerId) {
@@ -141,7 +105,27 @@ export default function StaffIndividualChatPage() {
         setIsLoading(false);
       }
     }
-  }, [customerId, toast, staffSession]); // Added staffSession as dependency
+  }, [customerId, toast, staffSession]); 
+
+  useEffect(() => {
+    const sessionString = sessionStorage.getItem('aetherChatUserSession');
+    if (sessionString) {
+      const session = JSON.parse(sessionString);
+      setStaffSession(session);
+      if (session.role === 'admin') {
+        const fetchStaff = async () => {
+          try {
+            const staff = await getStaffList();
+            setAllStaff(staff);
+          } catch (error) {
+            toast({ title: "Lỗi", description: "Không thể tải danh sách nhân viên.", variant: "destructive" });
+          }
+        };
+        fetchStaff();
+      }
+    }
+  }, [toast]);
+
 
   useEffect(() => {
     fetchChatData();
@@ -153,7 +137,6 @@ export default function StaffIndividualChatPage() {
     try {
       const sentMessage = await sendStaffMessage(staffSession, customer.id, messageContent);
       setMessages(prev => [...prev, sentMessage]);
-      // setNewMessage(''); // Done by MessageInputForm
       setCustomer(prev => prev ? { ...prev, interactionStatus: 'replied_by_staff', lastMessagePreview: messageContent.substring(0,100), lastMessageTimestamp: new Date() } : null);
     } catch (error: any) {
       toast({ title: "Lỗi gửi tin nhắn", description: error.message, variant: "destructive"});
@@ -197,9 +180,7 @@ export default function StaffIndividualChatPage() {
         setMessages(prev => prev.filter(m => m.id !== messageId));
         setPinnedMessages(prev => prev.filter(pm => pm.id !== messageId));
         toast({ title: "Thành công", description: "Đã xóa tin nhắn." });
-        // If the deleted message was the last one, fetch customer list again or update preview locally
         if (result.customerId && customer?.lastMessagePreview && messages.find(m=>m.id === messageId)?.content.startsWith(customer.lastMessagePreview)) {
-            // simplified update, full refresh might be better
             fetchChatData(); 
         }
       }
@@ -215,15 +196,14 @@ export default function StaffIndividualChatPage() {
       const updatedCustomer = await pinMessageToCustomerChat(customer.id, messageId, staffSession);
       if (updatedCustomer) {
         setCustomer(updatedCustomer);
-        const messageToPin = messages.find(m => m.id === messageId) || pinnedMessages.find(m => m.id === messageId);
-        if (messageToPin && !pinnedMessages.find(pm => pm.id === messageId)) {
-          if (pinnedMessages.length >= 3) {
-            toast({title: "Thông báo", description: "Đã đạt tối đa 3 tin nhắn ghim. Bỏ ghim một tin nhắn trước."});
-            return;
-          }
-          setPinnedMessages(prev => [...prev, {...messageToPin, isPinned: true}]);
+        const messageToPin = messages.find(m => m.id === messageId);
+        if (messageToPin) {
+          setPinnedMessages(prev => {
+            const newPinned = [...prev.filter(p => p.id !== messageId), {...messageToPin, isPinned: true}];
+            return newPinned.slice(-3); // Keep only last 3
+          });
+          setMessages(prev => prev.map(m => m.id === messageId ? {...m, isPinned: true} : m));
         }
-        setMessages(prev => prev.map(m => m.id === messageId ? {...m, isPinned: true} : m));
         toast({title: "Thành công", description: "Đã ghim tin nhắn."});
       }
     } catch (error: any) {
@@ -404,7 +384,7 @@ export default function StaffIndividualChatPage() {
           <div className="flex items-center gap-3">
             <Avatar>
               <AvatarImage src={`https://picsum.photos/seed/${customer.id}/40/40`} data-ai-hint="profile avatar"/>
-              <AvatarFallback>{customer.name?.charAt(0) || customer.phoneNumber.charAt(0)}</AvatarFallback>
+              <AvatarFallback>{(customer.name || customer.phoneNumber).charAt(0)}</AvatarFallback>
             </Avatar>
             <div>
               <CardTitle className="text-lg">{customer.name || customer.phoneNumber}</CardTitle>
@@ -427,57 +407,21 @@ export default function StaffIndividualChatPage() {
           </div>
         </CardHeader>
         
-        {/* Pinned Messages Area */}
-        {pinnedMessages.length > 0 && (
-          <div className="p-2 border-b bg-amber-50 max-h-48 overflow-y-auto">
-            <h4 className="text-xs font-semibold text-amber-700 mb-1 sticky top-0 bg-amber-50 py-1 z-10">Tin nhắn đã ghim:</h4>
-            {pinnedMessages.map(msg => (
-              <MessageBubble 
-                key={`pinned-${msg.id}`} 
-                message={{...msg, isPinned: true}} 
-                viewerRole={staffSession.role} 
-                currentStaffSessionId={staffSession.id}
-                onPinMessage={handlePinMessage}
-                onUnpinMessage={handleUnpinMessage}
-                onDeleteMessage={handleDeleteMessage}
-                onEditMessage={handleEditMessage}
-              />
-            ))}
-          </div>
-        )}
-
-        <ScrollArea className="flex-grow p-4 bg-muted/20" ref={chatScrollAreaRef}>
-          <div className="space-y-3">
-            {messages.filter(m => !pinnedMessages.find(pm => pm.id === m.id)).map(msg => ( 
-              <MessageBubble 
-                key={msg.id} 
-                message={msg} 
-                viewerRole={staffSession.role} 
-                currentStaffSessionId={staffSession.id}
-                onPinMessage={handlePinMessage}
-                onUnpinMessage={handleUnpinMessage}
-                onDeleteMessage={handleDeleteMessage}
-                onEditMessage={handleEditMessage}
-              />
-            ))}
-            {isSendingMessage && messages[messages.length-1]?.userId === staffSession.id && (
-                <div className="flex items-end gap-2 my-2 justify-start">
-                  <Avatar className="h-8 w-8">
-                    <AvatarFallback className='bg-teal-500 text-white'>
-                      {staffSession.name?.charAt(0) || 'S'}
-                    </AvatarFallback>
-                  </Avatar>
-                  <div className="max-w-[70%] rounded-lg px-4 py-2 shadow-md bg-card border animate-pulse">
-                    <p className="text-sm italic text-muted-foreground">Đang gửi...</p>
-                  </div>
-                </div>
-            )}
-          </div>
-        </ScrollArea>
-        
-        <CardFooter className="p-0 border-t"> 
-           <MessageInputForm onSubmit={handleSendMessage} isLoading={isSendingMessage} />
-        </CardFooter>
+        <ChatWindow
+          userSession={staffSession} // Staff/admin is the "user" in this context
+          messages={messages}
+          pinnedMessages={pinnedMessages}
+          suggestedReplies={[]} // Staff don't get AI suggested replies for their own messages
+          onSendMessage={handleSendMessage}
+          onSuggestedReplyClick={() => {}} // No action for staff
+          isLoading={isSendingMessage}
+          viewerRole={staffSession.role} // 'staff' or 'admin'
+          onPinMessage={handlePinMessage}
+          onUnpinMessage={handleUnpinMessage}
+          onDeleteMessage={handleDeleteMessage}
+          onEditMessage={handleEditMessage}
+          currentStaffSessionId={staffSession.id}
+        />
       </Card>
 
       <Card className="w-full md:w-1/3 lg:w-1/4 h-full flex flex-col">
