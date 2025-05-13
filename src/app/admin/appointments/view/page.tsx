@@ -304,8 +304,7 @@ export default function AdminViewAppointmentsPage() {
                        <div className="flex-grow">
                         <h3 className="font-semibold text-base">{appt.service} - {appt.date} {appt.time}</h3>
                         <p className="text-sm text-muted-foreground">
-                          <Users className="inline-block mr-1 h-3 w-3"/>KH: {appt.customerName || appt.userId} {appt.customerPhoneNumber && `(${appt.customerPhoneNumber})`}
-                        </p>
+                          <Users className="inline-block mr-1 h-3 w-3"/>KH: {appt.customerName || `Người dùng ${appt.userId}`} {appt.customerPhoneNumber && `(${appt.customerPhoneNumber})`}</p>
                         {appt.branch && <p className="text-sm text-muted-foreground">Chi nhánh: {appt.branch}</p>}
                         {appt.staffName && <p className="text-sm text-muted-foreground">NV: {appt.staffName}</p>}
                         <p className="text-sm mt-1">

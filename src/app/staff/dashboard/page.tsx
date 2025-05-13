@@ -128,7 +128,7 @@ export default function StaffDashboardPage() {
               <div className="block md:hidden space-y-4">
                 {customers.slice(0, 10).map((customer) => (
                   <div key={customer.id} className="border rounded-lg p-4 flex flex-col gap-2 bg-muted/50">
-                    <div><span className="font-semibold">Tên: </span>{customer.name || `Khách ${customer.phoneNumber.slice(-4)}`}</div>
+                    <div><span className="font-semibold">Tên: </span>{customer.name || `Người dùng ${customer.phoneNumber}`}</div>
                     <div><span className="font-semibold">Điện thoại: </span>{customer.phoneNumber}</div>
                     <div><span className="font-semibold">Tương tác cuối: </span>{format(new Date(customer.lastInteractionAt), 'dd/MM/yyyy HH:mm', { locale: vi })}</div>
                     <div><span className="font-semibold">Được giao cho: </span>{customer.assignedStaffName || <span className="italic text-muted-foreground">Chưa giao</span>}</div>
@@ -157,7 +157,7 @@ export default function StaffDashboardPage() {
                   <TableBody>
                     {customers.slice(0, 10).map((customer) => (
                       <TableRow key={customer.id}>
-                        <TableCell className="font-medium max-w-[120px] truncate">{customer.name || `Khách ${customer.phoneNumber.slice(-4)}`}</TableCell>
+                        <TableCell className="font-medium max-w-[120px] truncate">{customer.name || `Người dùng ${customer.phoneNumber}`}</TableCell>
                         <TableCell className="max-w-[110px] truncate">{customer.phoneNumber}</TableCell>
                         <TableCell className="whitespace-nowrap">{format(new Date(customer.lastInteractionAt), 'dd/MM/yyyy HH:mm', { locale: vi })}</TableCell>
                         <TableCell className="max-w-[110px] truncate">{customer.assignedStaffName || <span className="italic text-muted-foreground">Chưa giao</span>}</TableCell>

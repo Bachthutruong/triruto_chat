@@ -571,7 +571,7 @@ export default function StaffRemindersPage() {
                   </div>
                 </TableCell>
                 <TableCell className="hidden md:table-cell">
-                  {reminder.customerName || 'Không có tên'}
+                  {reminder.customerName || `Người dùng ${reminder.customerId.slice(-4)}`}
                 </TableCell>
                 { currentUserSession?.role === 'admin' && 
                   <TableCell className="hidden lg:table-cell">{reminder.staffName || 'N/A'}</TableCell>

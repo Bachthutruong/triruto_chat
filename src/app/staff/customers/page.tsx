@@ -148,7 +148,7 @@ export default function StaffCustomersPage() {
                   {filteredCustomers.map((customer) => (
                     <TableRow key={customer.id}>
                       <TableCell className="font-medium">
-                        {customer.internalName || customer.name || 'Chưa có tên'}
+                        {customer.internalName || customer.name || `Người dùng ${customer.phoneNumber}`}
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center gap-1">

@@ -135,7 +135,7 @@ export default function AdminDashboardPage() {
                   {stats.recentAppointments.map((appt) => (
                     <TableRow key={appt.appointmentId}>
                       <TableCell>{appt.service}</TableCell>
-                      <TableCell>{appt.customerName || appt.userId}</TableCell>
+                      <TableCell>{appt.customerName || `Người dùng ${appt.userId}`}</TableCell>
                       <TableCell>{format(new Date(appt.date), 'dd/MM/yyyy', { locale: vi })}</TableCell>
                       <TableCell>{appt.time}</TableCell>
                     </TableRow>
@@ -163,7 +163,7 @@ export default function AdminDashboardPage() {
                     <TableBody>
                         {stats.recentCustomers.map((cust) => (
                             <TableRow key={cust.id}>
-                                <TableCell>{cust.name || `Khách ${cust.phoneNumber.slice(-4)}`}</TableCell>
+                                <TableCell>{cust.name || `Người dùng ${cust.phoneNumber}`}</TableCell>
                                 <TableCell>{cust.phoneNumber}</TableCell>
                                 <TableCell>{format(new Date(cust.createdAt), 'dd/MM/yyyy HH:mm', { locale: vi })}</TableCell>
                             </TableRow>

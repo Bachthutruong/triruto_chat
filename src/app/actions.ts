@@ -79,7 +79,7 @@ function transformCustomerToSession(customerDoc: ICustomer): UserSession {
         id: (customerDoc._id as Types.ObjectId).toString(),
         phoneNumber: customerDoc.phoneNumber,
         role: 'customer',
-        name: customerDoc.name || `Tên mặc định ${customerDoc.phoneNumber}`,
+        name: customerDoc.name || `Người dùng ${customerDoc.phoneNumber}`,
     };
 }
 
@@ -121,7 +121,7 @@ function transformAppointmentDocToDetails(apptDoc: any): AppointmentDetails {
         createdAt: new Date(apptDoc.createdAt as Date),
         updatedAt: new Date(apptDoc.updatedAt as Date),
         staffId: typeof apptDoc.staffId === 'string' ? apptDoc.staffId : staffIdObj?._id?.toString(),
-        customerName: customerIdObj?.name || `Tên mặc định ${customerIdObj?.phoneNumber}`,
+        customerName: customerIdObj?.name || `Người dùng ${customerIdObj?.phoneNumber}`,
         customerPhoneNumber: customerIdObj?.phoneNumber,
         staffName: staffIdObj?.name,
         packageType: apptDoc.packageType,
@@ -214,6 +214,7 @@ function transformAppSettingsDoc(doc: IAppSettings | null): AppSettings | null {
         suggestedQuestions: doc.suggestedQuestions && doc.suggestedQuestions.length > 0 ? doc.suggestedQuestions : defaultSettings.suggestedQuestions!,
         brandName: doc.brandName || defaultSettings.brandName,
         logoUrl: doc.logoUrl,
+        logoDataUri: doc.logoDataUri,
         footerText: doc.footerText || defaultSettings.footerText,
         metaTitle: doc.metaTitle || defaultSettings.metaTitle,
         metaDescription: doc.metaDescription || defaultSettings.metaDescription,
@@ -270,7 +271,7 @@ export async function handleCustomerAccess(phoneNumber: string): Promise<{
   } else {
     const newCustomerDoc = new CustomerModel({
       phoneNumber,
-      name: `Tên mặc định ${phoneNumber}`, // Updated default name
+      name: `Người dùng ${phoneNumber}`, 
       lastInteractionAt: new Date(),
       interactionStatus: 'unread',
       lastMessageTimestamp: new Date(),
@@ -806,7 +807,7 @@ export async function getCustomersForStaffView(
   return customerDocs.map(doc => ({
       id: (doc as any)._id.toString(),
       phoneNumber: doc.phoneNumber,
-      name: doc.name || `Tên mặc định ${doc.phoneNumber}`,
+      name: doc.name || `Người dùng ${doc.phoneNumber}`,
       internalName: doc.internalName,
       chatHistoryIds: doc.chatHistoryIds.map(id => id.toString()),
       appointmentIds: doc.appointmentIds.map(id => id.toString()),
@@ -856,7 +857,7 @@ export async function getCustomerDetails(customerId: string): Promise<{customer:
     const customerProfile: CustomerProfile = {
         id: (customerDoc as any)._id.toString(),
         phoneNumber: customerDoc.phoneNumber,
-        name: customerDoc.name || `Tên mặc định ${customerDoc.phoneNumber}`,
+        name: customerDoc.name || `Người dùng ${customerDoc.phoneNumber}`,
         internalName: customerDoc.internalName,
         chatHistoryIds: customerDoc.chatHistoryIds.map(id => id.toString()),
         appointmentIds: customerDoc.appointmentIds.map(id => id.toString()),
@@ -957,7 +958,7 @@ export async function assignStaffToCustomer(customerId: string, staffId: string)
   return {
         id: (updatedCustomer as any)._id.toString(),
         phoneNumber: updatedCustomer.phoneNumber,
-        name: updatedCustomer.name || `Tên mặc định ${updatedCustomer.phoneNumber}`,
+        name: updatedCustomer.name || `Người dùng ${updatedCustomer.phoneNumber}`,
         internalName: updatedCustomer.internalName,
         chatHistoryIds: updatedCustomer.chatHistoryIds.map(id => id.toString()),
         appointmentIds: updatedCustomer.appointmentIds.map(id => id.toString()),
@@ -990,7 +991,7 @@ export async function unassignStaffFromCustomer(customerId: string): Promise<Cus
    return {
         id: (updatedCustomer as any)._id.toString(),
         phoneNumber: updatedCustomer.phoneNumber,
-        name: updatedCustomer.name || `Tên mặc định ${updatedCustomer.phoneNumber}`,
+        name: updatedCustomer.name || `Người dùng ${updatedCustomer.phoneNumber}`,
         internalName: updatedCustomer.internalName,
         chatHistoryIds: updatedCustomer.chatHistoryIds.map(id => id.toString()),
         appointmentIds: updatedCustomer.appointmentIds.map(id => id.toString()),
@@ -1025,7 +1026,7 @@ export async function addTagToCustomer(customerId: string, tag: string): Promise
      return {
         id: (customer as any)._id.toString(),
         phoneNumber: customer.phoneNumber,
-        name: customer.name || `Tên mặc định ${customer.phoneNumber}`,
+        name: customer.name || `Người dùng ${customer.phoneNumber}`,
         internalName: customer.internalName,
         chatHistoryIds: customer.chatHistoryIds.map(id => id.toString()),
         appointmentIds: customer.appointmentIds.map(id => id.toString()),
@@ -1054,7 +1055,7 @@ export async function removeTagFromCustomer(customerId: string, tagToRemove: str
     return {
         id: (customer as any)._id.toString(),
         phoneNumber: customer.phoneNumber,
-        name: customer.name || `Tên mặc định ${customer.phoneNumber}`,
+        name: customer.name || `Người dùng ${customer.phoneNumber}`,
         internalName: customer.internalName,
         chatHistoryIds: customer.chatHistoryIds.map(id => id.toString()),
         appointmentIds: customer.appointmentIds.map(id => id.toString()),
@@ -1276,7 +1277,7 @@ export async function updateCustomerInternalName(customerId: string, internalNam
     return {
         id: (customer as any)._id.toString(),
         phoneNumber: customer.phoneNumber,
-        name: customer.name || `Tên mặc định ${customer.phoneNumber}`,
+        name: customer.name || `Người dùng ${customer.phoneNumber}`,
         internalName: customer.internalName,
         chatHistoryIds: customer.chatHistoryIds.map(id => id.toString()),
         appointmentIds: customer.appointmentIds.map(id => id.toString()),
@@ -1448,7 +1449,7 @@ export async function getCustomerListForSelect(): Promise<{ id: string; name: st
     const customers = await CustomerModel.find({}, 'name phoneNumber').sort({ name: 1 });
     return customers.map(c => ({
         id: (c as any)._id.toString(),
-        name: c.name || `Tên mặc định ${c.phoneNumber}`,
+        name: c.name || `Người dùng ${c.phoneNumber}`,
         phoneNumber: c.phoneNumber
     }));
 }
@@ -1481,7 +1482,7 @@ export async function getAdminDashboardStats(): Promise<AdminDashboardStats> {
         recentAppointments: recentAppointmentsDocs.map(transformAppointmentDocToDetails),
         recentCustomers: recentCustomersDocs.map(doc => ({
             id: (doc as any)._id.toString(),
-            name: doc.name || `Tên mặc định ${doc.phoneNumber}`, 
+            name: doc.name || `Người dùng ${doc.phoneNumber}`, 
             phoneNumber: doc.phoneNumber,
             createdAt: new Date(doc.createdAt as Date),
         })),
@@ -1597,7 +1598,7 @@ function transformReminderDocToReminder(doc: any): Reminder {
     : undefined;
   
   const customerName = doc.customerId && typeof doc.customerId === 'object' && 'name' in doc.customerId
-    ? doc.customerId.name || `Tên mặc định ${(doc.customerId as ICustomer).phoneNumber}`
+    ? doc.customerId.name || `Người dùng ${(doc.customerId as ICustomer).phoneNumber}`
     : undefined;
 
   return {
@@ -1798,7 +1799,7 @@ export async function getCustomersWithProductsAndReminders(staffId?: string): Pr
     
     result.push({
       id: (customer as any)._id.toString(),
-      name: customer.name || `Tên mặc định ${customer.phoneNumber}`,
+      name: customer.name || `Người dùng ${customer.phoneNumber}`,
       phoneNumber: customer.phoneNumber,
       internalName: customer.internalName,
       lastInteractionAt: customer.lastInteractionAt,
@@ -1853,7 +1854,7 @@ export async function pinMessageToCustomerChat(customerId: string, messageId: st
   return {
     id: updatedCustomerDoc._id.toString(),
     phoneNumber: updatedCustomerDoc.phoneNumber,
-    name: updatedCustomerDoc.name || `Tên mặc định ${updatedCustomerDoc.phoneNumber}`,
+    name: updatedCustomerDoc.name || `Người dùng ${updatedCustomerDoc.phoneNumber}`,
     internalName: updatedCustomerDoc.internalName,
     chatHistoryIds: updatedCustomerDoc.chatHistoryIds.map(id => id.toString()),
     appointmentIds: updatedCustomerDoc.appointmentIds.map(id => id.toString()),
@@ -1883,7 +1884,7 @@ export async function unpinMessageFromCustomerChat(customerId: string, messageId
     return {
     id: updatedCustomerDoc._id.toString(),
     phoneNumber: updatedCustomerDoc.phoneNumber,
-    name: updatedCustomerDoc.name || `Tên mặc định ${updatedCustomerDoc.phoneNumber}`,
+    name: updatedCustomerDoc.name || `Người dùng ${updatedCustomerDoc.phoneNumber}`,
     internalName: updatedCustomerDoc.internalName,
     chatHistoryIds: updatedCustomerDoc.chatHistoryIds.map(id => id.toString()),
     appointmentIds: updatedCustomerDoc.appointmentIds.map(id => id.toString()),
