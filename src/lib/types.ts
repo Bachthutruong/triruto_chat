@@ -147,7 +147,8 @@ export type AppSettings = {
 
   // Interface settings (from AdminSettingsPage)
   brandName?: string;
-  logoUrl?: string;
+  logoUrl?: string; // URL for an externally hosted logo
+  logoDataUri?: string; // Base64 encoded logo data URI
   footerText?: string;
 
   // SEO settings (from AdminSettingsPage)

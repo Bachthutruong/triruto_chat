@@ -1,25 +1,29 @@
 // src/app/admin/settings/page.tsx
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Separator } from '@/components/ui/separator';
-import { Save, Image as ImageIcon, Palette, FileText, Settings2, CalendarCog, Clock, UsersIcon, CalendarDays, Trash2, PlusCircle, CalendarIcon } from 'lucide-react';
+import { Save, Image as ImageIcon, Palette, FileText, Settings2, CalendarCog, Clock, UsersIcon, CalendarDays, Trash2, PlusCircle, CalendarIcon, UploadCloud, XCircle } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { getAppSettings, updateAppSettings } from '@/app/actions';
 import type { AppSettings, SpecificDayRule } from '@/lib/types';
 import { Checkbox } from '@/components/ui/checkbox';
 import { format, parse } from 'date-fns';
+import Image from 'next/image'; // For logo preview
 
 const defaultInitialBrandName = 'AetherChat';
+const MAX_LOGO_SIZE_MB = 1;
+const MAX_LOGO_SIZE_BYTES = MAX_LOGO_SIZE_MB * 1024 * 1024;
 
 const initialSettingsState: Partial<AppSettings> = {
   brandName: defaultInitialBrandName,
   logoUrl: '',
+  logoDataUri: '',
   greetingMessage: 'Tôi là trợ lý AI của bạn. Tôi có thể giúp gì cho bạn hôm nay? Bạn có thể hỏi về dịch vụ hoặc đặt lịch hẹn.',
   suggestedQuestions: ['Các dịch vụ của bạn?', 'Đặt lịch hẹn', 'Địa chỉ của bạn ở đâu?'],
   footerText: `© ${new Date().getFullYear()} ${defaultInitialBrandName}. Đã đăng ký Bản quyền.`,
@@ -49,6 +53,8 @@ export default function AdminSettingsPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [newOneTimeOffDate, setNewOneTimeOffDate] = useState('');
+  const [logoPreview, setLogoPreview] = useState<string | null>(null);
+  const logoInputRef = useRef<HTMLInputElement>(null);
 
   // State for new specific day rule
   const [newSpecificRuleDate, setNewSpecificRuleDate] = useState('');
@@ -63,7 +69,7 @@ export default function AdminSettingsPage() {
     try {
       const fetchedSettings = await getAppSettings();
       if (fetchedSettings) {
-        setSettings({
+        const fullSettings = {
             ...initialSettingsState, // Start with defaults
             ...fetchedSettings, // Override with fetched values
             // Ensure arrays are always initialized
@@ -73,13 +79,23 @@ export default function AdminSettingsPage() {
             weeklyOffDays: fetchedSettings.weeklyOffDays || [],
             oneTimeOffDates: fetchedSettings.oneTimeOffDates || [],
             specificDayRules: (fetchedSettings.specificDayRules || []).map(rule => ({...rule, id: rule.id || new Date().getTime().toString()})), // ensure ID
-        });
+        };
+        setSettings(fullSettings);
+        if (fullSettings.logoDataUri) {
+          setLogoPreview(fullSettings.logoDataUri);
+        } else if (fullSettings.logoUrl) {
+          setLogoPreview(fullSettings.logoUrl); // For external URLs, preview might work if CORS allows
+        } else {
+          setLogoPreview(null);
+        }
       } else {
         setSettings(initialSettingsState); 
+        setLogoPreview(null);
       }
     } catch (error) {
       toast({ title: "Lỗi", description: "Không thể tải cài đặt ứng dụng.", variant: "destructive" });
       setSettings(initialSettingsState);
+      setLogoPreview(null);
     } finally {
       setIsLoading(false);
     }
@@ -176,6 +192,38 @@ export default function AdminSettingsPage() {
     setSettings(prev => ({ ...prev, specificDayRules: (prev.specificDayRules || []).filter(rule => rule.id !== idToRemove)}));
   };
 
+  const handleLogoFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      if (!file.type.startsWith('image/')) {
+        toast({ title: "Lỗi", description: "Chỉ chấp nhận tệp hình ảnh.", variant: "destructive" });
+        if (logoInputRef.current) logoInputRef.current.value = "";
+        return;
+      }
+      if (file.size > MAX_LOGO_SIZE_BYTES) {
+        toast({ title: "Lỗi", description: `Kích thước logo không được vượt quá ${MAX_LOGO_SIZE_MB}MB.`, variant: "destructive" });
+        if (logoInputRef.current) logoInputRef.current.value = "";
+        return;
+      }
+
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const dataUri = reader.result as string;
+        setSettings(prev => ({ ...prev, logoDataUri: dataUri, logoUrl: '' })); // Prioritize DataURI, clear URL
+        setLogoPreview(dataUri);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleRemoveLogo = () => {
+    setSettings(prev => ({ ...prev, logoDataUri: undefined, logoUrl: '' })); // Clear both
+    setLogoPreview(null);
+    if (logoInputRef.current) {
+      logoInputRef.current.value = ""; // Reset file input
+    }
+  };
+
 
   const handleSaveSettings = async () => {
     setIsSubmitting(true);
@@ -215,10 +263,41 @@ export default function AdminSettingsPage() {
             <Label htmlFor="brandName">Tên Thương hiệu</Label>
             <Input id="brandName" name="brandName" value={settings.brandName || ''} onChange={handleInputChange} disabled={isSubmitting} />
           </div>
+          
           <div className="space-y-2">
-            <Label htmlFor="logoUrl">URL Logo</Label>
-            <Input id="logoUrl" name="logoUrl" type="url" placeholder="https://example.com/logo.png" value={settings.logoUrl || ''} onChange={handleInputChange} disabled={isSubmitting} />
+            <Label htmlFor="logoUpload">Logo Thương hiệu</Label>
+            <div className="flex items-center gap-4">
+              {logoPreview && (
+                <div className="relative w-20 h-20 border rounded-md overflow-hidden bg-muted">
+                  <Image src={logoPreview} alt="Xem trước logo" layout="fill" objectFit="contain" data-ai-hint="logo preview"/>
+                </div>
+              )}
+              <div className="flex-grow space-y-2">
+                <Input 
+                  id="logoUpload" 
+                  type="file" 
+                  accept="image/*" 
+                  onChange={handleLogoFileChange} 
+                  ref={logoInputRef}
+                  className="block w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20"
+                  disabled={isSubmitting}
+                />
+                 <p className="text-xs text-muted-foreground">Tải lên logo (khuyên dùng .png, .svg, kích thước tối đa {MAX_LOGO_SIZE_MB}MB).</p>
+              </div>
+              {logoPreview && (
+                <Button variant="ghost" size="icon" onClick={handleRemoveLogo} disabled={isSubmitting} title="Xóa logo đã tải lên">
+                  <XCircle className="h-5 w-5 text-destructive" />
+                </Button>
+              )}
+            </div>
           </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="logoUrl">Hoặc URL Logo bên ngoài</Label>
+            <Input id="logoUrl" name="logoUrl" type="url" placeholder="https://example.com/logo.png" value={settings.logoUrl || ''} onChange={(e) => { handleInputChange(e); if (e.target.value) setLogoPreview(e.target.value);}} disabled={isSubmitting} />
+             <p className="text-xs text-muted-foreground">Nếu bạn tải lên logo, trường này sẽ bị bỏ qua.</p>
+          </div>
+
            <div className="space-y-2">
             <Label htmlFor="footerText">Chữ Chân trang</Label>
             <Input id="footerText" name="footerText" value={settings.footerText || ''} onChange={handleInputChange} disabled={isSubmitting} />
@@ -393,4 +472,3 @@ export default function AdminSettingsPage() {
     </div>
   );
 }
-

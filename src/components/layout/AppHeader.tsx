@@ -1,3 +1,4 @@
+// src/components/layout/AppHeader.tsx
 'use client';
 
 import Link from 'next/link';
@@ -19,7 +20,18 @@ export function AppHeader({ userSession, onLogout, sidebarTrigger }: AppHeaderPr
   const appSettings = useAppSettingsContext();
 
   const brandName = appSettings?.brandName || 'AetherChat';
+  const logoDataUri = appSettings?.logoDataUri;
   const logoUrl = appSettings?.logoUrl;
+
+  const renderLogo = () => {
+    if (logoDataUri) {
+      return <Image src={logoDataUri} alt={`${brandName} Logo`} width={32} height={32} className="rounded-md h-8 w-8 md:h-10 md:w-10 object-contain" data-ai-hint="logo brand" />;
+    }
+    if (logoUrl) {
+      return <Image src={logoUrl} alt={`${brandName} Logo`} width={32} height={32} className="rounded-md h-8 w-8 md:h-10 md:w-10 object-contain" data-ai-hint="logo brand" />;
+    }
+    return <Logo className="h-8 w-8 md:h-10 md:w-10" />;
+  };
 
   return (
     <header className="py-3 px-4 md:px-6 border-b bg-card shadow-sm fixed top-0 left-0 right-0 z-50 h-16 flex items-center">
@@ -27,11 +39,7 @@ export function AppHeader({ userSession, onLogout, sidebarTrigger }: AppHeaderPr
         <div className="flex items-center gap-2">
           {sidebarTrigger && <div className="sm:hidden">{sidebarTrigger}</div>}
           <Link href="/" className="flex items-center gap-2 md:gap-3">
-            {logoUrl ? (
-              <Image src={logoUrl} alt={`${brandName} Logo`} width={32} height={32} className="rounded-md h-8 w-8 md:h-10 md:w-10" data-ai-hint="logo brand" />
-            ) : (
-              <Logo className="h-8 w-8 md:h-10 md:w-10" />
-            )}
+            {renderLogo()}
             <div>
               <h1 className="text-lg md:text-2xl font-bold text-primary">{brandName}</h1>
               <p className="text-xs md:text-sm text-muted-foreground hidden sm:block">Hỗ trợ trực tuyến thông minh</p>
@@ -77,4 +85,3 @@ export function AppHeader({ userSession, onLogout, sidebarTrigger }: AppHeaderPr
     </header>
   );
 }
-

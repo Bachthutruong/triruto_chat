@@ -20,7 +20,8 @@ const AppSettingsSchema: Schema<IAppSettings> = new Schema({
   greetingMessage: { type: String, default: 'Tôi là trợ lý AI của bạn. Tôi có thể giúp gì cho bạn hôm nay? Bạn có thể hỏi về dịch vụ hoặc đặt lịch hẹn.' },
   suggestedQuestions: [{ type: String, default: ['Dịch vụ của bạn là gì?', 'Làm thế nào để đặt lịch hẹn?'] }],
   brandName: { type: String, default: 'AetherChat' },
-  logoUrl: { type: String, default: '' },
+  logoUrl: { type: String }, // Made optional, can be an external URL
+  logoDataUri: { type: String }, // For storing base64 encoded logo
   footerText: { type: String, default: `© ${new Date().getFullYear()} AetherChat. Đã đăng ký Bản quyền.` },
   metaTitle: { type: String, default: 'AetherChat - Live Chat Thông Minh' },
   metaDescription: { type: String, default: 'Live chat tích hợp AI cho giao tiếp khách hàng liền mạch.' },
