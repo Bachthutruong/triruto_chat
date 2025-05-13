@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Separator } from '@/components/ui/separator';
-import { Save, Image as ImageIcon, Palette, FileText, Settings2, CalendarCog, Clock, UsersIcon, CalendarDays, Trash2, PlusCircle } from 'lucide-react';
+import { Save, Image as ImageIcon, Palette, FileText, Settings2, CalendarCog, Clock, UsersIcon, CalendarDays, Trash2, PlusCircle, CalendarIcon } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { getAppSettings, updateAppSettings } from '@/app/actions';
 import type { AppSettings, SpecificDayRule } from '@/lib/types';
@@ -205,7 +205,6 @@ export default function AdminSettingsPage() {
       <h1 className="text-3xl font-bold">Cài đặt Ứng dụng</h1>
       <p className="text-muted-foreground">Cấu hình giao diện, SEO, và các cài đặt hệ thống khác.</p>
 
-      {/* Giao diện & Chào hỏi Card ... (no changes from before) */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center"><Palette className="mr-2 h-5 w-5 text-primary" /> Cài đặt Giao diện & Chào hỏi</CardTitle>
@@ -237,7 +236,6 @@ export default function AdminSettingsPage() {
 
       <Separator />
 
-      {/* SEO Card ... (no changes from before) */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center"><FileText className="mr-2 h-5 w-5 text-primary" /> Cài đặt SEO</CardTitle>
@@ -282,15 +280,15 @@ export default function AdminSettingsPage() {
           <div className="grid md:grid-cols-2 gap-6">
             <div className="space-y-2">
               <Label htmlFor="numberOfStaff"><UsersIcon className="inline mr-1 h-4 w-4" />Số lượng nhân viên có thể phục vụ cùng lúc</Label>
-              <Input id="numberOfStaff" name="numberOfStaff" type="number" min="0" value={settings.numberOfStaff || 0} onChange={handleInputChange} disabled={isSubmitting} />
+              <Input id="numberOfStaff" name="numberOfStaff" type="number" min="0" value={settings.numberOfStaff ?? ''} onChange={handleInputChange} disabled={isSubmitting} />
             </div>
             <div className="space-y-2">
               <Label htmlFor="defaultServiceDurationMinutes"><Clock className="inline mr-1 h-4 w-4" />Thời gian dịch vụ mặc định (phút)</Label>
-              <Input id="defaultServiceDurationMinutes" name="defaultServiceDurationMinutes" type="number" min="5" value={settings.defaultServiceDurationMinutes || 60} onChange={handleInputChange} disabled={isSubmitting} />
+              <Input id="defaultServiceDurationMinutes" name="defaultServiceDurationMinutes" type="number" min="5" value={settings.defaultServiceDurationMinutes ?? ''} onChange={handleInputChange} disabled={isSubmitting} />
             </div>
           </div>
           <div className="space-y-2">
-            <Label htmlFor="workingHours"><Calendar className="inline mr-1 h-4 w-4" />Giờ nhận khách (HH:MM, cách nhau bằng dấu phẩy)</Label>
+            <Label htmlFor="workingHours"><CalendarIcon className="inline mr-1 h-4 w-4" />Giờ nhận khách (HH:MM, cách nhau bằng dấu phẩy)</Label>
             <Input id="workingHours" name="workingHours" value={(settings.workingHours || []).join(', ')} onChange={handleWorkingHoursChange} placeholder="Ví dụ: 09:00, 10:00, 13:30, 14:30" disabled={isSubmitting} />
             <p className="text-xs text-muted-foreground">Các giờ bắt đầu của lịch hẹn. Ví dụ: 09:00,10:00,14:00,15:00</p>
           </div>
@@ -358,7 +356,9 @@ export default function AdminSettingsPage() {
                   <Card key={rule.id || index} className="p-3 bg-muted/30">
                     <div className="flex justify-between items-start mb-2">
                         <p className="font-semibold text-sm">Ngày: {format(parse(rule.date, 'yyyy-MM-dd', new Date()), 'dd/MM/yyyy')}</p>
-                        <Button variant="ghost" size="icon" onClick={()={() => handleRemoveSpecificRule(rule.id!)} className="h-6 w-6"><Trash2 className="h-3 w-3 text-destructive"/></Button>
+                        <Button variant="ghost" size="icon" onClick={() => handleRemoveSpecificRule(rule.id!)} className="h-6 w-6">
+                           <Trash2 className="h-3 w-3 text-destructive"/>
+                        </Button>
                     </div>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
                         <p>Ngày nghỉ: {rule.isOff ? <span className="text-red-500">Có</span> : 'Không'}</p>
