@@ -14,14 +14,17 @@ import { startOfDay, endOfDay, subDays, formatISO, parse, isValid, parseISO as d
 
 // Ensure dotenv is configured correctly
 if (process.env.NODE_ENV !== 'production') {
-  dotenv.config({ path: process.cwd() + '/.env.local' }); 
+  dotenv.config({ path: process.cwd() + '/.env' }); // Prioritize .env for local, .env.local if it exists (common Next.js pattern)
 } else {
-  dotenv.config(); 
+  dotenv.config(); // For production, rely on environment variables set by the hosting provider
 }
 
 if (!process.env.MONGODB_URI) {
-  console.warn("WARNING: MONGODB_URI is not defined in .env file. Using fallback for build purposes only. App will not function correctly without it at runtime.");
-  process.env.MONGODB_URI = "mongodb://127.0.0.1:27017/aetherchat_fallback_build"; 
+  console.warn("WARNING: MONGODB_URI is not defined. Using fallback for build purposes only or if .env is missing. App will not function correctly at runtime without it.");
+  // It's generally better to let the app fail loudly if MONGODB_URI is critical and missing at runtime.
+  // For local dev, ensure .env file has MONGODB_URI. For production, ensure it's set in the environment.
+  // Fallback for build process if strictly necessary, but this often hides runtime issues.
+  // process.env.MONGODB_URI = "mongodb://127.0.0.1:27017/aetherchat_fallback_build";
 }
 
 
@@ -31,7 +34,7 @@ import CustomerModel from '@/models/Customer.model';
 import MessageModel from '@/models/Message.model';
 import AppointmentModel from '@/models/Appointment.model';
 import AppSettingsModel from '@/models/AppSettings.model';
-import KeywordMappingModel from '@/models/KeywordMappingModel';
+import KeywordMappingModel from '@/models/KeywordMapping.model';
 import TrainingDataModel from '@/models/TrainingData.model';
 import AppointmentRuleModel from '@/models/AppointmentRule.model';
 import NoteModel from '@/models/Note.model'; // Import NoteModel
@@ -505,6 +508,7 @@ export async function processUserMessage(
     currentDateTime: new Date().toISOString(),
     chatHistory: formattedHistory,
     appointmentRules: appointmentRulesFromDB.length > 0 ? appointmentRulesFromDB : undefined,
+    mediaDataUri: mediaDataUriForAI, // Pass media URI to scheduling flow
   });
 
   console.log("[ACTIONS] AI scheduleOutput (initial parse):", JSON.stringify(scheduleOutputFromAI, null, 2));

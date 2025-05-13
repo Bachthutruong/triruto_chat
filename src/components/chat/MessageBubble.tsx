@@ -2,7 +2,7 @@
 import type { Message, MessageViewerRole } from '@/lib/types';
 import { cn } from '@/lib/utils';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import { User, Bot, FileText, Download, Brain, Edit, Trash2, Thumbtack, ThumbtackOff } from 'lucide-react';
+import { User, Bot, FileText, Download, Brain, Edit, Trash2, Pin, PinOff } from 'lucide-react';
 import Image from 'next/image';
 import { useAppSettingsContext } from '@/contexts/AppSettingsContext';
 import { Button } from '@/components/ui/button';
@@ -148,11 +148,11 @@ export function MessageBubble({ message, viewerRole, onPinMessage, onUnpinMessag
              style={isUserSender ? { left: '-2.5rem' } : { right: '-2.5rem' }}>
           {message.isPinned ? (
             <Button variant="ghost" size="icon" className="h-6 w-6 text-amber-500" onClick={() => onUnpinMessage && onUnpinMessage(message.id)} title="Bỏ ghim">
-              <ThumbtackOff className="h-4 w-4" />
+              <PinOff className="h-4 w-4" />
             </Button>
           ) : (
             <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => onPinMessage && onPinMessage(message.id)} title="Ghim tin nhắn">
-              <Thumbtack className="h-4 w-4" />
+              <Pin className="h-4 w-4" />
             </Button>
           )}
           {/* Placeholder for Edit/Delete buttons for staff messages */}
