@@ -13,34 +13,7 @@ function isImageDataURI(uri: string): boolean {
   return typeof uri === 'string' && uri.startsWith('data:image/');
 }
 
-function isPdfDataURI(uri: string): boolean {
-    return typeof uri === 'string' && uri.startsWith('data:application/pdf');
-}
-
-function isFileDataURI(uri: string): boolean {
-  return typeof uri === 'string' && uri.startsWith('data:');
-}
-
-function getFileNameFromDataURI(dataURI: string): string {
-  const hashIndex = dataURI.lastIndexOf('#filename=');
-  if (hashIndex !== -1) {
-    try {
-      return decodeURIComponent(dataURI.substring(hashIndex + '#filename='.length));
-    } catch (e) {
-      // fallback if decoding fails
-    }
-  }
-  if (isImageDataURI(dataURI)) return "image_file"; // Simplified name for images
-  if (isPdfDataURI(dataURI)) return "document.pdf";
-  // Attempt to get a generic name based on MIME type
-  const mimeMatch = dataURI.match(/^data:([a-zA-Z0-9]+\/[a-zA-Z0-9-.+]+);/);
-  if (mimeMatch && mimeMatch[1]) {
-    const type = mimeMatch[1].split('/')[1] || 'file';
-    return `uploaded_file.${type.split('.').pop() || 'bin'}`;
-  }
-  return "uploaded_file";
-}
-
+// Removed unused isPdfDataURI and generic isFileDataURI
 
 export function MessageBubble({ message }: MessageBubbleProps) {
   const isUser = message.sender === 'user';
@@ -58,34 +31,55 @@ export function MessageBubble({ message }: MessageBubbleProps) {
   }
 
   const renderContent = () => {
-    if (isImageDataURI(message.content)) {
-      return (
-        <Image 
-          src={message.content} 
-          alt="Hình ảnh được gửi" 
-          width={200} // Adjust as needed
-          height={200} // Adjust as needed
-          className="rounded-md object-contain max-w-xs"
-          data-ai-hint="user image"
-        />
-      );
+    // Regex to match "dataURI#filename=encodedName\nOptionalText"
+    // It captures: 1=dataURI, 2=encodedName, 3=optionalText (including newline if present)
+    const dataUriRegex = /^(data:[^;]+;base64,[^#]+)#filename=([^#\s]+)(?:\n([\s\S]*))?$/;
+    const match = message.content.match(dataUriRegex);
+
+    if (match) {
+        const fileDataUri = match[1];
+        const fileNameEncoded = match[2];
+        const textContent = match[3]?.trim(); // Text part after the file data and potential newline
+        
+        let fileName = "attached_file";
+        try {
+            fileName = decodeURIComponent(fileNameEncoded);
+        } catch (e) { 
+            console.warn("Failed to decode filename from URI", e);
+        }
+
+        const fileElement = isImageDataURI(fileDataUri) ? (
+            <Image 
+              src={fileDataUri} 
+              alt={fileName || 'Hình ảnh được gửi'} 
+              width={200} 
+              height={200} 
+              className="rounded-md object-contain max-w-xs my-1"
+              data-ai-hint="user image"
+            />
+        ) : (
+            <a
+              href={fileDataUri}
+              download={fileName}
+              className="flex items-center gap-2 p-2 my-1 bg-secondary/50 hover:bg-secondary rounded-md text-sm text-foreground"
+            >
+              <FileText className="h-5 w-5 text-primary" />
+              <span className="truncate max-w-[150px] sm:max-w-xs">{fileName}</span>
+              <Download className="h-4 w-4 ml-auto text-muted-foreground flex-shrink-0" />
+            </a>
+        );
+
+        return (
+            <>
+                {fileElement}
+                {textContent && <p className="text-sm whitespace-pre-wrap mt-1">{textContent}</p>}
+            </>
+        );
     }
-    if (isFileDataURI(message.content)) {
-      const fileName = getFileNameFromDataURI(message.content);
-      return (
-        <a
-          href={message.content}
-          download={fileName}
-          className="flex items-center gap-2 p-2 bg-secondary/50 hover:bg-secondary rounded-md text-sm text-foreground"
-        >
-          <FileText className="h-5 w-5 text-primary" />
-          <span>{fileName}</span>
-          <Download className="h-4 w-4 ml-auto text-muted-foreground" />
-        </a>
-      );
-    }
+    // Original behavior for text-only messages
     return <p className="text-sm whitespace-pre-wrap">{message.content}</p>;
   };
+
 
   return (
     <div

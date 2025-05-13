@@ -53,10 +53,20 @@ import type { IReminder } from '@/models/Reminder.model';
 
 
 function formatChatHistoryForAI(messages: Message[]): string {
+  const dataUriRegex = /^(data:[^;]+;base64,[^#]+)#filename=([^#\s]+)(?:\n([\s\S]*))?$/;
   return messages
-    .map(msg => `${msg.sender === 'user' ? 'Khách' : 'AI'}: ${msg.content.startsWith('data:') ? '[Tệp đính kèm]' : msg.content}`) // Mask data URIs for history
+    .map(msg => {
+      let displayContent = msg.content;
+      const match = msg.content.match(dataUriRegex);
+      if (match) {
+        const textAfterFile = match[3]?.trim();
+        displayContent = `[Tệp đính kèm] ${textAfterFile || ''}`.trim();
+      }
+      return `${msg.sender === 'user' ? 'Khách' : 'AI'}: ${displayContent}`;
+    })
     .join('\n');
 }
+
 
 function transformCustomerToSession(customerDoc: ICustomer): UserSession {
     return {
@@ -302,7 +312,7 @@ export async function loginUser(phoneNumber: string, passwordAttempt: string): P
 
 
 export async function processUserMessage(
-  userMessageContent: string,
+  userMessageContent: string, // This can be combined (file + text) or just text
   currentUserSession: UserSession, 
   currentChatHistory: Message[] 
 ): Promise<{ aiMessage: Message; newSuggestedReplies: string[]; updatedAppointment?: AppointmentDetails }> {
@@ -310,9 +320,35 @@ export async function processUserMessage(
 
   const customerId = currentUserSession.id; 
 
+  // Parse userMessageContent for potential file and text
+  let textForAI = userMessageContent;
+  let mediaDataUriForAI: string | undefined = undefined;
+
+  const dataUriRegex = /^(data:[^;]+;base64,[^#]+)#filename=([^#\s]+)(?:\n([\s\S]*))?$/;
+  const match = userMessageContent.match(dataUriRegex);
+
+  if (match) {
+      mediaDataUriForAI = match[1]; // The data URI part
+      const fileNameEncoded = match[2];
+      let originalFileName = "attached_file";
+      try {
+          originalFileName = decodeURIComponent(fileNameEncoded);
+      } catch (e) { /* ignore */ }
+      
+      const textAfterFile = match[3]?.trim(); // Text part after the file data and newline
+      
+      if (textAfterFile) {
+          textForAI = textAfterFile; // User provided text with the file
+      } else {
+          // File sent alone, create a generic message for AI
+          textForAI = `Tôi đã gửi một tệp: ${originalFileName}. Bạn có thể phân tích hoặc mô tả nó không?`;
+      }
+  }
+
+
   const userMessageData: Partial<IMessage> = {
     sender: 'user',
-    content: userMessageContent, // This could be a data URI or text
+    content: userMessageContent, // Store the original content (can be combined)
     timestamp: new Date(),
     name: currentUserSession.name || 'Khách',
     customerId: new mongoose.Types.ObjectId(customerId) as any,
@@ -334,14 +370,13 @@ export async function processUserMessage(
   let scheduleOutput: ScheduleAppointmentOutput | null = null;
 
   const schedulingKeywords = ['book', 'schedule', 'appointment', 'meeting', 'reserve', 'đặt lịch', 'hẹn', 'cancel', 'hủy', 'reschedule', 'đổi lịch', 'dời lịch'];
-  const lowerCaseUserMessage = userMessageContent.toLowerCase();
-  const isDataUri = userMessageContent.startsWith('data:');
+  const lowerCaseTextMessage = textForAI.toLowerCase(); // Use parsed text for intent detection
   
-  // Determine if it's a scheduling intent (only for text messages)
-  const hasSchedulingIntent = !isDataUri && schedulingKeywords.some(keyword => lowerCaseUserMessage.includes(keyword));
+  // Determine if it's a scheduling intent (only if no media or if media is not primary focus)
+  const hasSchedulingIntent = !mediaDataUriForAI && schedulingKeywords.some(keyword => lowerCaseTextMessage.includes(keyword));
 
   if (hasSchedulingIntent) {
-    console.log(`[ACTIONS] User '${currentUserSession.phoneNumber}' has scheduling intent for: "${userMessageContent}"`);
+    console.log(`[ACTIONS] User '${currentUserSession.phoneNumber}' has scheduling intent for: "${textForAI}"`);
     try {
       const customerAppointmentsDocs = await AppointmentModel.find({ 
           customerId: new mongoose.Types.ObjectId(customerId) as any, 
@@ -356,7 +391,7 @@ export async function processUserMessage(
       }));
       
       scheduleOutput = await scheduleAppointmentAIFlow({
-        userInput: userMessageContent,
+        userInput: textForAI, // Use parsed text
         phoneNumber: currentUserSession.phoneNumber,
         userId: customerId, 
         existingAppointments: customerAppointmentsForAI,
@@ -486,12 +521,12 @@ export async function processUserMessage(
       scheduleOutput = { intent: 'error', confirmationMessage: aiResponseContent, requiresAssistance: true };
       processedAppointmentDB = null; 
     }
-  } else { // Not a scheduling intent, or it's a file upload
+  } else { // Not a scheduling intent OR there is a media attachment (media takes precedence over keyword check for general AI)
     let keywordFound = false;
-    if (!isDataUri) { // Only check keywords for text messages
+    if (!mediaDataUriForAI) { // Only check keywords for text-only messages (no media attachment)
         const keywordMappings = await getKeywordMappings();
         for (const mapping of keywordMappings) {
-          if (mapping.keywords.some(kw => lowerCaseUserMessage.includes(kw.toLowerCase()))) {
+          if (mapping.keywords.some(kw => lowerCaseTextMessage.includes(kw.toLowerCase()))) {
             aiResponseContent = mapping.response;
             keywordFound = true;
             break;
@@ -499,26 +534,12 @@ export async function processUserMessage(
         }
     }
 
-    if (!keywordFound) { // If no keyword match OR it's a data URI, send to general AI
+    if (!keywordFound) { // If no keyword match OR if there is a media attachment, send to general AI
       try {
-        let questionForAI = userMessageContent;
-        let mediaDataUriForAI: string | undefined = undefined;
-
-        if (isDataUri) {
-          // Strip the #filename=... suffix before sending to AI
-          const hashIndex = userMessageContent.lastIndexOf('#filename=');
-          if (hashIndex !== -1) {
-            mediaDataUriForAI = userMessageContent.substring(0, hashIndex);
-          } else {
-            mediaDataUriForAI = userMessageContent; // No filename suffix found
-          }
-          questionForAI = "Tôi đã gửi một tệp đính kèm. Bạn có thể xem và cho tôi biết nội dung được không, hoặc trả lời câu hỏi liên quan nếu có trong lịch sử chat?";
-        }
-
         const answerResult = await answerUserQuestion({
-          question: questionForAI,
+          question: textForAI, // Use parsed text
           chatHistory: formattedHistory,
-          mediaDataUri: mediaDataUriForAI,
+          mediaDataUri: mediaDataUriForAI, // Pass parsed media URI
         });
         aiResponseContent = answerResult.answer;
       } catch (error) {
@@ -833,7 +854,7 @@ export async function removeTagFromCustomer(customerId: string, tagToRemove: str
 export async function sendStaffMessage(
   staffSession: UserSession,
   customerId: string,
-  messageContent: string // Can be text or data URI
+  messageContent: string // Can be text or combined (file URI + text)
 ): Promise<Message> {
   await dbConnect();
   if (staffSession.role !== 'staff' && staffSession.role !== 'admin') {
@@ -845,7 +866,7 @@ export async function sendStaffMessage(
   }
   const staffMessageData: Partial<IMessage> = {
     sender: 'ai', // Staff messages are logged as 'ai' for simplicity in chat bubble styling for now
-    content: messageContent,
+    content: messageContent, // Store original combined content
     timestamp: new Date(),
     name: staffSession.name || 'Nhân viên', 
     customerId: (customer as any)._id,
