@@ -404,7 +404,7 @@ async function checkSlotAvailability(
 
   const overlappingAppointments = await AppointmentModel.find({
     date: targetDateString,
-    status: { $in: ['booked', 'pending_confirmation'] } 
+    status: { $in: ['booked', 'pending_confirmation', 'rescheduled'] } 
   });
 
   let concurrentAppointments = 0;
@@ -735,22 +735,46 @@ export async function getCustomersForStaffView(
   const query: any = {};
 
   if (requestingStaffRole === 'staff' && requestingStaffId) {
-    // Staff see customers assigned to them OR unassigned customers
-    query.$or = [
+    // Staff see customers assigned to them OR unassigned customers OR customers with their specific staff tag
+     const staffSpecificTag = `staff:${requestingStaffId}`; // Example staff-specific tag
+     query.$or = [
       { assignedStaffId: new mongoose.Types.ObjectId(requestingStaffId) as any },
       { assignedStaffId: { $exists: false } },
+      { tags: staffSpecificTag } // Customers tagged specifically for this staff member
     ];
-  } 
-  // Admins see all customers (no specific query modifications needed for role here, default is all)
+  } else if (requestingStaffRole === 'admin' && requestingStaffId) {
+     // Admin can see all, or if filterTags include an admin mention tag
+     if (filterTags && filterTags.some(tag => tag.startsWith('admin:'))) {
+        // If admin is specifically looking for chats mentioning an admin
+        query.tags = { $in: filterTags.filter(tag => tag.startsWith('admin:')) };
+     }
+     // If no admin-mention tag, admin sees all (no modification to 'query' needed here for all)
+  }
+  
 
   if (filterTags && filterTags.length > 0) {
-    query.tags = { $in: filterTags };
+    if (query.$or) { // If $or already exists (for staff view)
+      // We need to combine the tag filter with each condition in $or
+      query.$or = query.$or.map((condition: any) => ({
+        ...condition,
+        // Add tag filtering to existing conditions if not already conflicting
+        ...(condition.tags ? { tags: { $all: [...(Array.isArray(condition.tags.$in) ? condition.tags.$in : [condition.tags]), ...filterTags] } } : { tags: { $in: filterTags } })
+      }));
+       // Also, admin might be filtering general tags on all customers
+      if (requestingStaffRole === 'admin' && !query.tags) { // Only if not already filtered by admin-mention
+          query.tags = { $in: filterTags.filter(tag => !tag.startsWith('admin:')) }; // General tags for admin
+      }
+
+    } else {
+      // If no $or, just apply the tag filter directly
+      query.tags = { $in: filterTags };
+    }
   }
   
   const customerDocs = await CustomerModel.find(query)
       .populate<{ assignedStaffId: IUser }>('assignedStaffId', 'name')
       .sort({ lastInteractionAt: -1 })
-      .limit(100); // Increased limit slightly for admin view
+      .limit(100); 
   
   return customerDocs.map(doc => ({
       id: (doc as any)._id.toString(),
@@ -797,7 +821,7 @@ export async function getCustomerDetails(customerId: string): Promise<{customer:
         appointmentIds: customerDoc.appointmentIds.map(id => id.toString()),
         productIds: customerDoc.productIds.map(id => id.toString()),
         noteIds: customerDoc.noteIds.map(id => id.toString()),
-        tags: customerDoc.tags, 
+        tags: doc.tags,
         assignedStaffId: customerDoc.assignedStaffId?._id?.toString(),
         assignedStaffName: (customerDoc.assignedStaffId as IUser)?.name,
         lastInteractionAt: new Date(customerDoc.lastInteractionAt),
@@ -821,7 +845,7 @@ export async function getAllUsers(roles: UserRole[] = ['staff', 'admin']): Promi
 // Helper for assignment dropdowns
 export async function getStaffList(): Promise<{id: string, name: string}[]> {
     await dbConnect();
-    const staffUsers = await UserModel.find({ role: { $in: ['staff', 'admin'] } }, 'name');
+    const staffUsers = await UserModel.find({ role: { $in: ['staff', 'admin'] } }, 'name'); // Admins can also be assigned
     return staffUsers.map(user => ({
         id: (user._id as Types.ObjectId).toString(),
         name: user.name || `User ${user._id.toString().slice(-4)}`
@@ -994,13 +1018,24 @@ export async function sendStaffMessage(
   if (!customer) {
     throw new Error("Không tìm thấy khách hàng.");
   }
+
+  let senderName = staffSession.name || (staffSession.role === 'admin' ? 'Admin' : 'Nhân viên');
+  // For display purposes, if an admin is chatting where a staff member usually chats, 
+  // the customer might still see a generic "Support" or "AI" name.
+  // However, internally, we want to know who (staff or admin) sent the message.
+  // The "name" field in the message can be the actual staff/admin name.
+  // The client-side chat bubble rendering decides what to show to the customer.
+  // The current logic in processUserMessage sets AI message name to `${brandNameForAI} AI`.
+  // For staff messages, it's probably better to have a consistent "Staff" or brand AI name for customer view,
+  // but store the actual staff ID.
+
   const staffMessageData: Partial<IMessage> = {
-    sender: 'ai', // Staff messages are marked as 'ai' for display consistency in client chat bubble
+    sender: 'ai', // This tells the client to render it as an "AI/System/Staff" bubble, not a "user" bubble
     content: messageContent, 
     timestamp: new Date(),
-    name: staffSession.name || (staffSession.role === 'admin' ? 'Admin' : 'Nhân viên'), 
+    name: senderName, // Actual staff/admin name for internal record
     customerId: (customer as any)._id,
-    userId: new mongoose.Types.ObjectId(staffSession.id) as any, // ID of staff who sent
+    userId: new mongoose.Types.ObjectId(staffSession.id) as any, // ID of staff/admin who sent
   };
   const savedStaffMessageDoc = await new MessageModel(staffMessageData).save();
   await CustomerModel.findByIdAndUpdate(customerId, {
@@ -1622,5 +1657,17 @@ export async function getCustomersWithProductsAndReminders(staffId?: string): Pr
   }
   
   return result;
+}
+
+export async function getAllCustomerTags(): Promise<string[]> {
+  await dbConnect();
+  try {
+    const tags = await CustomerModel.distinct('tags');
+    // Filter out any null or empty string tags if they exist
+    return tags.filter(tag => typeof tag === 'string' && tag.trim() !== '');
+  } catch (error) {
+    console.error("Error fetching all customer tags:", error);
+    return [];
+  }
 }
 

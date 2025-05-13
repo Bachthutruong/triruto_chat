@@ -8,17 +8,24 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Users, MessageSquarePlus, Search, Filter, Loader2, AlertTriangle, Tag } from 'lucide-react';
 import Link from 'next/link';
 import type { CustomerProfile, UserSession } from '@/lib/types';
-import { getCustomersForStaffView } from '@/app/actions';
+import { getCustomersForStaffView, getAllCustomerTags } from '@/app/actions'; // Added getAllCustomerTags
 import { format } from 'date-fns';
 import { vi } from 'date-fns/locale';
+import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Label } from '@/components/ui/label';
+import { DialogFooter } from '@/components/ui/dialog';
 
 export default function AdminLiveChatsPage() {
   const [activeCustomers, setActiveCustomers] = useState<CustomerProfile[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
-  const [filterTag, setFilterTag] = useState('');
   const [adminSession, setAdminSession] = useState<UserSession | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  const [allAvailableTags, setAllAvailableTags] = useState<string[]>([]);
+  const [selectedTags, setSelectedTags] = useState<string[]>([]);
+  const [isTagPopoverOpen, setIsTagPopoverOpen] = useState(false);
 
   useEffect(() => {
     const sessionString = sessionStorage.getItem('aetherChatUserSession');
@@ -34,6 +41,16 @@ export default function AdminLiveChatsPage() {
       setError("Không tìm thấy phiên làm việc. Vui lòng đăng nhập lại.");
       setIsLoading(false);
     }
+    
+    const fetchTags = async () => {
+        try {
+          const tags = await getAllCustomerTags();
+          setAllAvailableTags(tags);
+        } catch (err) {
+          console.error("Không thể tải danh sách nhãn (Admin):", err);
+        }
+      };
+    fetchTags();
   }, []);
 
   const fetchCustomers = async () => {
@@ -41,9 +58,9 @@ export default function AdminLiveChatsPage() {
     setIsLoading(true);
     setError(null);
     try {
-      const tagsToFilter = filterTag.trim() ? filterTag.trim().split(',').map(t => t.trim()) : undefined;
-      // Admin sees all customers, pass undefined for staffId, but pass role for clarity
-      const customers = await getCustomersForStaffView(undefined, 'admin', tagsToFilter);
+      // Admin sees all customers, pass undefined for staffId.
+      // Pass selectedTags for filtering.
+      const customers = await getCustomersForStaffView(undefined, 'admin', selectedTags.length > 0 ? selectedTags : undefined);
       setActiveCustomers(customers);
     } catch (err) {
       console.error("Không thể tải danh sách khách hàng (Admin):", err);
@@ -55,9 +72,10 @@ export default function AdminLiveChatsPage() {
   
   useEffect(() => {
     if (adminSession) {
-      fetchCustomers();
+      fetchCustomers(); // Will also be triggered by selectedTags change due to handleApplyTagFilter
     }
-  }, [adminSession, filterTag]);
+  }, [adminSession, selectedTags]);
+
 
   const filteredCustomersBySearch = activeCustomers.filter(customer =>
     (customer.name?.toLowerCase() || '').includes(searchTerm.toLowerCase()) ||
@@ -66,24 +84,23 @@ export default function AdminLiveChatsPage() {
     (customer.tags || []).some(tag => tag.toLowerCase().includes(searchTerm.toLowerCase()))
   );
 
-   const handleFilterApply = () => {
-    fetchCustomers();
+   const handleApplyTagFilter = () => {
+    fetchCustomers(); 
+    setIsTagPopoverOpen(false);
   };
 
-  if (isLoading && !error) {
+  const handleClearTagFilter = () => {
+    setSelectedTags([]);
+    // fetchCustomers will be called by useEffect due to selectedTags change
+    setIsTagPopoverOpen(false);
+  };
+
+
+   if (isLoading && !error && !adminSession) { 
     return (
-      <div className="flex h-[calc(100vh-var(--header-height,4rem)-2rem)]">
-        <Card className="w-1/3 lg:w-1/4 h-full flex flex-col mr-4">
-          <CardHeader>
-            <CardTitle className="flex items-center"><Users className="mr-2 h-5 w-5" /> Danh sách Khách hàng</CardTitle>
-            <div className="pt-2"><Loader2 className="h-5 w-5 animate-spin text-primary" /></div>
-          </CardHeader>
-          <ScrollArea className="flex-grow"><CardContent><p className="p-4 text-muted-foreground">Đang tải...</p></CardContent></ScrollArea>
-        </Card>
-        <Card className="flex-grow h-full flex flex-col items-center justify-center">
+       <div className="flex h-[calc(100vh-var(--header-height,4rem)-2rem)] items-center justify-center">
            <Loader2 className="h-12 w-12 animate-spin text-primary" />
-        </Card>
-      </div>
+       </div>
     );
   }
 
@@ -111,23 +128,50 @@ export default function AdminLiveChatsPage() {
               className="h-9"
               icon={<Search className="h-4 w-4 text-muted-foreground" />}
             />
-            <div className="flex gap-2">
-              <Input 
-                placeholder="Lọc theo nhãn (vd: VIP, Admin Attention)" 
-                value={filterTag}
-                onChange={(e) => setFilterTag(e.target.value)}
-                className="h-9 flex-grow"
-                icon={<Tag className="h-4 w-4 text-muted-foreground" />}
-              />
-              <Button variant="outline" size="icon" className="h-9 w-9" onClick={handleFilterApply}>
-                <Filter className="h-4 w-4" />
-              </Button>
-            </div>
+            <Popover open={isTagPopoverOpen} onOpenChange={setIsTagPopoverOpen}>
+              <PopoverTrigger asChild>
+                 <Button variant="outline" className="h-9 w-full justify-start text-left font-normal">
+                  <Filter className="mr-2 h-4 w-4" /> 
+                  {selectedTags.length > 0 ? `Đã chọn ${selectedTags.length} nhãn` : "Lọc theo Nhãn"}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-[280px] p-0" align="start">
+                <div className="p-4">
+                  <h4 className="mb-2 font-medium leading-none">Chọn Nhãn để lọc</h4>
+                  <ScrollArea className="h-48">
+                    <div className="space-y-2">
+                      {allAvailableTags.map((tag) => (
+                        <div key={tag} className="flex items-center space-x-2">
+                          <Checkbox
+                            id={`admin-tag-filter-${tag}`}
+                            checked={selectedTags.includes(tag)}
+                            onCheckedChange={(checked) => {
+                              setSelectedTags(prev =>
+                                checked ? [...prev, tag] : prev.filter(t => t !== tag)
+                              );
+                            }}
+                          />
+                          <Label htmlFor={`admin-tag-filter-${tag}`} className="font-normal text-sm">
+                            {tag}
+                          </Label>
+                        </div>
+                      ))}
+                      {allAvailableTags.length === 0 && <p className="text-sm text-muted-foreground">Không có nhãn nào.</p>}
+                    </div>
+                  </ScrollArea>
+                </div>
+                <DialogFooter className="p-2 border-t">
+                  <Button variant="ghost" size="sm" onClick={handleClearTagFilter}>Xóa lọc</Button>
+                  <Button size="sm" onClick={handleApplyTagFilter}>Áp dụng</Button>
+                </DialogFooter>
+              </PopoverContent>
+            </Popover>
           </div>
         </CardHeader>
         <ScrollArea className="flex-grow">
           <CardContent className="p-0">
-            {filteredCustomersBySearch.length === 0 && <p className="p-4 text-muted-foreground">Không tìm thấy khách hàng phù hợp.</p>}
+            {isLoading && <div className="p-4 text-center text-muted-foreground"><Loader2 className="h-5 w-5 animate-spin inline mr-2"/>Đang tải danh sách...</div>}
+            {!isLoading && filteredCustomersBySearch.length === 0 && <p className="p-4 text-muted-foreground">Không tìm thấy khách hàng phù hợp.</p>}
             <ul className="divide-y divide-border">
               {filteredCustomersBySearch.map(customer => (
                 <li key={customer.id}>
@@ -146,11 +190,11 @@ export default function AdminLiveChatsPage() {
                           Tương tác cuối: {format(new Date(customer.lastInteractionAt), 'HH:mm dd/MM', { locale: vi })}
                         </span>
                          {customer.tags && customer.tags.length > 0 && 
-                            <div className="mt-1">
-                                {customer.tags.slice(0,2).map(tag => (
-                                    <span key={tag} className="text-xs bg-secondary text-secondary-foreground px-1.5 py-0.5 rounded-full mr-1">{tag}</span>
+                            <div className="mt-1 flex flex-wrap gap-1">
+                                {customer.tags.slice(0,3).map(tag => (
+                                    <span key={tag} className="text-xs bg-secondary text-secondary-foreground px-1.5 py-0.5 rounded-full">{tag}</span>
                                 ))}
-                                {customer.tags.length > 2 && <span className="text-xs text-muted-foreground">...</span>}
+                                {customer.tags.length > 3 && <span className="text-xs text-muted-foreground">...</span>}
                             </div>
                          }
                       </div>
@@ -173,3 +217,4 @@ export default function AdminLiveChatsPage() {
     </div>
   );
 }
+
