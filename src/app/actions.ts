@@ -14,14 +14,13 @@ import { startOfDay, endOfDay, subDays, formatISO } from 'date-fns';
 
 // Ensure dotenv is configured correctly
 if (process.env.NODE_ENV !== 'production') {
-  dotenv.config({ path: process.cwd() + '/.env.local' }); // Standard Next.js .env.local
+  dotenv.config({ path: process.cwd() + '/.env' }); 
 } else {
-  dotenv.config(); // For production, rely on environment variables set by the hosting provider
+  dotenv.config(); 
 }
 
 if (!process.env.MONGODB_URI) {
   console.error("FATAL ERROR: MONGODB_URI is not defined in .env file.");
-  // For server components, throwing an error might be better than process.exit
   throw new Error("FATAL ERROR: MONGODB_URI is not defined.");
 }
 
@@ -239,7 +238,7 @@ export async function handleCustomerAccess(phoneNumber: string): Promise<{
   const customizableGreetingPart = appSettings?.greetingMessage || 'Tôi là trợ lý AI của bạn. Tôi có thể giúp gì cho bạn hôm nay? Bạn có thể hỏi về dịch vụ hoặc đặt lịch hẹn.';
   const finalGreetingMessage = `Chào mừng bạn đến với ${brandName}! ${customizableGreetingPart}`;
   
-  let defaultSuggestedReplies = appSettings?.suggestedQuestions || ['Các dịch vụ của bạn?', 'Đặt lịch hẹn', 'Địa chỉ của bạn ở đâu?'];
+  const configuredSuggestedQuestions = appSettings?.suggestedQuestions || [];
 
 
   const welcomeMessageContent = initialMessages.length === 0
@@ -256,12 +255,17 @@ export async function handleCustomerAccess(phoneNumber: string): Promise<{
   initialMessages.push(welcomeMessage);
 
   let suggestedReplies: string[] = [];
-  try {
-    const repliesResult = await generateSuggestedReplies({ latestMessage: welcomeMessageContent });
-    suggestedReplies = repliesResult.suggestedReplies;
-  } catch (error) {
-    console.error('Error generating initial suggested replies:', error);
-    suggestedReplies = defaultSuggestedReplies;
+  if (configuredSuggestedQuestions.length > 0) {
+    suggestedReplies = configuredSuggestedQuestions;
+  } else {
+    try {
+      const repliesResult = await generateSuggestedReplies({ latestMessage: welcomeMessageContent });
+      suggestedReplies = repliesResult.suggestedReplies;
+    } catch (error) {
+      console.error('Error generating initial suggested replies:', error);
+      // Fallback if AI generation fails and no configured questions
+      suggestedReplies = ['Các dịch vụ của bạn?', 'Đặt lịch hẹn', 'Địa chỉ của bạn ở đâu?'];
+    }
   }
   
   return {
@@ -312,7 +316,7 @@ export async function loginUser(phoneNumber: string, passwordAttempt: string): P
 
 
 export async function processUserMessage(
-  userMessageContent: string, // This can be combined (file + text) or just text
+  userMessageContent: string, 
   currentUserSession: UserSession, 
   currentChatHistory: Message[] 
 ): Promise<{ aiMessage: Message; newSuggestedReplies: string[]; updatedAppointment?: AppointmentDetails }> {
@@ -320,7 +324,6 @@ export async function processUserMessage(
 
   const customerId = currentUserSession.id; 
 
-  // Parse userMessageContent for potential file and text
   let textForAI = userMessageContent;
   let mediaDataUriForAI: string | undefined = undefined;
 
@@ -328,19 +331,18 @@ export async function processUserMessage(
   const match = userMessageContent.match(dataUriRegex);
 
   if (match) {
-      mediaDataUriForAI = match[1]; // The data URI part
+      mediaDataUriForAI = match[1]; 
       const fileNameEncoded = match[2];
       let originalFileName = "attached_file";
       try {
           originalFileName = decodeURIComponent(fileNameEncoded);
       } catch (e) { /* ignore */ }
       
-      const textAfterFile = match[3]?.trim(); // Text part after the file data and newline
+      const textAfterFile = match[3]?.trim(); 
       
       if (textAfterFile) {
-          textForAI = textAfterFile; // User provided text with the file
+          textForAI = textAfterFile; 
       } else {
-          // File sent alone, create a generic message for AI
           textForAI = `Tôi đã gửi một tệp: ${originalFileName}. Bạn có thể phân tích hoặc mô tả nó không?`;
       }
   }
@@ -348,7 +350,7 @@ export async function processUserMessage(
 
   const userMessageData: Partial<IMessage> = {
     sender: 'user',
-    content: userMessageContent, // Store the original content (can be combined)
+    content: userMessageContent, 
     timestamp: new Date(),
     name: currentUserSession.name || 'Khách',
     customerId: new mongoose.Types.ObjectId(customerId) as any,
@@ -370,9 +372,8 @@ export async function processUserMessage(
   let scheduleOutput: ScheduleAppointmentOutput | null = null;
 
   const schedulingKeywords = ['book', 'schedule', 'appointment', 'meeting', 'reserve', 'đặt lịch', 'hẹn', 'cancel', 'hủy', 'reschedule', 'đổi lịch', 'dời lịch'];
-  const lowerCaseTextMessage = textForAI.toLowerCase(); // Use parsed text for intent detection
+  const lowerCaseTextMessage = textForAI.toLowerCase(); 
   
-  // Determine if it's a scheduling intent (only if no media or if media is not primary focus)
   const hasSchedulingIntent = !mediaDataUriForAI && schedulingKeywords.some(keyword => lowerCaseTextMessage.includes(keyword));
 
   if (hasSchedulingIntent) {
@@ -391,7 +392,7 @@ export async function processUserMessage(
       }));
       
       scheduleOutput = await scheduleAppointmentAIFlow({
-        userInput: textForAI, // Use parsed text
+        userInput: textForAI, 
         phoneNumber: currentUserSession.phoneNumber,
         userId: customerId, 
         existingAppointments: customerAppointmentsForAI,
@@ -521,9 +522,9 @@ export async function processUserMessage(
       scheduleOutput = { intent: 'error', confirmationMessage: aiResponseContent, requiresAssistance: true };
       processedAppointmentDB = null; 
     }
-  } else { // Not a scheduling intent OR there is a media attachment (media takes precedence over keyword check for general AI)
+  } else { 
     let keywordFound = false;
-    if (!mediaDataUriForAI) { // Only check keywords for text-only messages (no media attachment)
+    if (!mediaDataUriForAI) { 
         const keywordMappings = await getKeywordMappings();
         for (const mapping of keywordMappings) {
           if (mapping.keywords.some(kw => lowerCaseTextMessage.includes(kw.toLowerCase()))) {
@@ -534,12 +535,19 @@ export async function processUserMessage(
         }
     }
 
-    if (!keywordFound) { // If no keyword match OR if there is a media attachment, send to general AI
+    if (!keywordFound) { 
       try {
+        const approvedTrainingDocs = await TrainingDataModel.find({ status: 'approved' }).sort({updatedAt: -1}).limit(5);
+        const relevantTrainingData = approvedTrainingDocs.map(doc => ({
+            userInput: doc.userInput,
+            idealResponse: doc.idealResponse
+        }));
+
         const answerResult = await answerUserQuestion({
-          question: textForAI, // Use parsed text
+          question: textForAI, 
           chatHistory: formattedHistory,
-          mediaDataUri: mediaDataUriForAI, // Pass parsed media URI
+          mediaDataUri: mediaDataUriForAI, 
+          relevantTrainingData: relevantTrainingData.length > 0 ? relevantTrainingData : undefined,
         });
         aiResponseContent = answerResult.answer;
       } catch (error) {
@@ -569,7 +577,7 @@ export async function processUserMessage(
   });
 
   let newSuggestedReplies: string[] = [];
-  const defaultSuggestedReplies = appSettings?.suggestedQuestions || [];
+  const defaultSuggestedRepliesFromSettings = appSettings?.suggestedQuestions || [];
 
   try {
     let contextForReplies = aiResponseContent; 
@@ -596,11 +604,11 @@ export async function processUserMessage(
     console.error('Error generating new suggested replies:', error);
     newSuggestedReplies = (hasSchedulingIntent && scheduleOutput?.intent !== 'booked' && scheduleOutput?.intent !== 'cancelled' && scheduleOutput?.intent !== 'no_action_needed')
       ? ['Xác nhận giờ gợi ý', 'Hỏi giờ khác', 'Hủy yêu cầu'] 
-      : defaultSuggestedReplies.length > 0 ? defaultSuggestedReplies : ['Kể thêm cho tôi', 'Hỏi câu khác', 'Cảm ơn!'];
+      : defaultSuggestedRepliesFromSettings.length > 0 ? defaultSuggestedRepliesFromSettings : ['Kể thêm cho tôi', 'Hỏi câu khác', 'Cảm ơn!'];
   }
   newSuggestedReplies = [...new Set(newSuggestedReplies)].slice(0, 3); 
-  if (newSuggestedReplies.length === 0 && defaultSuggestedReplies.length > 0) {
-    newSuggestedReplies = defaultSuggestedReplies.slice(0,3);
+  if (newSuggestedReplies.length === 0 && defaultSuggestedRepliesFromSettings.length > 0) {
+    newSuggestedReplies = defaultSuggestedRepliesFromSettings.slice(0,3);
   }
 
 
@@ -621,7 +629,7 @@ export async function getCustomersForStaffView(staffId?: string): Promise<Custom
       // Staff see their own assigned customers OR unassigned customers
       query.$or = [
         { assignedStaffId: new mongoose.Types.ObjectId(staffId) as any },
-        { assignedStaffId: new mongoose.Types.ObjectId(staffId) as any },
+        // { assignedStaffId: new mongoose.Types.ObjectId(staffId) as any }, // This line seems redundant
         { assignedStaffId: { $exists: false } } 
       ];
     }
@@ -854,7 +862,7 @@ export async function removeTagFromCustomer(customerId: string, tagToRemove: str
 export async function sendStaffMessage(
   staffSession: UserSession,
   customerId: string,
-  messageContent: string // Can be text or combined (file URI + text)
+  messageContent: string 
 ): Promise<Message> {
   await dbConnect();
   if (staffSession.role !== 'staff' && staffSession.role !== 'admin') {
@@ -865,12 +873,12 @@ export async function sendStaffMessage(
     throw new Error("Không tìm thấy khách hàng.");
   }
   const staffMessageData: Partial<IMessage> = {
-    sender: 'ai', // Staff messages are logged as 'ai' for simplicity in chat bubble styling for now
-    content: messageContent, // Store original combined content
+    sender: 'ai', 
+    content: messageContent, 
     timestamp: new Date(),
     name: staffSession.name || 'Nhân viên', 
     customerId: (customer as any)._id,
-    userId: new mongoose.Types.ObjectId(staffSession.id) as any, // Staff user ID
+    userId: new mongoose.Types.ObjectId(staffSession.id) as any, 
   };
   const savedStaffMessageDoc = await new MessageModel(staffMessageData).save();
   await CustomerModel.findByIdAndUpdate(customerId, {
@@ -1455,9 +1463,9 @@ export async function getCustomersWithProductsAndReminders(staffId?: string): Pr
   if (staffId) {
     query.$or = [
       { assignedStaffId: staffId },
-      { assignedStaffId: { $exists: false } }
+      { assignedStaffId: { $exists: false } } // Include unassigned customers if staffId is provided
     ];
-  }
+  } // If no staffId (admin), get all customers.
   
   const customers = await CustomerModel.find(query).sort({ lastInteractionAt: -1 });
   
@@ -1477,10 +1485,12 @@ export async function getCustomersWithProductsAndReminders(staffId?: string): Pr
       lastInteractionAt: customer.lastInteractionAt,
       tags: customer.tags || [],
       assignedStaffId: customer.assignedStaffId?.toString(),
+      assignedStaffName: (customer as any).assignedStaffId?.name, // Attempt to get if populated, might not be
       pendingRemindersCount
     });
   }
   
   return result;
 }
+
 

@@ -13,6 +13,10 @@ export const AnswerUserQuestionInputSchema = z.object({
   question: z.string().describe('Câu hỏi từ người dùng.'),
   chatHistory: z.string().optional().describe('Lịch sử trò chuyện của người dùng.'),
   mediaDataUri: z.string().optional().describe("Một tệp phương tiện (hình ảnh, tài liệu) dưới dạng URI dữ liệu. Định dạng dự kiến: 'data:&lt;mimetype&gt;;base64,&lt;encoded_data&gt;'"),
+  relevantTrainingData: z.array(z.object({
+    userInput: z.string(),
+    idealResponse: z.string().optional(),
+  })).optional().describe('Các ví dụ huấn luyện đã được phê duyệt có liên quan để giúp hướng dẫn câu trả lời.'),
 });
 export type AnswerUserQuestionInput = z.infer<typeof AnswerUserQuestionInputSchema>;
 

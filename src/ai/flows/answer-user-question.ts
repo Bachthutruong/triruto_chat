@@ -23,8 +23,18 @@ const answerUserQuestionPrompt = ai.definePrompt({
   input: {schema: AnswerUserQuestionInputSchema},
   output: {schema: AnswerUserQuestionOutputSchema},
   prompt: `Bạn là một trợ lý AI hữu ích. Vui lòng trả lời câu hỏi của người dùng bằng tiếng Việt.
+
 {{#if chatHistory}}Đây là lịch sử trò chuyện (tin nhắn mới nhất ở cuối):
 {{{chatHistory}}}
+{{/if}}
+
+{{#if relevantTrainingData}}
+Dưới đây là một số ví dụ về các câu hỏi và câu trả lời tốt có thể liên quan. Hãy xem xét chúng khi bạn trả lời:
+{{#each relevantTrainingData}}
+Câu hỏi mẫu: {{{userInput}}}
+Trả lời mẫu: {{{idealResponse}}}
+---
+{{/each}}
 {{/if}}
 
 {{#if mediaDataUri}}
