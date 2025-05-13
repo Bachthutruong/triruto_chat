@@ -9,19 +9,20 @@ import type { ScheduleAppointmentOutput } from '@/ai/schemas/schedule-appointmen
 import { randomUUID } from 'crypto';
 import mongoose, { Types, Document } from 'mongoose';
 import dotenv from 'dotenv';
-import { startOfDay, endOfDay, subDays, formatISO } from 'date-fns';
+import { startOfDay, endOfDay, subDays, formatISO, parse, isValid } from 'date-fns';
 
 
 // Ensure dotenv is configured correctly
 if (process.env.NODE_ENV !== 'production') {
-  dotenv.config({ path: process.cwd() + '/.env' }); 
+  dotenv.config({ path: process.cwd() + '/.env.local' }); 
 } else {
   dotenv.config(); 
 }
 
 if (!process.env.MONGODB_URI) {
   console.error("FATAL ERROR: MONGODB_URI is not defined in .env file.");
-  throw new Error("FATAL ERROR: MONGODB_URI is not defined.");
+  // For server components/actions, throwing an error might be better than process.exit
+  throw new Error("FATAL ERROR: MONGODB_URI is not defined. Please check your .env or .env.local file.");
 }
 
 
@@ -397,6 +398,7 @@ export async function processUserMessage(
         userId: customerId, 
         existingAppointments: customerAppointmentsForAI,
         currentDateTime: new Date().toISOString(),
+        chatHistory: formattedHistory, // Pass chat history here
       });
 
       console.log("[ACTIONS] AI scheduleOutput RAW:", JSON.stringify(scheduleOutput, null, 2));
@@ -582,7 +584,8 @@ export async function processUserMessage(
   try {
     let contextForReplies = aiResponseContent; 
     if (scheduleOutput?.intent === 'pending_alternatives' && scheduleOutput.suggestedSlots?.length) {
-        contextForReplies = `AI: ${aiResponseContent} Bạn có thể chọn một trong các gợi ý sau: ${scheduleOutput.suggestedSlots.map(s => `${scheduleOutput.appointmentDetails?.service || 'dịch vụ'} vào ${s.date} lúc ${s.time}${s.branch ? ' tại ' + s.branch : ''}`).join(', ')}. Hoặc hỏi các lựa chọn khác.`;
+        const serviceName = scheduleOutput.appointmentDetails?.service || 'dịch vụ';
+        contextForReplies = `AI: ${aiResponseContent} Bạn có thể chọn một trong các gợi ý sau: ${scheduleOutput.suggestedSlots.map(s => `${serviceName} vào ${s.date} lúc ${s.time}${s.branch ? ' tại ' + s.branch : ''}`).join(', ')}. Hoặc hỏi các lựa chọn khác.`;
     } else if (scheduleOutput?.intent === 'clarification_needed' && scheduleOutput.missingInformation) {
         contextForReplies = `AI: ${aiResponseContent} Vui lòng cung cấp: ${scheduleOutput.missingInformation}.`;
     }
@@ -591,8 +594,9 @@ export async function processUserMessage(
     newSuggestedReplies = repliesResult.suggestedReplies;
 
     if (scheduleOutput?.intent === 'pending_alternatives' && scheduleOutput.suggestedSlots) {
+        const serviceName = scheduleOutput.appointmentDetails?.service || 'dịch vụ';
         const slotSuggestions = scheduleOutput.suggestedSlots.slice(0, 2).map(slot => 
-            `Chọn ${scheduleOutput.appointmentDetails?.service || 'dịch vụ'} ${slot.date} ${slot.time}${slot.branch ? ' ('+slot.branch+')' : ''}`
+            `Chọn ${serviceName} ${slot.date} ${slot.time}${slot.branch ? ' ('+slot.branch+')' : ''}`
         );
         newSuggestedReplies = [...new Set([...slotSuggestions, ...newSuggestedReplies])].slice(0,3); 
     } else if (scheduleOutput?.intent === 'clarification_needed' && scheduleOutput.missingInformation) {
@@ -998,10 +1002,24 @@ export async function getAppointments(filters: GetAppointmentsFilters): Promise<
   const query: any = {};
 
   if (filters.date) {
-    query.date = filters.date;
+    const parsedDate = parse(filters.date, 'yyyy-MM-dd', new Date());
+    if (isValid(parsedDate)) {
+      query.date = filters.date; // Keep as YYYY-MM-DD string for matching
+    } else {
+      console.warn(`[ACTIONS] Invalid date format received in getAppointments: ${filters.date}`);
+    }
   } else if (filters.dates && Array.isArray(filters.dates) && filters.dates.length > 0) {
-     query.date = { $in: filters.dates };
+     const validDates = filters.dates.filter(d => {
+       const pd = parse(d, 'yyyy-MM-dd', new Date());
+       return isValid(pd);
+     });
+     if (validDates.length > 0) {
+       query.date = { $in: validDates };
+     } else {
+       console.warn(`[ACTIONS] No valid dates found in dates array: ${filters.dates}`);
+     }
   }
+
 
   if (filters.customerId) {
     query.customerId = new mongoose.Types.ObjectId(filters.customerId) as any;
@@ -1017,7 +1035,7 @@ export async function getAppointments(filters: GetAppointmentsFilters): Promise<
   const appointmentDocs = await AppointmentModel.find(query)
     .populate<{ customerId: ICustomer }>('customerId', 'name phoneNumber')
     .populate<{ staffId: IUser }>('staffId', 'name')
-    .sort({ date: 1, time: 1 });
+    .sort({ date: 1, time: 1 }); // Ensure consistent sorting
   
   console.log(`[ACTIONS] Found ${appointmentDocs.length} appointments with query.`);
   return appointmentDocs.map(transformAppointmentDocToDetails);
@@ -1467,7 +1485,9 @@ export async function getCustomersWithProductsAndReminders(staffId?: string): Pr
     ];
   } // If no staffId (admin), get all customers.
   
-  const customers = await CustomerModel.find(query).sort({ lastInteractionAt: -1 });
+  const customers = await CustomerModel.find(query)
+    .populate('assignedStaffId', 'name')
+    .sort({ lastInteractionAt: -1 });
   
   const result = [];
   
@@ -1484,13 +1504,14 @@ export async function getCustomersWithProductsAndReminders(staffId?: string): Pr
       internalName: customer.internalName,
       lastInteractionAt: customer.lastInteractionAt,
       tags: customer.tags || [],
-      assignedStaffId: customer.assignedStaffId?.toString(),
-      assignedStaffName: (customer as any).assignedStaffId?.name, // Attempt to get if populated, might not be
+      assignedStaffId: customer.assignedStaffId?._id.toString(),
+      assignedStaffName: (customer.assignedStaffId as any)?.name, 
       pendingRemindersCount
     });
   }
   
   return result;
 }
+
 
 

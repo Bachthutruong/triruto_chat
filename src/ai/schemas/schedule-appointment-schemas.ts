@@ -31,6 +31,7 @@ export const ScheduleAppointmentInputSchema = z.object({
   userId: z.string().describe('ID duy nhất của người dùng.'),
   existingAppointments: z.array(AppointmentDetailsSchema).optional().describe('Danh sách các lịch hẹn hiện tại của người dùng để cung cấp ngữ cảnh, đặc biệt khi đổi hoặc hủy lịch.'),
   currentDateTime: z.string().datetime().describe('Ngày giờ hiện tại theo định dạng ISO, để giúp xác định ngữ cảnh cho "hôm nay", "ngày mai".'),
+  chatHistory: z.string().optional().describe('Lịch sử trò chuyện gần đây của người dùng, để cung cấp ngữ cảnh.'),
 });
 export type ScheduleAppointmentInput = z.infer<typeof ScheduleAppointmentInputSchema>;
 
@@ -51,3 +52,4 @@ export const ScheduleAppointmentOutputSchema = z.object({
   requiresAssistance: z.boolean().optional().describe('True nếu AI không thể xử lý yêu cầu và cần sự hỗ trợ của con người.'),
 });
 export type ScheduleAppointmentOutput = z.infer<typeof ScheduleAppointmentOutputSchema>;
+

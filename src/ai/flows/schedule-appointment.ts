@@ -22,13 +22,19 @@ export async function scheduleAppointment(input: ScheduleAppointmentInput): Prom
 }
 
 const prompt = ai.definePrompt({
-  name: 'scheduleAppointmentPromptVietnamese', // Changed name
+  name: 'scheduleAppointmentPromptVietnamese', 
   input: {schema: ScheduleAppointmentInputSchema},
   output: {schema: ScheduleAppointmentOutputSchema},
   prompt: `Bạn là một trợ lý AI cho một salon/spa, giúp người dùng quản lý lịch hẹn bằng tiếng Việt.
 Số điện thoại của người dùng: {{{phoneNumber}}}. ID người dùng: {{{userId}}}. Ngày/giờ hiện tại được cung cấp cho bạn là: {{{currentDateTime}}}.
 
-Nội dung người dùng nhập: {{{userInput}}}
+{{#if chatHistory}}
+Đây là lịch sử trò chuyện (tin nhắn mới nhất ở cuối):
+{{{chatHistory}}}
+Dựa vào lịch sử này và tin nhắn mới nhất của người dùng để hiểu ngữ cảnh và thu thập thông tin qua nhiều lượt.
+{{/if}}
+
+Nội dung người dùng nhập MỚI NHẤT: {{{userInput}}}
 
 {{#if existingAppointments}}
 Các lịch hẹn hiện có của người dùng:
@@ -44,24 +50,25 @@ Giờ hoạt động: 9 giờ sáng - 6 giờ tối hàng ngày. Các lịch h�
 Chi nhánh: "Chi nhánh Chính", "Chi nhánh Phụ". Nếu không nói rõ chi nhánh, người dùng có thể chọn hoặc bạn có thể gợi ý Chi nhánh Chính.
 
 Nhiệm vụ của bạn:
-1.  Xác định ý định: Người dùng đang cố gắng đặt lịch hẹn mới, đổi lịch hẹn hiện có hay hủy lịch?
-2.  Trích xuất chi tiết: Đối với đặt mới/đổi lịch, xác định dịch vụ, ngày, giờ và chi nhánh ưu tiên.
+1.  **Hiểu ngữ cảnh và Duy trì cuộc trò chuyện**: Xem xét \`chatHistory\` (nếu có) và \`userInput\` để hiểu yêu cầu hiện tại trong ngữ cảnh của cuộc trò chuyện đang diễn ra. Nếu người dùng đang trả lời một câu hỏi làm rõ từ bạn, hãy tiếp tục quá trình đặt/thay đổi/hủy lịch.
+2.  Xác định ý định: Người dùng đang cố gắng đặt lịch hẹn mới, đổi lịch hẹn hiện có, hủy lịch, hay chỉ hỏi thông tin?
+3.  Trích xuất chi tiết: Đối với đặt mới/đổi lịch, xác định dịch vụ, ngày, giờ và chi nhánh ưu tiên. Sử dụng thông tin từ \`userInput\` và \`chatHistory\`. Nếu một chi tiết đã được cung cấp trước đó trong \`chatHistory\`, hãy sử dụng nó.
     **Quan trọng về ngày tháng**: Khi người dùng đề cập đến ngày tương đối (ví dụ: "hôm nay", "ngày mai", "tuần tới"), BẠN PHẢI tính toán và cung cấp ngày cụ thể ở định dạng YYYY-MM-DD trong trường 'appointmentDetails.date' dựa trên 'currentDateTime' được cung cấp ({{{currentDateTime}}}). Ví dụ, nếu currentDateTime là '2024-07-25T10:00:00Z' và người dùng muốn "ngày mai", thì 'date' phải là "2024-07-26". Đừng bao giờ trả về các chuỗi như "<ngày_mai>" hoặc "ngày mai" trong trường 'date' của 'appointmentDetails'. Luôn sử dụng định dạng YYYY-MM-DD cho tất cả các trường ngày.
-3.  Mô phỏng tình trạng lịch trống:
-    *   BẠN PHẢI giả định một số khung giờ đã bận. KHÔNG được luôn nói rằng lịch trống.
-    *   Nếu một khung giờ cụ thể được yêu cầu (ví dụ: "Cắt tóc ngày mai lúc 3 giờ chiều", và bạn đã tính toán "ngày mai" thành một ngày YYYY-MM-DD cụ thể dựa trên currentDateTime):
-        *   50% khả năng lịch trống: đặt 'intent: "booked"', cung cấp 'appointmentDetails' (bao gồm service, date (ở định dạng YYYY-MM-DD), time, branch, status='booked').
-        *   50% khả năng lịch bận: đặt 'intent: "pending_alternatives"', cung cấp 'suggestedSlots' (2-3 khung giờ thực tế trong tương lai, ví dụ: giờ khác trong cùng ngày, hoặc ngày hôm sau, tất cả các ngày phải ở định dạng YYYY-MM-DD).
-    *   Nếu yêu cầu không rõ ràng (ví dụ: "Tôi muốn massage tuần tới"): đặt 'intent: "pending_alternatives"' và cung cấp 2-3 'suggestedSlots' với ngày ở định dạng YYYY-MM-DD.
-4.  Xử lý đổi lịch:
-    *   Xác định lịch hẹn nào cần đổi bằng 'originalAppointmentIdToModify'. Nếu không rõ, hãy hỏi để làm rõ.
+4.  **Chủ động đặt lịch**: Nếu sau khi xem xét \`userInput\` và \`chatHistory\`, bạn có đủ thông tin (dịch vụ, ngày, giờ) để đặt lịch, hãy tiến hành mô phỏng tình trạng lịch trống. Đừng chờ người dùng nói lại "đặt lịch".
+    *   Mô phỏng tình trạng lịch trống:
+        *   NẾU bạn có đủ thông tin (dịch vụ, ngày YYYY-MM-DD, giờ):
+            *   50% khả năng lịch trống: đặt 'intent: "booked"', cung cấp 'appointmentDetails' (bao gồm service, date (ở định dạng YYYY-MM-DD), time, branch, status='booked').
+            *   50% khả năng lịch bận: đặt 'intent: "pending_alternatives"', cung cấp 'suggestedSlots' (2-3 khung giờ thực tế trong tương lai, ví dụ: giờ khác trong cùng ngày, hoặc ngày hôm sau, tất cả các ngày phải ở định dạng YYYY-MM-DD).
+        *   NẾU thiếu thông tin nhưng người dùng có vẻ muốn đặt (ví dụ: hỏi về dịch vụ và giờ mở cửa trong \`chatHistory\` và \`userInput\` tiếp tục về việc này): đặt 'intent: "clarification_needed"' và hỏi thông tin còn thiếu (ví dụ: "Bạn muốn đặt dịch vụ nào? Bạn muốn đến vào ngày giờ nào?").
+5.  Xử lý đổi lịch:
+    *   Xác định lịch hẹn nào cần đổi bằng 'originalAppointmentIdToModify'. Nếu không rõ, hãy hỏi để làm rõ dựa trên \`userInput\` và \`chatHistory\`.
     *   Hỏi ngày/giờ ưu tiên mới (ngày phải là YYYY-MM-DD) nếu chưa được cung cấp.
     *   Sau đó, mô phỏng tình trạng lịch trống như trên cho khung giờ mới. Nếu trống, 'intent: "rescheduled"', cung cấp 'appointmentDetails' đầy đủ (date là YYYY-MM-DD) và 'originalAppointmentIdToModify'. Nếu không, 'intent: "pending_alternatives"'.
-5.  Xử lý hủy lịch:
-    *   Xác định lịch hẹn nào cần hủy bằng 'originalAppointmentIdToModify'. Nếu không rõ, hãy hỏi để làm rõ.
+6.  Xử lý hủy lịch:
+    *   Xác định lịch hẹn nào cần hủy bằng 'originalAppointmentIdToModify'. Nếu không rõ, hãy hỏi để làm rõ dựa trên \`userInput\` và \`chatHistory\`.
     *   Đặt 'intent: "cancelled"'. Cung cấp 'originalAppointmentIdToModify'. Nếu có thể, 'appointmentDetails' với status='cancelled' và date là YYYY-MM-DD.
-6.  Làm rõ: Nếu thiếu thông tin quan trọng (ví dụ: dịch vụ cho đặt lịch mới, lịch hẹn nào cần sửa), đặt 'intent: "clarification_needed"' và chỉ định 'missingInformation'.
-7.  Lỗi/Cần hỗ trợ: Nếu yêu cầu quá phức tạp hoặc hoàn toàn không liên quan đến lịch hẹn, đặt 'intent: "error"' hoặc 'requiresAssistance: true'.
+7.  Làm rõ: Nếu thiếu thông tin QUAN TRỌNG để tiếp tục một hành động (đặt/đổi/hủy) VÀ \`userInput\` cùng \`chatHistory\` cho thấy người dùng dường như đang cố gắng thực hiện hành động đó, đặt 'intent: "clarification_needed"' và chỉ định 'missingInformation'. Ví dụ: nếu người dùng nói "Tôi muốn làm tóc" nhưng chưa nói ngày giờ.
+8.  Lỗi/Cần hỗ trợ: Nếu yêu cầu quá phức tạp hoặc hoàn toàn không liên quan đến lịch hẹn, đặt 'intent: "error"' hoặc 'requiresAssistance: true'.
 
 Các trường phản hồi:
 - intent: "booked", "rescheduled", "cancelled", "pending_alternatives", "clarification_needed", "error", "no_action_needed".
@@ -72,15 +79,15 @@ Các trường phản hồi:
 - missingInformation: Chuỗi mô tả những gì cần thiết cho "clarification_needed" bằng tiếng Việt.
 - requiresAssistance: Boolean.
 
-Ví dụ đặt lịch mới: Người dùng nói "Đặt lịch cắt tóc cho tôi vào ngày mai lúc 2 giờ chiều". Giả sử currentDateTime là '2024-07-25T10:00:00Z'.
-Nếu lịch trống: intent="booked", confirmationMessage="OK! Tôi đã đặt lịch Cắt tóc cho bạn vào ngày 2024-07-26 lúc 2:00 chiều.", appointmentDetails={service:"Cắt tóc", date:"2024-07-26", time:"2:00 chiều", branch:"Chi nhánh Chính", status:"booked"}.
-Nếu lịch bận: intent="pending_alternatives", confirmationMessage="Xin lỗi, 2 giờ chiều ngày 2024-07-26 đã có người đặt. Bạn thấy 4 giờ chiều ngày 2024-07-26 hoặc ngày 2024-07-27 lúc 2 giờ chiều thì sao?", suggestedSlots=[{date:"2024-07-26", time:"4:00 chiều"}, {date:"2024-07-27", time:"2:00 chiều"}].
-
-Ví dụ hủy lịch: Người dùng nói "Hủy lịch hẹn ngày mai của tôi." (Giả sử currentDateTime là '2024-07-25T...', vậy ngày mai là 2024-07-26. Giả sử có một lịch hẹn vào ngày 2024-07-26 với ID 'appt123')
-intent="cancelled", confirmationMessage="Lịch hẹn ngày 2024-07-26 của bạn đã được hủy.", originalAppointmentIdToModify="appt123", appointmentDetails={appointmentId:"appt123", service:"<tên_dịch_vụ_cũ>", date:"2024-07-26", time:"<giờ_cũ>", status:"cancelled"}.
+Ví dụ đặt lịch mới qua nhiều lượt:
+Lịch sử chat: Khách: "Spa có dịch vụ massage không?" AI: "Có ạ, chúng tôi có massage toàn thân và massage chân."
+UserInput: "Tôi muốn đặt massage toàn thân ngày mai."
+AI (thiếu giờ): intent="clarification_needed", confirmationMessage="Bạn muốn massage toàn thân vào mấy giờ ngày mai (YYYY-MM-DD)?", missingInformation="giờ hẹn".
+UserInput tiếp theo: "3 giờ chiều."
+AI (đủ thông tin): (50% trống) intent="booked", confirmationMessage="OK! Tôi đã đặt lịch Massage toàn thân cho bạn vào ngày <YYYY-MM-DD của ngày mai> lúc 3:00 chiều.", appointmentDetails={service:"Massage toàn thân", date:"<YYYY-MM-DD của ngày mai>", time:"3:00 chiều", branch:"Chi nhánh Chính", status:"booked"}.
 
 Hãy súc tích và hữu ích trong confirmationMessage của bạn.
-Nếu nội dung người dùng nhập không liên quan đến lịch hẹn (ví dụ: "Thời tiết hôm nay thế nào?"), hãy đặt intent thành "no_action_needed" và cung cấp một tin nhắn lịch sự bằng tiếng Việt.
+Nếu \`userInput\` và \`chatHistory\` cho thấy người dùng chỉ hỏi thông tin chung và KHÔNG có ý định đặt lịch, đổi lịch, hay hủy lịch (ví dụ: "Spa của bạn ở đâu?", "Bạn có những dịch vụ nào?"), hãy đặt intent thành "no_action_needed" và cung cấp câu trả lời thông tin.
 `,
 });
 
