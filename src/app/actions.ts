@@ -1,7 +1,7 @@
 // src/app/actions.ts
 'use server';
 
-import type { Message, UserSession, AppointmentDetails, Product, Note, CustomerProfile, UserRole, KeywordMapping, TrainingData, TrainingDataStatus, AppointmentRule, AppSettings, GetAppointmentsFilters, AdminDashboardStats, StaffDashboardStats, ProductItem, Reminder, ReminderStatus, ReminderPriority } from '@/lib/types';
+import type { Message, UserSession, AppointmentDetails, Product, Note, CustomerProfile, UserRole, KeywordMapping, TrainingData, TrainingDataStatus, AppointmentRule, AppSettings, GetAppointmentsFilters, AdminDashboardStats, StaffDashboardStats, ProductItem, Reminder, ReminderStatus, ReminderPriority, SpecificDayRule } from '@/lib/types';
 import { answerUserQuestion } from '@/ai/flows/answer-user-question';
 import { generateSuggestedReplies } from '@/ai/flows/generate-suggested-replies';
 import { scheduleAppointment as scheduleAppointmentAIFlow } from '@/ai/flows/schedule-appointment';
@@ -9,7 +9,7 @@ import type { ScheduleAppointmentOutput } from '@/ai/schemas/schedule-appointmen
 import { randomUUID } from 'crypto';
 import mongoose, { Types, Document } from 'mongoose';
 import dotenv from 'dotenv';
-import { startOfDay, endOfDay, subDays, formatISO, parse, isValid } from 'date-fns';
+import { startOfDay, endOfDay, subDays, formatISO, parse, isValid, parseISO as dateFnsParseISO, setHours, setMinutes, setSeconds, setMilliseconds, getDay, addMinutes, isBefore, isEqual, format as dateFnsFormat } from 'date-fns';
 
 
 // Ensure dotenv is configured correctly
@@ -97,21 +97,13 @@ function transformMessageDocToMessage(msgDoc: IMessage): Message {
 }
 
 function transformAppointmentDocToDetails(apptDoc: any): AppointmentDetails {
-    let customerName: string | undefined = undefined;
-    let customerPhoneNumber: string | undefined = undefined;
-    if (apptDoc.customerId && typeof apptDoc.customerId === 'object' && 'name' in apptDoc.customerId && 'phoneNumber' in apptDoc.customerId) {
-        customerName = apptDoc.customerId.name;
-        customerPhoneNumber = apptDoc.customerId.phoneNumber;
-    }
-
-    let staffName: string | undefined = undefined;
-    if (apptDoc.staffId && typeof apptDoc.staffId === 'object' && 'name' in apptDoc.staffId) {
-        staffName = apptDoc.staffId.name;
-    }
+    // Safety checks for populated fields
+    const customerIdObj = apptDoc.customerId && typeof apptDoc.customerId === 'object' ? apptDoc.customerId : null;
+    const staffIdObj = apptDoc.staffId && typeof apptDoc.staffId === 'object' ? apptDoc.staffId : null;
 
     return {
         appointmentId: (apptDoc._id as Types.ObjectId).toString(),
-        userId: typeof apptDoc.customerId === 'string' ? apptDoc.customerId : (apptDoc.customerId as any)?._id?.toString(),
+        userId: typeof apptDoc.customerId === 'string' ? apptDoc.customerId : customerIdObj?._id?.toString(),
         service: apptDoc.service,
         time: apptDoc.time,
         date: apptDoc.date, 
@@ -120,14 +112,15 @@ function transformAppointmentDocToDetails(apptDoc: any): AppointmentDetails {
         notes: apptDoc.notes,
         createdAt: new Date(apptDoc.createdAt as Date),
         updatedAt: new Date(apptDoc.updatedAt as Date),
-        staffId: typeof apptDoc.staffId === 'string' ? apptDoc.staffId : (apptDoc.staffId as any)?._id?.toString(),
-        customerName,
-        customerPhoneNumber,
-        staffName,
+        staffId: typeof apptDoc.staffId === 'string' ? apptDoc.staffId : staffIdObj?._id?.toString(),
+        customerName: customerIdObj?.name,
+        customerPhoneNumber: customerIdObj?.phoneNumber,
+        staffName: staffIdObj?.name,
         packageType: apptDoc.packageType,
         priority: apptDoc.priority,
     };
 }
+
 
 function transformKeywordMappingDoc(doc: IKeywordMapping): KeywordMapping {
     return {
@@ -179,19 +172,56 @@ function transformNoteDocToNote(noteDoc: any): Note {
 function transformAppSettingsDoc(doc: IAppSettings | null): AppSettings | null {
     if (!doc) return null;
     const defaultBrandName = 'AetherChat';
+    const defaultSettings: Partial<AppSettings> = {
+        greetingMessage: 'Tôi là trợ lý AI của bạn. Tôi có thể giúp gì cho bạn hôm nay? Bạn có thể hỏi về dịch vụ hoặc đặt lịch hẹn.',
+        suggestedQuestions: ['Các dịch vụ của bạn?', 'Đặt lịch hẹn', 'Địa chỉ của bạn ở đâu?'],
+        brandName: defaultBrandName,
+        footerText: `© ${new Date().getFullYear()} ${defaultBrandName}. Đã đăng ký Bản quyền.`,
+        metaTitle: `${defaultBrandName} - Live Chat Thông Minh`,
+        metaDescription: 'Live chat tích hợp AI cho giao tiếp khách hàng liền mạch.',
+        numberOfStaff: 1,
+        defaultServiceDurationMinutes: 60,
+        workingHours: ["09:00", "10:00", "11:00", "13:00", "14:00", "15:00", "16:00", "17:00"],
+        weeklyOffDays: [],
+        oneTimeOffDates: [],
+        specificDayRules: [],
+    };
+
+    // Transform specificDayRules from Mongoose DocumentArray to plain objects
+    const specificDayRulesPlain = doc.specificDayRules?.map(rule => {
+        const plainRule: SpecificDayRule = {
+            // Mongoose _id becomes id
+            id: (rule as any)._id ? (rule as any)._id.toString() : rule.id || new mongoose.Types.ObjectId().toString(), 
+            date: rule.date,
+            isOff: rule.isOff,
+            workingHours: rule.workingHours,
+            numberOfStaff: rule.numberOfStaff,
+            serviceDurationMinutes: rule.serviceDurationMinutes,
+        };
+        return plainRule;
+    }) || defaultSettings.specificDayRules;
+
+
     return {
         id: (doc._id as Types.ObjectId).toString(),
-        greetingMessage: doc.greetingMessage || 'Tôi là trợ lý AI của bạn. Tôi có thể giúp gì cho bạn hôm nay? Bạn có thể hỏi về dịch vụ hoặc đặt lịch hẹn.',
-        suggestedQuestions: doc.suggestedQuestions && doc.suggestedQuestions.length > 0 ? doc.suggestedQuestions : ['Các dịch vụ của bạn?', 'Đặt lịch hẹn', 'Địa chỉ của bạn ở đâu?'],
-        brandName: doc.brandName || defaultBrandName,
+        greetingMessage: doc.greetingMessage || defaultSettings.greetingMessage,
+        suggestedQuestions: doc.suggestedQuestions && doc.suggestedQuestions.length > 0 ? doc.suggestedQuestions : defaultSettings.suggestedQuestions!,
+        brandName: doc.brandName || defaultSettings.brandName,
         logoUrl: doc.logoUrl,
-        footerText: doc.footerText || `© ${new Date().getFullYear()} ${doc.brandName || defaultBrandName}. Đã đăng ký Bản quyền.`,
-        metaTitle: doc.metaTitle || `${doc.brandName || defaultBrandName} - Live Chat Thông Minh`,
-        metaDescription: doc.metaDescription || 'Live chat tích hợp AI cho giao tiếp khách hàng liền mạch.',
+        footerText: doc.footerText || defaultSettings.footerText,
+        metaTitle: doc.metaTitle || defaultSettings.metaTitle,
+        metaDescription: doc.metaDescription || defaultSettings.metaDescription,
         metaKeywords: doc.metaKeywords,
         openGraphImageUrl: doc.openGraphImageUrl,
         robotsTxtContent: doc.robotsTxtContent,
         sitemapXmlContent: doc.sitemapXmlContent,
+        // Scheduling rules
+        numberOfStaff: doc.numberOfStaff ?? defaultSettings.numberOfStaff,
+        defaultServiceDurationMinutes: doc.defaultServiceDurationMinutes ?? defaultSettings.defaultServiceDurationMinutes,
+        workingHours: doc.workingHours && doc.workingHours.length > 0 ? doc.workingHours : defaultSettings.workingHours!,
+        weeklyOffDays: doc.weeklyOffDays || defaultSettings.weeklyOffDays!,
+        oneTimeOffDates: doc.oneTimeOffDates || defaultSettings.oneTimeOffDates!,
+        specificDayRules: specificDayRulesPlain,
         updatedAt: new Date(doc.updatedAt as Date),
     };
 }
@@ -199,13 +229,29 @@ function transformAppSettingsDoc(doc: IAppSettings | null): AppSettings | null {
 
 export async function getAppSettings(): Promise<AppSettings | null> {
     await dbConnect();
-    const settingsDoc = await AppSettingsModel.findOne({});
+    const settingsDoc = await AppSettingsModel.findOne<IAppSettings>({});
     return transformAppSettingsDoc(settingsDoc);
 }
 
 export async function updateAppSettings(settings: Partial<Omit<AppSettings, 'id' | 'updatedAt'>>): Promise<AppSettings | null> {
     await dbConnect();
-    const updatedSettingsDoc = await AppSettingsModel.findOneAndUpdate({}, { $set: settings }, { new: true, upsert: true });
+    // Ensure specificDayRules have _id if they are new, or preserve existing _id
+    const processedSettings = { ...settings };
+    if (processedSettings.specificDayRules) {
+        processedSettings.specificDayRules = processedSettings.specificDayRules.map(rule => {
+            // If the rule comes from the client and might have a temporary 'id',
+            // mongoose will handle creating an _id if it's a new subdocument.
+            // If it's an existing subdocument, its _id should already be there.
+            // For simplicity, we assume client-side temporary 'id' is not passed or is ignored by Mongoose.
+            const { id, ...restOfRule } = rule; // remove client-side 'id' if present
+             // Mongoose subdocuments in an array usually have their _id managed.
+             // If 'id' here refers to the actual MongoDB _id as a string, we'd need to convert it.
+             // But for updates, we usually send the whole array and Mongoose figures it out.
+            return restOfRule as any; // Cast to any to match Mongoose's expectation for subdocument arrays
+        });
+    }
+
+    const updatedSettingsDoc = await AppSettingsModel.findOneAndUpdate({}, { $set: processedSettings }, { new: true, upsert: true, runValidators: true });
     return transformAppSettingsDoc(updatedSettingsDoc);
 }
 
@@ -253,7 +299,10 @@ export async function handleCustomerAccess(phoneNumber: string): Promise<{
     timestamp: new Date(),
   };
   
-  initialMessages.push(welcomeMessage);
+  if (initialMessages.length === 0 || (initialMessages.length > 0 && initialMessages[initialMessages.length-1]?.sender !== 'system')) {
+    initialMessages.push(welcomeMessage);
+  }
+
 
   let suggestedReplies: string[] = [];
   if (configuredSuggestedQuestions.length > 0) {
@@ -315,6 +364,89 @@ export async function loginUser(phoneNumber: string, passwordAttempt: string): P
   return transformUserToSession(user);
 }
 
+interface AvailabilityResult {
+  isAvailable: boolean;
+  reason?: string; // Reason for unavailability
+  suggestedSlots?: { date: string; time: string; branch?: string }[];
+}
+
+async function checkSlotAvailability(
+  targetDate: Date,
+  targetTime: string, // HH:MM
+  appSettings: AppSettings,
+  serviceDurationMinutes?: number // Optional override for service duration
+): Promise<AvailabilityResult> {
+  await dbConnect();
+
+  const settingsServiceDuration = serviceDurationMinutes || appSettings.defaultServiceDurationMinutes || 60;
+  const settingsNumberOfStaff = appSettings.numberOfStaff || 1;
+  const settingsWorkingHours = appSettings.workingHours || [];
+  const settingsWeeklyOffDays = appSettings.weeklyOffDays || [];
+  const settingsOneTimeOffDates = appSettings.oneTimeOffDates || [];
+  const settingsSpecificDayRules = appSettings.specificDayRules || [];
+
+  const targetDateString = dateFnsFormat(targetDate, 'yyyy-MM-dd');
+  const targetDayOfWeek = getDay(targetDate); // 0 (Sunday) to 6 (Saturday)
+
+  let activeRule: Partial<SpecificDayRule> = {};
+  const specificRule = settingsSpecificDayRules.find(r => r.date === targetDateString);
+
+  if (specificRule) {
+    activeRule = specificRule;
+    if (specificRule.isOff) return { isAvailable: false, reason: `Ngày ${targetDateString} là ngày nghỉ theo quy tắc riêng.` };
+  } else {
+    if (settingsWeeklyOffDays.includes(targetDayOfWeek)) return { isAvailable: false, reason: `Ngày ${targetDateString} (thứ ${targetDayOfWeek + 1}) là ngày nghỉ hàng tuần.` };
+    if (settingsOneTimeOffDates.includes(targetDateString)) return { isAvailable: false, reason: `Ngày ${targetDateString} là ngày nghỉ lễ/đặc biệt.` };
+  }
+  
+  const currentWorkingHours = activeRule.workingHours && activeRule.workingHours.length > 0 ? activeRule.workingHours : settingsWorkingHours;
+  const currentNumberOfStaff = activeRule.numberOfStaff ?? settingsNumberOfStaff;
+  const currentServiceDuration = activeRule.serviceDurationMinutes ?? settingsServiceDuration;
+
+  if (!currentWorkingHours.includes(targetTime)) {
+     // Check if targetTime is within any defined working hour slot + duration
+    let timeIsWithinRange = false;
+    for (const startTime of currentWorkingHours) {
+        const slotStart = dateFnsParseISO(`${targetDateString}T${startTime}:00.000Z`);
+        const slotEnd = addMinutes(slotStart, currentServiceDuration);
+        const requestedTimeDate = dateFnsParseISO(`${targetDateString}T${targetTime}:00.000Z`);
+        
+        if (!isBefore(requestedTimeDate, slotStart) && isBefore(requestedTimeDate, slotEnd)) {
+             // This logic is a bit flawed if workingHours are just start times.
+             // Assuming workingHours are the exact bookable start times.
+        }
+    }
+     // For now, strict check: targetTime must be one of the defined start times.
+    return { isAvailable: false, reason: `Thời gian ${targetTime} không nằm trong giờ làm việc.` };
+  }
+
+  const requestedStartTime = dateFnsParseISO(`${targetDateString}T${targetTime}:00.000Z`);
+  const requestedEndTime = addMinutes(requestedStartTime, currentServiceDuration);
+
+  const overlappingAppointments = await AppointmentModel.find({
+    date: targetDateString,
+    status: { $in: ['booked', 'pending_confirmation'] } // Consider booked and pending
+  });
+
+  let concurrentAppointments = 0;
+  for (const appt of overlappingAppointments) {
+    const existingApptStart = dateFnsParseISO(`${appt.date}T${appt.time}:00.000Z`); // Assuming appt.time is HH:MM
+    const existingApptEnd = addMinutes(existingApptStart, currentServiceDuration); // Use current service duration for comparison
+
+    // Check for overlap: (StartA < EndB) and (StartB < EndA)
+    if (isBefore(requestedStartTime, existingApptEnd) && isBefore(existingApptStart, requestedEndTime)) {
+      concurrentAppointments++;
+    }
+  }
+  
+  if (concurrentAppointments >= currentNumberOfStaff) {
+    return { isAvailable: false, reason: `Đã đủ số lượng khách tại thời điểm ${targetTime} ngày ${targetDateString}.` };
+  }
+
+  return { isAvailable: true };
+  // TODO: Implement suggestedSlots logic if needed for more complex scenarios
+}
+
 
 export async function processUserMessage(
   userMessageContent: string, 
@@ -370,166 +502,163 @@ export async function processUserMessage(
   let aiResponseContent: string = "";
   let finalAiMessage: Message;
   let processedAppointmentDB: IAppointment | null = null; 
-  let scheduleOutput: ScheduleAppointmentOutput | null = null;
+  let scheduleOutputFromAI: ScheduleAppointmentOutput | null = null;
+  const appSettings = await getAppSettings(); 
+  if (!appSettings) {
+      throw new Error("Không thể tải cài đặt ứng dụng. Không thể xử lý tin nhắn.");
+  }
 
-  const schedulingKeywords = ['book', 'schedule', 'appointment', 'meeting', 'reserve', 'đặt lịch', 'hẹn', 'cancel', 'hủy', 'reschedule', 'đổi lịch', 'dời lịch'];
-  const lowerCaseTextMessage = textForAI.toLowerCase(); 
+
+  // First, call AI to understand intent and extract details
+  const customerAppointmentsDocs = await AppointmentModel.find({ 
+      customerId: new mongoose.Types.ObjectId(customerId) as any, 
+      status: { $nin: ['cancelled', 'completed'] } 
+  }).populate('customerId staffId'); 
   
-  const hasSchedulingIntent = !mediaDataUriForAI && schedulingKeywords.some(keyword => lowerCaseTextMessage.includes(keyword));
+  const customerAppointmentsForAI = customerAppointmentsDocs.map(doc => ({
+    ...transformAppointmentDocToDetails(doc),
+    userId: (doc.customerId as any)._id.toString(), 
+    createdAt: doc.createdAt.toISOString(),
+    updatedAt: doc.updatedAt.toISOString(),
+  }));
+  
+  scheduleOutputFromAI = await scheduleAppointmentAIFlow({
+    userInput: textForAI, 
+    phoneNumber: currentUserSession.phoneNumber,
+    userId: customerId, 
+    existingAppointments: customerAppointmentsForAI,
+    currentDateTime: new Date().toISOString(),
+    chatHistory: formattedHistory,
+  });
 
-  if (hasSchedulingIntent) {
-    console.log(`[ACTIONS] User '${currentUserSession.phoneNumber}' has scheduling intent for: "${textForAI}"`);
-    try {
-      const customerAppointmentsDocs = await AppointmentModel.find({ 
-          customerId: new mongoose.Types.ObjectId(customerId) as any, 
-          status: { $nin: ['cancelled', 'completed'] } 
-      }).populate('customerId staffId'); 
-      
-      const customerAppointmentsForAI = customerAppointmentsDocs.map(doc => ({
-        ...transformAppointmentDocToDetails(doc),
-        userId: (doc.customerId as any)._id.toString(), 
-        createdAt: doc.createdAt.toISOString(),
-        updatedAt: doc.updatedAt.toISOString(),
-      }));
-      
-      scheduleOutput = await scheduleAppointmentAIFlow({
-        userInput: textForAI, 
-        phoneNumber: currentUserSession.phoneNumber,
-        userId: customerId, 
-        existingAppointments: customerAppointmentsForAI,
-        currentDateTime: new Date().toISOString(),
-        chatHistory: formattedHistory, // Pass chat history here
-      });
+  console.log("[ACTIONS] AI scheduleOutput (initial parse):", JSON.stringify(scheduleOutputFromAI, null, 2));
+  aiResponseContent = scheduleOutputFromAI.confirmationMessage;
 
-      console.log("[ACTIONS] AI scheduleOutput RAW:", JSON.stringify(scheduleOutput, null, 2));
-      
-      aiResponseContent = scheduleOutput.confirmationMessage; 
+  if (scheduleOutputFromAI.intent === 'booked' || scheduleOutputFromAI.intent === 'rescheduled') {
+    if (!scheduleOutputFromAI.appointmentDetails || 
+        !scheduleOutputFromAI.appointmentDetails.service || 
+        !scheduleOutputFromAI.appointmentDetails.date || 
+        !/^\d{4}-\d{2}-\d{2}$/.test(scheduleOutputFromAI.appointmentDetails.date) || 
+        !scheduleOutputFromAI.appointmentDetails.time) {
+        
+        console.error("[ACTIONS] AI 'booked/rescheduled' intent but crucial details missing/invalid from AI. Details:", scheduleOutputFromAI.appointmentDetails);
+        aiResponseContent = "Xin lỗi, có lỗi với thông tin lịch hẹn từ AI. Vui lòng thử lại hoặc cung cấp chi tiết hơn (dịch vụ, ngày YYYY-MM-DD, giờ HH:MM).";
+        processedAppointmentDB = null; 
+    } else {
+        // Perform TypeScript availability check
+        const targetDateObj = dateFnsParseISO(scheduleOutputFromAI.appointmentDetails.date);
+        const availabilityResult = await checkSlotAvailability(
+            targetDateObj,
+            scheduleOutputFromAI.appointmentDetails.time, // Assuming HH:MM
+            appSettings
+        );
 
-      if (scheduleOutput.intent === 'booked') {
-        if (!scheduleOutput.appointmentDetails || 
-            !scheduleOutput.appointmentDetails.service || 
-            !scheduleOutput.appointmentDetails.date || 
-            !/^\d{4}-\d{2}-\d{2}$/.test(scheduleOutput.appointmentDetails.date) || 
-            !scheduleOutput.appointmentDetails.time) {
-            
-            console.error("[ACTIONS] CRITICAL: AI 'booked' intent but appointmentDetails missing/invalid. Details:", scheduleOutput.appointmentDetails);
-            aiResponseContent = "Xin lỗi, có lỗi với thông tin lịch hẹn từ AI. Không thể đặt lịch. Vui lòng thử lại hoặc cung cấp chi tiết hơn (dịch vụ, ngày YYYY-MM-DD, giờ).";
-            processedAppointmentDB = null; 
-        } else {
-            const newAppointmentData = {
-              customerId: new mongoose.Types.ObjectId(customerId) as any,
-              service: scheduleOutput.appointmentDetails.service!,
-              date: scheduleOutput.appointmentDetails.date!, 
-              time: scheduleOutput.appointmentDetails.time!, 
-              branch: scheduleOutput.appointmentDetails.branch,
-              status: 'booked' as AppointmentDetails['status'], 
-              notes: scheduleOutput.appointmentDetails.notes,
-              packageType: scheduleOutput.appointmentDetails.packageType,
-              priority: scheduleOutput.appointmentDetails.priority,
-            } as any; 
-            
-            console.log("[ACTIONS] Data prepared for DB (booked):", JSON.stringify(newAppointmentData, null, 2));
-            try {
-                const savedAppt = await new AppointmentModel(newAppointmentData).save();
-                processedAppointmentDB = await AppointmentModel.findById(savedAppt._id).populate('customerId staffId');
-                if (processedAppointmentDB && processedAppointmentDB._id) {
-                    await CustomerModel.findByIdAndUpdate(customerId, { $push: { appointmentIds: processedAppointmentDB._id } });
-                    aiResponseContent = scheduleOutput.confirmationMessage + ` (Mã lịch hẹn: ${processedAppointmentDB._id.toString().slice(-6)})`;
-                    console.log(`[ACTIONS] Successfully created appointment ${(processedAppointmentDB as any)._id?.toString() || 'unknown'} for customer ${customerId}`);
-                } else {
-                    console.error("[ACTIONS] FAILED to save new appointment or _id is missing after save call.");
-                    aiResponseContent = "Đã xảy ra lỗi khi lưu lịch hẹn của bạn vào cơ sở dữ liệu. Vui lòng thử lại.";
+        if (availabilityResult.isAvailable) {
+            aiResponseContent = scheduleOutputFromAI.confirmationMessage; // Use AI's confirmation if slot is good
+            if (scheduleOutputFromAI.intent === 'booked') {
+                const newAppointmentData = {
+                  customerId: new mongoose.Types.ObjectId(customerId) as any,
+                  service: scheduleOutputFromAI.appointmentDetails.service!,
+                  date: scheduleOutputFromAI.appointmentDetails.date!, 
+                  time: scheduleOutputFromAI.appointmentDetails.time!, 
+                  branch: scheduleOutputFromAI.appointmentDetails.branch,
+                  status: 'booked' as AppointmentDetails['status'], 
+                  notes: scheduleOutputFromAI.appointmentDetails.notes,
+                  packageType: scheduleOutputFromAI.appointmentDetails.packageType,
+                  priority: scheduleOutputFromAI.appointmentDetails.priority,
+                } as any; 
+                
+                try {
+                    const savedAppt = await new AppointmentModel(newAppointmentData).save();
+                    processedAppointmentDB = await AppointmentModel.findById(savedAppt._id).populate('customerId staffId');
+                    if (processedAppointmentDB && processedAppointmentDB._id) {
+                        await CustomerModel.findByIdAndUpdate(customerId, { $push: { appointmentIds: processedAppointmentDB._id } });
+                        aiResponseContent += ` (Mã lịch hẹn: ${processedAppointmentDB._id.toString().slice(-6)})`;
+                    } else {
+                        aiResponseContent = "Đã xảy ra lỗi khi lưu lịch hẹn của bạn. Vui lòng thử lại.";
+                        processedAppointmentDB = null;
+                    }
+                } catch (dbError: any) {
+                    console.error("[ACTIONS] DATABASE ERROR while saving new appointment:", dbError.message, dbError.stack);
+                    aiResponseContent = "Đã xảy ra lỗi nghiêm trọng khi lưu lịch hẹn. Vui lòng thử lại sau.";
                     processedAppointmentDB = null;
                 }
-            } catch (dbError: any) {
-                console.error("[ACTIONS] DATABASE ERROR while saving new appointment:", dbError.message, dbError.stack);
-                aiResponseContent = "Đã xảy ra lỗi nghiêm trọng khi lưu lịch hẹn của bạn. Chúng tôi đã ghi nhận sự cố. Vui lòng thử lại sau.";
-                processedAppointmentDB = null;
+            } else { // Rescheduled
+                 if (!scheduleOutputFromAI.originalAppointmentIdToModify) {
+                    aiResponseContent = "Không xác định được lịch hẹn gốc để đổi. Vui lòng thử lại.";
+                    processedAppointmentDB = null;
+                 } else {
+                    try {
+                      processedAppointmentDB = await AppointmentModel.findOneAndUpdate(
+                          { _id: new mongoose.Types.ObjectId(scheduleOutputFromAI.originalAppointmentIdToModify) as any, customerId: new mongoose.Types.ObjectId(customerId) as any },
+                          { 
+                            service: scheduleOutputFromAI.appointmentDetails.service!,
+                            date: scheduleOutputFromAI.appointmentDetails.date!,
+                            time: scheduleOutputFromAI.appointmentDetails.time!,
+                            branch: scheduleOutputFromAI.appointmentDetails.branch,
+                            status: 'booked', 
+                            notes: scheduleOutputFromAI.appointmentDetails.notes,
+                            packageType: scheduleOutputFromAI.appointmentDetails.packageType,
+                            priority: scheduleOutputFromAI.appointmentDetails.priority,
+                            updatedAt: new Date() 
+                          },
+                          { new: true }
+                      ).populate('customerId staffId');
+                      
+                      if (processedAppointmentDB && processedAppointmentDB._id) {
+                          aiResponseContent += ` (Mã lịch hẹn mới: ${processedAppointmentDB._id.toString().slice(-6)})`;
+                      } else { 
+                          aiResponseContent = `Không tìm thấy lịch hẹn gốc để đổi, hoặc bạn không phải chủ sở hữu. Vui lòng thử lại.`; 
+                          processedAppointmentDB = null;
+                      }
+                    } catch (dbError: any) {
+                        aiResponseContent = "Đã xảy ra lỗi khi đổi lịch hẹn. Vui lòng thử lại sau.";
+                        processedAppointmentDB = null;
+                    }
+                 }
             }
+        } else { // Slot not available by TypeScript check
+            aiResponseContent = availabilityResult.reason || "Rất tiếc, thời gian bạn chọn không còn trống.";
+            // TODO: Generate suggested alternative slots based on rules
+            // For now, just use the AI's original confirmation which might be a pending_alternatives or clarification.
+            // Or, if scheduleOutputFromAI was 'booked', we override it to 'pending_alternatives'
+            if (scheduleOutputFromAI.intent === 'booked') scheduleOutputFromAI.intent = 'pending_alternatives';
+            scheduleOutputFromAI.confirmationMessage = aiResponseContent; // Update the message for the user
+            // scheduleOutputFromAI.suggestedSlots = availabilityResult.suggestedSlots; // If we generated them
+            processedAppointmentDB = null; 
         }
-      } else if (scheduleOutput.intent === 'rescheduled') {
-          if (!scheduleOutput.originalAppointmentIdToModify || 
-              !scheduleOutput.appointmentDetails ||
-              !scheduleOutput.appointmentDetails.service || 
-              !scheduleOutput.appointmentDetails.date || 
-              !/^\d{4}-\d{2}-\d{2}$/.test(scheduleOutput.appointmentDetails.date) || 
-              !scheduleOutput.appointmentDetails.time) {
-              
-              console.error("[ACTIONS] CRITICAL: AI 'rescheduled' intent but originalAppointmentId or new appointmentDetails missing/invalid. Details:", scheduleOutput);
-              aiResponseContent = "Xin lỗi, thông tin để đổi lịch hẹn không đầy đủ hoặc không hợp lệ từ AI. Vui lòng thử lại.";
-              processedAppointmentDB = null;
-          } else {
-              try {
-                  processedAppointmentDB = await AppointmentModel.findOneAndUpdate(
-                      { _id: new mongoose.Types.ObjectId(scheduleOutput.originalAppointmentIdToModify) as any },
-                      { 
-                        service: scheduleOutput.appointmentDetails.service!,
-                        date: scheduleOutput.appointmentDetails.date!,
-                        time: scheduleOutput.appointmentDetails.time!,
-                        branch: scheduleOutput.appointmentDetails.branch,
-                        status: 'booked', 
-                        notes: scheduleOutput.appointmentDetails.notes,
-                        packageType: scheduleOutput.appointmentDetails.packageType,
-                        priority: scheduleOutput.appointmentDetails.priority,
-                        updatedAt: new Date() 
-                      },
-                      { new: true }
-                  ).populate('customerId staffId');
-                  
-                  if (processedAppointmentDB && processedAppointmentDB._id) {
-                      aiResponseContent = scheduleOutput.confirmationMessage + ` (Mã lịch hẹn mới: ${processedAppointmentDB._id.toString().slice(-6)})`;
-                      console.log(`[ACTIONS] Successfully rescheduled appointment ${(processedAppointmentDB as any)._id?.toString() || 'unknown'}`);
-                  } else { 
-                      console.warn("[ACTIONS] Original appointment for reschedule not found or not owned by customer.");
-                      aiResponseContent = `Không tìm thấy lịch hẹn gốc để đổi. ${scheduleOutput.confirmationMessage.replace(/^OK! /, '')}`; 
-                      processedAppointmentDB = null;
-                  }
-              } catch (dbError: any) {
-                  console.error("[ACTIONS] DATABASE ERROR while rescheduling appointment:", dbError.message, dbError.stack);
-                  aiResponseContent = "Đã xảy ra lỗi khi đổi lịch hẹn của bạn. Vui lòng thử lại sau.";
-                  processedAppointmentDB = null;
-              }
-          }
-      } else if (scheduleOutput.intent === 'cancelled') {
-          if (!scheduleOutput.originalAppointmentIdToModify) {
-              console.error("[ACTIONS] CRITICAL: AI 'cancelled' intent but originalAppointmentIdToModify missing. Details:", scheduleOutput);
-              aiResponseContent = "Xin lỗi, tôi không xác định được lịch hẹn nào bạn muốn hủy. Vui lòng cung cấp thêm chi tiết.";
-              processedAppointmentDB = null;
-          } else {
-              try {
-                  processedAppointmentDB = await AppointmentModel.findOneAndUpdate(
-                    { _id: new mongoose.Types.ObjectId(scheduleOutput.originalAppointmentIdToModify) as any },
-                    { status: 'cancelled', updatedAt: new Date() },
-                    { new: true }
-                  ).populate('customerId staffId');
+    }
+  } else if (scheduleOutputFromAI.intent === 'cancelled') {
+      if (!scheduleOutputFromAI.originalAppointmentIdToModify) {
+          aiResponseContent = "Không xác định được lịch hẹn nào bạn muốn hủy. Vui lòng cung cấp thêm chi tiết.";
+          processedAppointmentDB = null;
+      } else {
+          try {
+              processedAppointmentDB = await AppointmentModel.findOneAndUpdate(
+                { _id: new mongoose.Types.ObjectId(scheduleOutputFromAI.originalAppointmentIdToModify) as any, customerId: new mongoose.Types.ObjectId(customerId) as any },
+                { status: 'cancelled', updatedAt: new Date() },
+                { new: true }
+              ).populate('customerId staffId');
 
-                  if (processedAppointmentDB) {
-                      aiResponseContent = scheduleOutput.confirmationMessage;
-                      console.log(`[ACTIONS] Successfully cancelled appointment ${(processedAppointmentDB as any)._id?.toString() || 'unknown'}`);
-                  } else {
-                      aiResponseContent = "Không tìm thấy lịch hẹn bạn muốn hủy hoặc bạn không phải chủ sở hữu của lịch hẹn đó.";
-                      processedAppointmentDB = null;
-                  }
-              } catch (dbError: any) {
-                  console.error("[ACTIONS] DATABASE ERROR while cancelling appointment:", dbError.message, dbError.stack);
-                  aiResponseContent = "Đã xảy ra lỗi khi hủy lịch hẹn của bạn. Vui lòng thử lại sau.";
+              if (processedAppointmentDB) {
+                  aiResponseContent = scheduleOutputFromAI.confirmationMessage;
+              } else {
+                  aiResponseContent = "Không tìm thấy lịch hẹn bạn muốn hủy hoặc bạn không phải chủ sở hữu.";
                   processedAppointmentDB = null;
               }
+          } catch (dbError: any) {
+              aiResponseContent = "Đã xảy ra lỗi khi hủy lịch hẹn của bạn. Vui lòng thử lại sau.";
+              processedAppointmentDB = null;
           }
       }
-      
-    } catch (error) { 
-      console.error('[ACTIONS] Error calling scheduleAppointmentAIFlow:', error);
-      aiResponseContent = "Tôi gặp sự cố với yêu cầu đặt lịch của bạn. Bạn có thể thử diễn đạt lại hoặc cung cấp thêm chi tiết được không?";
-      scheduleOutput = { intent: 'error', confirmationMessage: aiResponseContent, requiresAssistance: true };
-      processedAppointmentDB = null; 
-    }
-  } else { 
+  } else if (scheduleOutputFromAI.intent === 'no_action_needed' || scheduleOutputFromAI.intent === 'clarification_needed' || scheduleOutputFromAI.intent === 'error' ) {
+    // If AI determines no booking action or needs more info, or error, just use its message.
+    // But first, check keyword mappings.
     let keywordFound = false;
     if (!mediaDataUriForAI) { 
         const keywordMappings = await getKeywordMappings();
         for (const mapping of keywordMappings) {
-          if (mapping.keywords.some(kw => lowerCaseTextMessage.includes(kw.toLowerCase()))) {
+          if (mapping.keywords.some(kw => textForAI.toLowerCase().includes(kw.toLowerCase()))) {
             aiResponseContent = mapping.response;
             keywordFound = true;
             break;
@@ -537,31 +666,34 @@ export async function processUserMessage(
         }
     }
 
-    if (!keywordFound) { 
-      try {
-        const approvedTrainingDocs = await TrainingDataModel.find({ status: 'approved' }).sort({updatedAt: -1}).limit(5);
-        const relevantTrainingData = approvedTrainingDocs.map(doc => ({
-            userInput: doc.userInput,
-            idealResponse: doc.idealResponse
-        }));
+    if (!keywordFound && scheduleOutputFromAI.intent === 'no_action_needed') {
+        // If still no_action_needed after keyword check, then use general AI
+        try {
+            const approvedTrainingDocs = await TrainingDataModel.find({ status: 'approved' }).sort({updatedAt: -1}).limit(5);
+            const relevantTrainingData = approvedTrainingDocs.map(doc => ({
+                userInput: doc.userInput,
+                idealResponse: doc.idealResponse
+            }));
 
-        const answerResult = await answerUserQuestion({
-          question: textForAI, 
-          chatHistory: formattedHistory,
-          mediaDataUri: mediaDataUriForAI, 
-          relevantTrainingData: relevantTrainingData.length > 0 ? relevantTrainingData : undefined,
-        });
-        aiResponseContent = answerResult.answer;
-      } catch (error) {
-        console.error('Error answering user question:', error);
-        aiResponseContent = "Tôi đang gặp chút khó khăn để hiểu ý bạn. Bạn có thể hỏi theo cách khác được không?";
-      }
+            const answerResult = await answerUserQuestion({
+              question: textForAI, 
+              chatHistory: formattedHistory,
+              mediaDataUri: mediaDataUriForAI, 
+              relevantTrainingData: relevantTrainingData.length > 0 ? relevantTrainingData : undefined,
+            });
+            aiResponseContent = answerResult.answer;
+          } catch (error) {
+            console.error('Error answering user question:', error);
+            aiResponseContent = "Tôi đang gặp chút khó khăn để hiểu ý bạn. Bạn có thể hỏi theo cách khác được không?";
+          }
+    } else if (!keywordFound) {
+        // For clarification_needed or error, use the AI's existing message from scheduleAppointmentAIFlow
+        aiResponseContent = scheduleOutputFromAI.confirmationMessage;
     }
+    // If keywordFound, aiResponseContent is already set.
   }
   
-  const appSettings = await getAppSettings(); 
   const brandNameForAI = appSettings?.brandName || 'AetherChat';
-
 
   const aiMessageData: Partial<IMessage> = {
     sender: 'ai',
@@ -583,30 +715,30 @@ export async function processUserMessage(
 
   try {
     let contextForReplies = aiResponseContent; 
-    if (scheduleOutput?.intent === 'pending_alternatives' && scheduleOutput.suggestedSlots?.length) {
-        const serviceName = scheduleOutput.appointmentDetails?.service || 'dịch vụ';
-        contextForReplies = `AI: ${aiResponseContent} Bạn có thể chọn một trong các gợi ý sau: ${scheduleOutput.suggestedSlots.map(s => `${serviceName} vào ${s.date} lúc ${s.time}${s.branch ? ' tại ' + s.branch : ''}`).join(', ')}. Hoặc hỏi các lựa chọn khác.`;
-    } else if (scheduleOutput?.intent === 'clarification_needed' && scheduleOutput.missingInformation) {
-        contextForReplies = `AI: ${aiResponseContent} Vui lòng cung cấp: ${scheduleOutput.missingInformation}.`;
+    if (scheduleOutputFromAI?.intent === 'pending_alternatives' && scheduleOutputFromAI.suggestedSlots?.length) {
+        const serviceName = scheduleOutputFromAI.appointmentDetails?.service || 'dịch vụ';
+        contextForReplies = `AI: ${aiResponseContent} Bạn có thể chọn một trong các gợi ý sau: ${scheduleOutputFromAI.suggestedSlots.map(s => `${serviceName} vào ${s.date} lúc ${s.time}${s.branch ? ' tại ' + s.branch : ''}`).join(', ')}. Hoặc hỏi các lựa chọn khác.`;
+    } else if (scheduleOutputFromAI?.intent === 'clarification_needed' && scheduleOutputFromAI.missingInformation) {
+        contextForReplies = `AI: ${aiResponseContent} Vui lòng cung cấp: ${scheduleOutputFromAI.missingInformation}.`;
     }
 
     const repliesResult = await generateSuggestedReplies({ latestMessage: contextForReplies });
     newSuggestedReplies = repliesResult.suggestedReplies;
 
-    if (scheduleOutput?.intent === 'pending_alternatives' && scheduleOutput.suggestedSlots) {
-        const serviceName = scheduleOutput.appointmentDetails?.service || 'dịch vụ';
-        const slotSuggestions = scheduleOutput.suggestedSlots.slice(0, 2).map(slot => 
+    if (scheduleOutputFromAI?.intent === 'pending_alternatives' && scheduleOutputFromAI.suggestedSlots) {
+        const serviceName = scheduleOutputFromAI.appointmentDetails?.service || 'dịch vụ';
+        const slotSuggestions = scheduleOutputFromAI.suggestedSlots.slice(0, 2).map(slot => 
             `Chọn ${serviceName} ${slot.date} ${slot.time}${slot.branch ? ' ('+slot.branch+')' : ''}`
         );
         newSuggestedReplies = [...new Set([...slotSuggestions, ...newSuggestedReplies])].slice(0,3); 
-    } else if (scheduleOutput?.intent === 'clarification_needed' && scheduleOutput.missingInformation) {
-        newSuggestedReplies.unshift(`Cung cấp ${scheduleOutput.missingInformation}`);
+    } else if (scheduleOutputFromAI?.intent === 'clarification_needed' && scheduleOutputFromAI.missingInformation) {
+        newSuggestedReplies.unshift(`Cung cấp ${scheduleOutputFromAI.missingInformation}`);
         newSuggestedReplies = [...new Set(newSuggestedReplies)].slice(0,3);
     }
 
   } catch (error) {
     console.error('Error generating new suggested replies:', error);
-    newSuggestedReplies = (hasSchedulingIntent && scheduleOutput?.intent !== 'booked' && scheduleOutput?.intent !== 'cancelled' && scheduleOutput?.intent !== 'no_action_needed')
+    newSuggestedReplies = (scheduleOutputFromAI && scheduleOutputFromAI.intent !== 'booked' && scheduleOutputFromAI.intent !== 'cancelled' && scheduleOutputFromAI.intent !== 'no_action_needed')
       ? ['Xác nhận giờ gợi ý', 'Hỏi giờ khác', 'Hủy yêu cầu'] 
       : defaultSuggestedRepliesFromSettings.length > 0 ? defaultSuggestedRepliesFromSettings : ['Kể thêm cho tôi', 'Hỏi câu khác', 'Cảm ơn!'];
   }
@@ -630,16 +762,12 @@ export async function getCustomersForStaffView(staffId?: string): Promise<Custom
     await dbConnect();
     const query: any = {};
     if (staffId) {
-      // Staff see their own assigned customers OR unassigned customers
       query.$or = [
         { assignedStaffId: new mongoose.Types.ObjectId(staffId) as any },
-        // { assignedStaffId: new mongoose.Types.ObjectId(staffId) as any }, // This line seems redundant
         { assignedStaffId: { $exists: false } } 
       ];
     }
-    // If no staffId (e.g. admin view or generic call), show all.
-    // For specific "unassigned" queue, one would explicitly query for { assignedStaffId: { $exists: false } }
-
+    
     const customerDocs = await CustomerModel.find(query)
         .populate<{ assignedStaffId: IUser }>('assignedStaffId', 'name')
         .sort({ lastInteractionAt: -1 })
@@ -877,12 +1005,12 @@ export async function sendStaffMessage(
     throw new Error("Không tìm thấy khách hàng.");
   }
   const staffMessageData: Partial<IMessage> = {
-    sender: 'ai', 
+    sender: 'ai', // Staff messages are marked as 'ai' for display consistency in client chat bubble
     content: messageContent, 
     timestamp: new Date(),
     name: staffSession.name || 'Nhân viên', 
     customerId: (customer as any)._id,
-    userId: new mongoose.Types.ObjectId(staffSession.id) as any, 
+    userId: new mongoose.Types.ObjectId(staffSession.id) as any, // ID of staff who sent
   };
   const savedStaffMessageDoc = await new MessageModel(staffMessageData).save();
   await CustomerModel.findByIdAndUpdate(customerId, {
@@ -1165,7 +1293,7 @@ export async function getAdminDashboardStats(): Promise<AdminDashboardStats> {
 
     const activeUserCount = await CustomerModel.countDocuments({ lastInteractionAt: { $gte: sevenDaysAgo } });
     const chatsTodayCount = await MessageModel.countDocuments({ createdAt: { $gte: todayStart, $lt: todayEnd } });
-    const openIssuesCount = await CustomerModel.countDocuments({ tags: "Cần hỗ trợ" });
+    const openIssuesCount = await CustomerModel.countDocuments({ tags: "Cần hỗ trợ" }); // Ensure this tag matches exactly
 
     const recentAppointmentsDocs = await AppointmentModel.find({})
         .sort({ createdAt: -1 })
@@ -1182,7 +1310,7 @@ export async function getAdminDashboardStats(): Promise<AdminDashboardStats> {
         recentAppointments: recentAppointmentsDocs.map(transformAppointmentDocToDetails),
         recentCustomers: recentCustomersDocs.map(doc => ({
             id: (doc as any)._id.toString(),
-            name: doc.name,
+            name: doc.name || `Khách ${doc.phoneNumber.slice(-4)}`, // Fallback for name
             phoneNumber: doc.phoneNumber,
             createdAt: new Date(doc.createdAt as Date),
         })),
@@ -1250,8 +1378,7 @@ export async function updateCustomerNote(noteId: string, staffId: string, conten
     await dbConnect();
     const note = await NoteModel.findById(noteId);
     if (!note) throw new Error("Note not found.");
-    if (note.staffId.toString() !== staffId) { // Basic permission check: only creator can edit
-        // More complex logic might allow admins or other staff based on roles
+    if (note.staffId.toString() !== staffId) { 
         throw new Error("You are not authorized to edit this note.");
     }
     note.content = content;
@@ -1400,6 +1527,7 @@ export async function createReminder(data: Omit<Reminder, 'id' | 'createdAt' | '
     .populate('customerId', 'name phoneNumber')
     .populate('staffId', 'name');
     
+  if (!populatedReminder) throw new Error("Failed to populate created reminder");
   return transformReminderDocToReminder(populatedReminder);
 }
 
@@ -1414,7 +1542,7 @@ export async function updateReminder(
     data.completedAt = new Date();
   }
   
-  const updatedReminder = await ReminderModel.findByIdAndUpdate(
+  const updatedReminderDoc = await ReminderModel.findByIdAndUpdate(
     reminderId,
     { $set: data },
     { new: true }
@@ -1422,7 +1550,7 @@ export async function updateReminder(
     .populate('customerId', 'name phoneNumber')
     .populate('staffId', 'name');
     
-  return updatedReminder ? transformReminderDocToReminder(updatedReminder) : null;
+  return updatedReminderDoc ? transformReminderDocToReminder(updatedReminderDoc) : null;
 }
 
 export async function deleteReminder(reminderId: string): Promise<{ success: boolean }> {
@@ -1480,13 +1608,13 @@ export async function getCustomersWithProductsAndReminders(staffId?: string): Pr
   const query: any = {};
   if (staffId) {
     query.$or = [
-      { assignedStaffId: staffId },
-      { assignedStaffId: { $exists: false } } // Include unassigned customers if staffId is provided
+      { assignedStaffId: new mongoose.Types.ObjectId(staffId) as any },
+      { assignedStaffId: { $exists: false } } 
     ];
-  } // If no staffId (admin), get all customers.
+  } 
   
   const customers = await CustomerModel.find(query)
-    .populate('assignedStaffId', 'name')
+    .populate<{ assignedStaffId: IUser }>('assignedStaffId', 'name')
     .sort({ lastInteractionAt: -1 });
   
   const result = [];
@@ -1499,19 +1627,17 @@ export async function getCustomersWithProductsAndReminders(staffId?: string): Pr
     
     result.push({
       id: (customer as any)._id.toString(),
-      name: customer.name,
+      name: customer.name || `Khách ${customer.phoneNumber.slice(-4)}`,
       phoneNumber: customer.phoneNumber,
       internalName: customer.internalName,
       lastInteractionAt: customer.lastInteractionAt,
       tags: customer.tags || [],
       assignedStaffId: customer.assignedStaffId?._id.toString(),
-      assignedStaffName: (customer.assignedStaffId as any)?.name, 
+      assignedStaffName: (customer.assignedStaffId as IUser)?.name, 
       pendingRemindersCount
     });
   }
   
   return result;
 }
-
-
 

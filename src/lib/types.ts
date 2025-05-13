@@ -122,6 +122,15 @@ export type AppointmentRule = {
   updatedAt?: Date;
 };
 
+export type SpecificDayRule = {
+  id: string; // Unique ID for the rule, can be ObjectId string
+  date: string; // "YYYY-MM-DD"
+  isOff?: boolean;
+  workingHours?: string[]; // ["HH:MM", "HH:MM"]
+  numberOfStaff?: number;
+  serviceDurationMinutes?: number;
+};
+
 export type AppSettings = {
   id: string; // For the single document in MongoDB, will be _id
   // Q&A settings
@@ -138,11 +147,18 @@ export type AppSettings = {
   metaDescription?: string;
   metaKeywords?: string[];
   openGraphImageUrl?: string;
-  robotsTxtContent?: string; // Consider if this is too large for a single field
-  sitemapXmlContent?: string; // Consider if this is too large for a single field
+  robotsTxtContent?: string; 
+  sitemapXmlContent?: string; 
   
-  // Add other global settings as needed
-  updatedAt?: Date; // To know when settings were last updated
+  // Scheduling Rules
+  numberOfStaff?: number;
+  defaultServiceDurationMinutes?: number;
+  workingHours?: string[]; // Array of "HH:MM" e.g. ["09:00", "10:00", "13:00"]
+  weeklyOffDays?: number[]; // Array of numbers [0-6], 0 for Sunday
+  oneTimeOffDates?: string[]; // Array of "YYYY-MM-DD"
+  specificDayRules?: SpecificDayRule[]; // Array of specific rules for dates
+
+  updatedAt?: Date; 
 };
 
 // Type for appointment filters used in getAppointments action
