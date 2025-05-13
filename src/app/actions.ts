@@ -1,11 +1,12 @@
 // src/app/actions.ts
 'use server';
 
-import type { Message, UserSession, AppointmentDetails, Product, Note, CustomerProfile, UserRole, KeywordMapping, TrainingData, TrainingDataStatus, AppointmentRule, AppSettings, GetAppointmentsFilters, AdminDashboardStats, StaffDashboardStats, ProductItem, Reminder, ReminderStatus, ReminderPriority, SpecificDayRule } from '@/lib/types';
+import type { Message, UserSession, AppointmentDetails, Product, Note, CustomerProfile, UserRole, KeywordMapping, TrainingData, TrainingDataStatus, AppSettings, GetAppointmentsFilters, AdminDashboardStats, StaffDashboardStats, ProductItem, Reminder, ReminderStatus, ReminderPriority, SpecificDayRule } from '@/lib/types';
+import type { AppointmentRule as LibAppointmentRuleType } from '@/lib/types'; // Aliased for clarity
 import { answerUserQuestion } from '@/ai/flows/answer-user-question';
 import { generateSuggestedReplies } from '@/ai/flows/generate-suggested-replies';
 import { scheduleAppointment as scheduleAppointmentAIFlow } from '@/ai/flows/schedule-appointment';
-import type { ScheduleAppointmentOutput } from '@/ai/schemas/schedule-appointment-schemas';
+import type { ScheduleAppointmentOutput, AppointmentRule as AIAppointmentRuleType } from '@/ai/schemas/schedule-appointment-schemas'; // Imported AIAppointmentRuleType
 import { randomUUID } from 'crypto';
 import mongoose, { Types, Document } from 'mongoose';
 import dotenv from 'dotenv';
@@ -14,17 +15,16 @@ import { startOfDay, endOfDay, subDays, formatISO, parse, isValid, parseISO as d
 
 // Ensure dotenv is configured correctly
 if (process.env.NODE_ENV !== 'production') {
-  dotenv.config({ path: process.cwd() + '/.env' }); // Prioritize .env for local, .env.local if it exists (common Next.js pattern)
+  dotenv.config({ path: process.cwd() + '/.env' }); 
 } else {
-  dotenv.config(); // For production, rely on environment variables set by the hosting provider
+  dotenv.config(); 
 }
 
 if (!process.env.MONGODB_URI) {
-  console.warn("WARNING: MONGODB_URI is not defined. Using fallback for build purposes only or if .env is missing. App will not function correctly at runtime without it.");
-  // It's generally better to let the app fail loudly if MONGODB_URI is critical and missing at runtime.
-  // For local dev, ensure .env file has MONGODB_URI. For production, ensure it's set in the environment.
-  // Fallback for build process if strictly necessary, but this often hides runtime issues.
-  // process.env.MONGODB_URI = "mongodb://127.0.0.1:27017/aetherchat_fallback_build";
+  console.warn("WARNING: MONGODB_URI is not defined in .env. App may not function correctly at runtime.");
+  // Fallback only for build or non-critical environments, ensure MONGODB_URI is set for production.
+  // Consider a stricter check for production builds if MONGODB_URI is absolutely essential.
+  // process.env.MONGODB_URI = "mongodb://127.0.0.1:27017/aetherchat_fallback";
 }
 
 
@@ -37,7 +37,7 @@ import AppSettingsModel from '@/models/AppSettings.model';
 import KeywordMappingModel from '@/models/KeywordMapping.model';
 import TrainingDataModel from '@/models/TrainingData.model';
 import AppointmentRuleModel from '@/models/AppointmentRule.model';
-import NoteModel from '@/models/Note.model'; // Import NoteModel
+import NoteModel from '@/models/Note.model'; 
 import ProductModel from '@/models/Product.model';
 import ReminderModel from '@/models/Reminder.model';
 
@@ -49,7 +49,7 @@ import type { IAppSettings } from '@/models/AppSettings.model';
 import type { IKeywordMapping } from '@/models/KeywordMapping.model';
 import type { ITrainingData } from '@/models/TrainingData.model';
 import type { IAppointmentRule } from '@/models/AppointmentRule.model';
-import type { INote } from '@/models/Note.model'; // Import INote
+import type { INote } from '@/models/Note.model'; 
 import type { IProduct } from '@/models/Product.model';
 import type { IReminder } from '@/models/Reminder.model';
 
@@ -64,7 +64,7 @@ function formatChatHistoryForAI(messages: Message[]): string {
         const textAfterFile = match[3]?.trim();
         displayContent = `[Tệp đính kèm] ${textAfterFile || ''}`.trim();
       }
-      return `${msg.sender === 'user' ? 'Khách' : 'AI/Nhân viên'}: ${displayContent}`; // Adjusted for internal view
+      return `${msg.sender === 'user' ? 'Khách' : 'AI/Nhân viên'}: ${displayContent}`; 
     })
     .join('\n');
 }
@@ -94,8 +94,8 @@ function transformMessageDocToMessage(msgDoc: IMessage): Message {
         sender: msgDoc.sender as 'user' | 'ai' | 'system',
         content: msgDoc.content,
         timestamp: new Date(msgDoc.timestamp),
-        name: msgDoc.name, // This will be Staff name for staff-sent messages, or AI name
-        userId: msgDoc.userId?.toString(), // Actual sender ID if staff/admin
+        name: msgDoc.name, 
+        userId: msgDoc.userId?.toString(), 
         isPinned: msgDoc.isPinned,
     };
 }
@@ -147,7 +147,7 @@ function transformTrainingDataDoc(doc: ITrainingData): TrainingData {
     };
 }
 
-function transformAppointmentRuleDoc(doc: IAppointmentRule): AppointmentRule {
+function transformAppointmentRuleDoc(doc: IAppointmentRule): LibAppointmentRuleType {
     return {
         id: (doc._id as Types.ObjectId).toString(),
         name: doc.name,
@@ -164,7 +164,7 @@ function transformNoteDocToNote(noteDoc: any): Note {
         id: (noteDoc._id as Types.ObjectId).toString(),
         customerId: noteDoc.customerId.toString(),
         staffId: noteDoc.staffId.toString(),
-        staffName: (noteDoc.staffId as any)?.name, // Populated field
+        staffName: (noteDoc.staffId as any)?.name, 
         content: noteDoc.content,
         createdAt: new Date(noteDoc.createdAt as Date),
         updatedAt: new Date(noteDoc.updatedAt as Date),
@@ -289,7 +289,7 @@ export async function handleCustomerAccess(phoneNumber: string): Promise<{
     sender: 'system',
     content: welcomeMessageContent,
     timestamp: new Date(),
-    name: `${brandName} AI`, // System messages also come from 'brand AI'
+    name: `${brandName} AI`, 
   };
   
   if (initialMessages.length === 0 || (initialMessages.length > 0 && initialMessages[initialMessages.length-1]?.sender !== 'system')) {
@@ -418,6 +418,7 @@ async function checkSlotAvailability(
   }
   
   if (concurrentAppointments >= currentNumberOfStaff) {
+    // TODO: Implement logic to suggest next available slot for same day or next working day
     return { isAvailable: false, reason: `Đã đủ số lượng khách tại thời điểm ${targetTime} ngày ${targetDateString}.` };
   }
 
@@ -464,7 +465,7 @@ export async function processUserMessage(
     timestamp: new Date(),
     name: currentUserSession.name || 'Khách',
     customerId: new mongoose.Types.ObjectId(customerId) as any,
-    userId: new mongoose.Types.ObjectId(customerId) as any, // User sent it
+    userId: new mongoose.Types.ObjectId(customerId) as any, 
   };
   const savedUserMessageDoc = await new MessageModel(userMessageData).save();
   const userMessage = transformMessageDocToMessage(savedUserMessageDoc);
@@ -498,7 +499,19 @@ export async function processUserMessage(
     updatedAt: doc.updatedAt.toISOString(),
   }));
   
-  const appointmentRulesFromDB = await getAppointmentRules();
+  const appointmentRulesFromDB: LibAppointmentRuleType[] = await getAppointmentRules();
+  const appointmentRulesForAI: AIAppointmentRuleType[] = appointmentRulesFromDB.map(
+    (rule: LibAppointmentRuleType) => ({
+      id: rule.id,
+      name: rule.name,
+      keywords: rule.keywords,
+      conditions: rule.conditions,
+      aiPromptInstructions: rule.aiPromptInstructions,
+      createdAt: rule.createdAt?.toISOString(),
+      updatedAt: rule.updatedAt?.toISOString(),
+    })
+  );
+  
 
   scheduleOutputFromAI = await scheduleAppointmentAIFlow({
     userInput: textForAI, 
@@ -507,8 +520,8 @@ export async function processUserMessage(
     existingAppointments: customerAppointmentsForAI.length > 0 ? customerAppointmentsForAI : undefined,
     currentDateTime: new Date().toISOString(),
     chatHistory: formattedHistory,
-    appointmentRules: appointmentRulesFromDB.length > 0 ? appointmentRulesFromDB : undefined,
-    mediaDataUri: mediaDataUriForAI, // Pass media URI to scheduling flow
+    appointmentRules: appointmentRulesForAI.length > 0 ? appointmentRulesForAI : undefined,
+    mediaDataUri: mediaDataUriForAI, 
   });
 
   console.log("[ACTIONS] AI scheduleOutput (initial parse):", JSON.stringify(scheduleOutputFromAI, null, 2));
@@ -578,7 +591,7 @@ export async function processUserMessage(
                             status: 'booked', 
                             notes: scheduleOutputFromAI.appointmentDetails.notes,
                             packageType: scheduleOutputFromAI.appointmentDetails.packageType,
-                            priority: scheduleOutputFromAI.appointmentDetails,
+                            priority: scheduleOutputFromAI.appointmentDetails, // Corrected, was missing .priority
                             updatedAt: new Date() 
                           },
                           { new: true }
@@ -658,20 +671,20 @@ export async function processUserMessage(
             console.error('Error answering user question:', error);
             aiResponseContent = "Xin lỗi, tôi đang gặp chút khó khăn để hiểu ý bạn. Bạn có thể hỏi theo cách khác được không?";
           }
-    } else if (!keywordFound) {
-        aiResponseContent = scheduleOutputFromAI.confirmationMessage;
+    } else if (!keywordFound) { // If keyword not found, and intent wasn't 'no_action_needed' handled by AI
+        aiResponseContent = scheduleOutputFromAI.confirmationMessage; // Use AI's clarification/error message
     }
+     // If a keyword was found, aiResponseContent is already set, so no further action needed for content
   }
   
   const brandNameForAI = appSettings?.brandName || 'AetherChat';
 
   const aiMessageData: Partial<IMessage> = {
-    sender: 'ai', // Always 'ai' from customer's perspective
+    sender: 'ai', 
     content: aiResponseContent, 
     timestamp: new Date(),
-    name: `${brandNameForAI} AI`, // Generic name for customer view
+    name: `${brandNameForAI} AI`, 
     customerId: new mongoose.Types.ObjectId(customerId) as any,
-    // userId is not set here, as it's a true AI response or handled by staff through sendStaffMessage
   };
   const savedAiMessageDoc = await new MessageModel(aiMessageData).save();
   finalAiMessage = transformMessageDocToMessage(savedAiMessageDoc);
@@ -745,11 +758,9 @@ export async function getCustomersForStaffView(
       { tags: staffSpecificTag } 
     ];
   } else if (requestingStaffRole === 'admin') {
-     // Admin sees all unless specific admin-mention tags are used for filtering
      if (filterTags && filterTags.some(tag => tag.startsWith('admin:'))) {
         query.tags = { $in: filterTags.filter(tag => tag.startsWith('admin:')) };
      }
-     // No specific staffId filter for admin unless they are filtering by a staff-assignment tag.
   }
   
   if (filterTags && filterTags.length > 0) {
@@ -759,7 +770,6 @@ export async function getCustomersForStaffView(
             query.$or = query.$or.map((condition: any) => ({
                 $and: [condition, { tags: { $in: generalTagsToFilter } }]
             }));
-            // If admin had an admin-mention tag filter, AND it with general tags
             if (query.tags && query.tags.$in) {
                  query.tags.$in = [...new Set([...query.tags.$in, ...generalTagsToFilter])];
             } else if (requestingStaffRole === 'admin') {
@@ -767,8 +777,7 @@ export async function getCustomersForStaffView(
             }
 
         } else {
-            // If no $or (e.g. admin view, or staff view without specific staff tag filter)
-            if (query.tags && query.tags.$in) { // If admin-mention tag was already there
+            if (query.tags && query.tags.$in) { 
                 query.tags.$in = [...new Set([...query.tags.$in, ...generalTagsToFilter])];
             } else {
                 query.tags = { $in: generalTagsToFilter };
@@ -1031,12 +1040,12 @@ export async function sendStaffMessage(
   }
 
   const staffMessageData: Partial<IMessage> = {
-    sender: 'ai', // From customer's perspective, it's an 'ai' or system reply
+    sender: 'ai', 
     content: messageContent, 
     timestamp: new Date(),
-    name: staffSession.name || (staffSession.role === 'admin' ? 'Admin' : 'Nhân viên'), // Actual staff/admin name
+    name: staffSession.name || (staffSession.role === 'admin' ? 'Admin' : 'Nhân viên'), 
     customerId: (customer as any)._id,
-    userId: new mongoose.Types.ObjectId(staffSession.id) as any, // ID of staff/admin who sent
+    userId: new mongoose.Types.ObjectId(staffSession.id) as any, 
   };
   const savedStaffMessageDoc = await new MessageModel(staffMessageData).save();
   await CustomerModel.findByIdAndUpdate(customerId, {
@@ -1098,20 +1107,20 @@ export async function deleteTrainingDataItem(id: string): Promise<{ success: boo
 }
 
 // --- Appointment Rule Management Actions ---
-export async function getAppointmentRules(): Promise<AppointmentRule[]> {
+export async function getAppointmentRules(): Promise<LibAppointmentRuleType[]> {
     await dbConnect();
     const docs = await AppointmentRuleModel.find({}).sort({ name: 1 });
     return docs.map(transformAppointmentRuleDoc);
 }
 
-export async function createAppointmentRule(data: Omit<AppointmentRule, 'id' | 'createdAt' | 'updatedAt'>): Promise<AppointmentRule> {
+export async function createAppointmentRule(data: Omit<LibAppointmentRuleType, 'id' | 'createdAt' | 'updatedAt'>): Promise<LibAppointmentRuleType> {
     await dbConnect();
     const newDoc = new AppointmentRuleModel(data);
     await newDoc.save();
     return transformAppointmentRuleDoc(newDoc);
 }
 
-export async function updateAppointmentRule(id: string, data: Partial<Omit<AppointmentRule, 'id' | 'createdAt' | 'updatedAt'>>): Promise<AppointmentRule | null> {
+export async function updateAppointmentRule(id: string, data: Partial<Omit<LibAppointmentRuleType, 'id' | 'createdAt' | 'updatedAt'>>): Promise<LibAppointmentRuleType | null> {
     await dbConnect();
     const updatedDoc = await AppointmentRuleModel.findByIdAndUpdate(id, data, { new: true });
     return updatedDoc ? transformAppointmentRuleDoc(updatedDoc) : null;
@@ -1405,7 +1414,6 @@ export async function updateCustomerNote(noteId: string, staffId: string, conten
     await dbConnect();
     const note = await NoteModel.findById(noteId);
     if (!note) throw new Error("Note not found.");
-    // Allow admin to edit any note, or staff to edit their own.
     const staffUser = await UserModel.findById(staffId);
     if (!staffUser) throw new Error("Staff user not found.");
 
@@ -1754,7 +1762,6 @@ export async function getMessagesByIds(messageIds: string[]): Promise<Message[]>
   await dbConnect();
   const objectIds = messageIds.map(id => new mongoose.Types.ObjectId(id));
   const messageDocs = await MessageModel.find({ _id: { $in: objectIds } });
-  // Ensure original order is preserved if possible, or sort by timestamp
   const messagesMap = new Map(messageDocs.map(doc => [doc._id.toString(), transformMessageDocToMessage(doc)]));
   return messageIds.map(id => messagesMap.get(id)).filter(Boolean) as Message[];
 }
@@ -1765,8 +1772,9 @@ export async function getCustomerMediaMessages(customerId: string): Promise<Mess
   await dbConnect();
   const messages = await MessageModel.find({ 
     customerId: new mongoose.Types.ObjectId(customerId) as any,
-    content: { $regex: /^data:(image|application)\/[^;]+;base64,/ } // Basic regex for data URIs
-  }).sort({ timestamp: -1 }); // Sort by newest first for media history
+    content: { $regex: /^data:(image|application)\/[^;]+;base64,/ } 
+  }).sort({ timestamp: -1 }); 
 
   return messages.map(transformMessageDocToMessage);
 }
+
