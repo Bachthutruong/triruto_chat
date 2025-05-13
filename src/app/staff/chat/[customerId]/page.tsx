@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Send, Paperclip, Smile, UserCircle, Edit2, Tag, Clock, Phone, Info, X, StickyNote, PlusCircle, Trash2, UserPlus, LogOutIcon, UserCheck, Users, Pin, PinOff, Edit } from 'lucide-react';
+import { Send, Paperclip, Smile, UserCircle, Edit2, Tag, Clock, Phone, Info, X, StickyNote, PlusCircle, Trash2, UserPlus, LogOutIcon, UserCheck, Users, Pin, PinOff, Edit, Image as ImageIcon, ExternalLink } from 'lucide-react';
 import type { CustomerProfile, Message, AppointmentDetails, UserSession, Note, MessageEditState } from '@/lib/types';
 import { 
   getCustomerDetails, 
@@ -38,7 +38,11 @@ import { Dialog, DialogHeader, DialogFooter, DialogContent, DialogTitle, DialogD
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ChatWindow } from '@/components/chat/ChatWindow'; 
 import { Label } from '@/components/ui/label';
+import Link from 'next/link'; // Import Link
 
+// This component renders the detailed view of a single customer's chat.
+// It is intended to be used as the child of StaffChatLayout or AdminChatLayout
+// when a specific customerId is present in the URL.
 export default function StaffIndividualChatPage() {
   const params = useParams();
   const customerId = params.customerId as string;
@@ -94,7 +98,6 @@ export default function StaffIndividualChatPage() {
 
         if (staffSession && fetchedCustomer && fetchedCustomer.interactionStatus === 'unread') {
           await markCustomerInteractionAsReadByStaff(customerId, staffSession.id);
-          // Optionally re-fetch customer to update status locally, or update customer state directly
           setCustomer(prev => prev ? {...prev, interactionStatus: 'read'} : null);
         }
 
@@ -152,7 +155,7 @@ export default function StaffIndividualChatPage() {
 
   const handleSaveEditedMessage = async () => {
     if (!messageEditState || !staffSession) return;
-    setIsSendingMessage(true); // Reuse for loading state
+    setIsSendingMessage(true); 
     try {
       const updatedMessage = await editStaffMessage(messageEditState.messageId, editedMessageContent, staffSession);
       if (updatedMessage) {
@@ -200,7 +203,7 @@ export default function StaffIndividualChatPage() {
         if (messageToPin) {
           setPinnedMessages(prev => {
             const newPinned = [...prev.filter(p => p.id !== messageId), {...messageToPin, isPinned: true}];
-            return newPinned.slice(-3); // Keep only last 3
+            return newPinned.slice(-3); 
           });
           setMessages(prev => prev.map(m => m.id === messageId ? {...m, isPinned: true} : m));
         }
@@ -378,7 +381,7 @@ export default function StaffIndividualChatPage() {
 
 
   return (
-    <div className="flex flex-col md:flex-row h-[calc(100vh-var(--header-height,4rem)-2rem)] gap-4">
+    <div className="flex flex-col md:flex-row h-full gap-0 md:gap-4"> {/* Changed from h-[calc...] to h-full */}
       <Card className="flex-grow h-full flex flex-col">
         <CardHeader className="flex flex-row items-center justify-between border-b p-4">
           <div className="flex items-center gap-3">
@@ -404,18 +407,23 @@ export default function StaffIndividualChatPage() {
                      <LogOutIcon className="mr-1 h-4 w-4"/> {isAssigning ? "Đang trả..." : "Trả về hàng đợi"}
                  </Button>
             )}
+             <Button variant="outline" size="sm" asChild>
+                <Link href={staffSession.role === 'admin' ? `/admin/media/${customerId}` : `/staff/media/${customerId}`}>
+                  <ImageIcon className="mr-1 h-4 w-4" /> Lịch sử File
+                </Link>
+              </Button>
           </div>
         </CardHeader>
         
         <ChatWindow
-          userSession={staffSession} // Staff/admin is the "user" in this context
+          userSession={staffSession} 
           messages={messages}
           pinnedMessages={pinnedMessages}
-          suggestedReplies={[]} // Staff don't get AI suggested replies for their own messages
+          suggestedReplies={[]} 
           onSendMessage={handleSendMessage}
-          onSuggestedReplyClick={() => {}} // No action for staff
+          onSuggestedReplyClick={() => {}} 
           isLoading={isSendingMessage}
-          viewerRole={staffSession.role} // 'staff' or 'admin'
+          viewerRole={staffSession.role} 
           onPinMessage={handlePinMessage}
           onUnpinMessage={handleUnpinMessage}
           onDeleteMessage={handleDeleteMessage}
@@ -424,7 +432,7 @@ export default function StaffIndividualChatPage() {
         />
       </Card>
 
-      <Card className="w-full md:w-1/3 lg:w-1/4 h-full flex flex-col">
+      <Card className="w-full md:max-w-xs lg:max-w-sm xl:max-w-md h-full flex-col hidden md:flex"> {/* Adjusted max-widths */}
         <CardHeader className="border-b">
           <CardTitle className="flex items-center"><Info className="mr-2 h-5 w-5" /> Thông tin Khách hàng</CardTitle>
         </CardHeader>
@@ -513,7 +521,6 @@ export default function StaffIndividualChatPage() {
                 </div>
               ))}
               {appointments.length > 2 && <Button variant="link" size="sm" className="p-0 h-auto text-primary">Xem tất cả</Button>}
-              {/* <Button variant="outline" size="sm" className="w-full mt-1">Lịch hẹn mới</Button> */}
             </div>
             <div className="border-t pt-3">
               <h4 className="font-semibold text-sm flex items-center mb-1"><StickyNote className="mr-2 h-4 w-4 text-primary" />Ghi chú nội bộ ({notes.length})</h4>
@@ -576,7 +583,6 @@ export default function StaffIndividualChatPage() {
         </ScrollArea>
       </Card>
 
-       {/* Edit Message Dialog */}
       <Dialog open={messageEditState !== null} onOpenChange={(isOpen) => !isOpen && setMessageEditState(null)}>
         <DialogContent>
           <DialogHeader>
