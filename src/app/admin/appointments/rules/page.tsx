@@ -68,7 +68,7 @@ export default function AdminAppointmentRulesPage() {
     setIsSubmitting(true);
     const keywordsArray = ruleKeywords.split(',').map(s => s.trim()).filter(Boolean);
     if (!ruleName.trim() || keywordsArray.length === 0 || !ruleConditions.trim() || !ruleAiInstructions.trim()) {
-        toast({title: "Thiếu thông tin", description: "Vui lòng điền tất cả các trường.", variant: "destructive"});
+        toast({title: "Thiếu thông tin", description: "Vui lòng điền tất cả các trường: Tên Quy tắc, Từ khóa, Điều kiện, Hướng dẫn cho AI.", variant: "destructive"});
         setIsSubmitting(false);
         return;
     }
@@ -176,20 +176,20 @@ export default function AdminAppointmentRulesPage() {
           <form onSubmit={handleSubmit} className="space-y-4 max-h-[70vh] overflow-y-auto p-1">
             <div>
                 <Label htmlFor="ruleName">Tên Quy tắc</Label>
-                <Input id="ruleName" value={ruleName} onChange={e => setRuleName(e.target.value)} placeholder="ví dụ: Ưu tiên đặt lịch VIP buổi sáng" disabled={isSubmitting}/>
+                <Input id="ruleName" value={ruleName} onChange={e => setRuleName(e.target.value)} placeholder="ví dụ: Ưu tiên đặt lịch VIP buổi sáng" disabled={isSubmitting} required/>
             </div>
             <div>
                 <Label htmlFor="ruleKeywords">Từ khóa (cách nhau bằng dấu phẩy)</Label>
-                <Input id="ruleKeywords" value={ruleKeywords} onChange={e => setRuleKeywords(e.target.value)} placeholder="ví dụ: đặt lịch vip, ưu tiên sáng" disabled={isSubmitting}/>
+                <Input id="ruleKeywords" value={ruleKeywords} onChange={e => setRuleKeywords(e.target.value)} placeholder="ví dụ: đặt lịch vip, ưu tiên sáng" disabled={isSubmitting} required/>
             </div>
             <div>
                 <Label htmlFor="ruleConditions">Điều kiện</Label>
-                <Input id="ruleConditions" value={ruleConditions} onChange={e => setRuleConditions(e.target.value)} placeholder="ví dụ: tag_khach:VIP, dich_vu:Chăm sóc da" disabled={isSubmitting}/>
+                <Input id="ruleConditions" value={ruleConditions} onChange={e => setRuleConditions(e.target.value)} placeholder="ví dụ: tag_khach:VIP, dich_vu:Chăm sóc da" disabled={isSubmitting} required/>
                 <p className="text-xs text-muted-foreground mt-1">Ví dụ: `service:Cắt tóc, time_range:[5PM-8PM]`, `package:VIP`</p>
             </div>
             <div>
                 <Label htmlFor="ruleAiInstructions">Hướng dẫn cho AI</Label>
-                <Textarea id="ruleAiInstructions" value={ruleAiInstructions} onChange={e => setRuleAiInstructions(e.target.value)} placeholder="Hướng dẫn chi tiết cho AI khi quy tắc này khớp..." rows={5} disabled={isSubmitting}/>
+                <Textarea id="ruleAiInstructions" value={ruleAiInstructions} onChange={e => setRuleAiInstructions(e.target.value)} placeholder="Hướng dẫn chi tiết cho AI khi quy tắc này khớp..." rows={5} disabled={isSubmitting} required/>
             </div>
             <DialogFooter className="sticky bottom-0 bg-background py-4 border-t -mx-1 px-1">
               <DialogClose asChild><Button type="button" variant="outline" disabled={isSubmitting}>Hủy</Button></DialogClose>
@@ -201,3 +201,4 @@ export default function AdminAppointmentRulesPage() {
     </div>
   );
 }
+```

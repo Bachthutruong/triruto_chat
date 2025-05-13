@@ -3,10 +3,10 @@
 
 /**
  * @fileOverview A flow to schedule, reschedule, or cancel appointments using natural language,
- * incorporating business rules for availability.
+ * incorporating business rules and admin-defined appointment rules.
  *
  * - scheduleAppointment - A function that handles the appointment process.
- * Schemas (ScheduleAppointmentInput, ScheduleAppointmentOutput, AppointmentDetailsSchema) are defined in '@/ai/schemas/schedule-appointment-schemas.ts'.
+ * Schemas (ScheduleAppointmentInput, ScheduleAppointmentOutput, AppointmentDetailsSchema, AppointmentRuleSchema) are defined in '@/ai/schemas/schedule-appointment-schemas.ts'.
  */
 
 import {ai} from '@/ai/genkit';
@@ -15,9 +15,10 @@ import {
     type ScheduleAppointmentInput,
     ScheduleAppointmentOutputSchema,
     type ScheduleAppointmentOutput,
-    AppointmentDetailsSchema // Make sure this is imported if needed by prompt
+    AppointmentDetailsSchema, // Make sure this is imported if needed by prompt
+    type AppointmentRule,
 } from '@/ai/schemas/schedule-appointment-schemas';
-import {getAppSettings} from '@/app/actions'; // To fetch scheduling rules
+import {getAppSettings, getAppointmentRules} from '@/app/actions'; // To fetch scheduling rules
 import type { AppSettings, SpecificDayRule } from '@/lib/types';
 import AppointmentModel from '@/models/Appointment.model'; // To check existing appointments
 import { parseISO as dateFnsParseISO, getDay, addMinutes, isBefore, format as dateFnsFormat, isValid as isValidDate } from 'date-fns';
@@ -27,7 +28,7 @@ import mongoose from 'mongoose';
 // This prompt focuses on NLU and NLG, guided by TypeScript availability checks.
 const scheduleAppointmentPrompt = ai.definePrompt({
   name: 'scheduleAppointmentPromptVietnameseEnhanced', 
-  input: { schema: ScheduleAppointmentInputSchema }, // Input might be enhanced by TypeScript logic
+  input: { schema: ScheduleAppointmentInputSchema }, 
   output: { schema: ScheduleAppointmentOutputSchema },
   prompt: `Bạn là một trợ lý AI cho một salon/spa, giúp người dùng quản lý lịch hẹn bằng tiếng Việt.
 Số điện thoại của người dùng: {{{phoneNumber}}}. ID người dùng: {{{userId}}}. Ngày/giờ hiện tại: {{{currentDateTime}}}.
@@ -65,12 +66,25 @@ Các lịch hẹn hiện có của người dùng:
 Người dùng không có lịch hẹn nào.
 {{/if}}
 
+{{#if appointmentRules.length}}
+**Các Quy tắc Đặt lịch Tự động:**
+Dưới đây là các quy tắc do quản trị viên cấu hình mà bạn cần tuân theo. Ưu tiên các quy tắc này nếu từ khóa người dùng nhập khớp:
+{{#each appointmentRules}}
+- **Tên Quy tắc:** {{name}}
+  **Từ khóa kích hoạt:** {{#each keywords}}{{{this}}}{{#unless @last}}, {{/unless}}{{/each}}
+  **Điều kiện áp dụng (ví dụ: tag khách hàng, loại dịch vụ, khung giờ):** {{conditions}}
+  **Hướng dẫn cho AI (khi quy tắc này khớp):** {{{aiPromptInstructions}}}
+---
+{{/each}}
+Hãy xem xét các quy tắc này khi phân tích yêu cầu đặt lịch của người dùng. Nếu từ khóa của người dùng khớp với một quy tắc, hãy ưu tiên áp dụng các điều kiện và hướng dẫn của quy tắc đó.
+{{/if}}
+
 Các dịch vụ có sẵn: Cắt tóc, Tạo kiểu, Nhuộm tóc, Làm móng tay, Làm móng chân, Chăm sóc da mặt, Massage. (Thông tin này chỉ để bạn biết, không cần liệt kê lại trừ khi được hỏi).
 Chi nhánh: "Chi nhánh Chính", "Chi nhánh Phụ". (Thông tin này chỉ để bạn biết).
 
 Nhiệm vụ của bạn:
-1.  **Hiểu ngữ cảnh**: Dựa trên \`userInput\`, \`chatHistory\`, và quan trọng nhất là \`availabilityCheckResult\` (nếu có).
-2.  **Trích xuất chi tiết ban đầu (nếu chưa có availabilityCheckResult)**: Nếu \`availabilityCheckResult\` không được cung cấp (đây là lượt đầu tiên AI xử lý yêu cầu), hãy cố gắng xác định \`service\`, \`date\` (YYYY-MM-DD), \`time\` (HH:MM), \`branch\` từ \`userInput\` và \`chatHistory\`. Luôn chuyển đổi ngày tương đối ("ngày mai", "tuần tới") thành ngày cụ thể YYYY-MM-DD dựa trên \`currentDateTime\`.
+1.  **Hiểu ngữ cảnh**: Dựa trên \`userInput\`, \`chatHistory\`, \`appointmentRules\` (nếu có), và quan trọng nhất là \`availabilityCheckResult\` (nếu có).
+2.  **Trích xuất chi tiết ban đầu (nếu chưa có availabilityCheckResult)**: Nếu \`availabilityCheckResult\` không được cung cấp (đây là lượt đầu tiên AI xử lý yêu cầu), hãy cố gắng xác định \`service\`, \`date\` (YYYY-MM-DD), \`time\` (HH:MM), \`branch\` từ \`userInput\` và \`chatHistory\`. Luôn chuyển đổi ngày tương đối ("ngày mai", "tuần tới") thành ngày cụ thể YYYY-MM-DD dựa trên \`currentDateTime\`. Xem xét \`appointmentRules\` để ưu tiên xử lý.
 3.  **Tạo phản hồi dựa trên \`availabilityCheckResult\`**:
     *   Nếu \`availabilityCheckResult.status\` là "AVAILABLE" và có \`availabilityCheckResult.confirmedSlot\`: Tạo \`confirmationMessage\` xác nhận lịch hẹn đã được đặt thành công cho khung giờ đó. Đặt \`intent: "booked"\` (hoặc "rescheduled" nếu \`originalAppointmentIdToModify\` có). Đặt \`appointmentDetails\` với thông tin từ \`confirmedSlot\`.
     *   Nếu \`availabilityCheckResult.status\` là "UNAVAILABLE": Tạo \`confirmationMessage\` thông báo lịch không trống, giải thích ngắn gọn dựa trên \`availabilityCheckResult.reason\`. Nếu có \`availabilityCheckResult.suggestedSlots\`, hãy đề xuất chúng cho người dùng. Đặt \`intent: "pending_alternatives"\`.
@@ -204,9 +218,25 @@ const scheduleAppointmentFlow = ai.defineFlow(
         currentDateTime = new Date().toISOString();
     }
 
+    // Fetch admin-defined appointment rules
+    const appointmentRulesFromDB = await getAppointmentRules();
+    const appointmentRulesForAI: AppointmentRule[] = appointmentRulesFromDB.map(rule => ({
+        id: rule.id,
+        name: rule.name,
+        keywords: rule.keywords,
+        conditions: rule.conditions,
+        aiPromptInstructions: rule.aiPromptInstructions,
+        createdAt: rule.createdAt?.toISOString(),
+        updatedAt: rule.updatedAt?.toISOString(),
+    }));
+
+
     // Initial AI call to parse user input and understand intent
-    // The prompt is now simpler, focused on NLU
-    let promptInputForNLU = { ...input, currentDateTime };
+    let promptInputForNLU: ScheduleAppointmentInput = { 
+        ...input, 
+        currentDateTime,
+        appointmentRules: appointmentRulesForAI.length > 0 ? appointmentRulesForAI : undefined,
+    };
     const { output: nluOutput } = await scheduleAppointmentPrompt(promptInputForNLU);
 
     if (!nluOutput) {
@@ -239,24 +269,22 @@ const scheduleAppointmentFlow = ai.defineFlow(
 
       if (availability.isAvailable) {
         // Slot is available, proceed with AI confirmation message generation
-        // Pass the confirmed slot back to the prompt for NLG
-        const promptInputForConfirmation = {
+        const promptInputForConfirmation: ScheduleAppointmentInput = {
           ...input,
           currentDateTime,
+          appointmentRules: appointmentRulesForAI.length > 0 ? appointmentRulesForAI : undefined,
           availabilityCheckResult: {
             status: "AVAILABLE",
             confirmedSlot: {
               date: nluOutput.appointmentDetails.date,
               time: nluOutput.appointmentDetails.time,
-              service: nluOutput.appointmentDetails.service, // pass service for confirmation message
+              service: nluOutput.appointmentDetails.service, 
               branch: nluOutput.appointmentDetails.branch,
             }
           },
-          // Crucially, tell the AI what its final intent should be
-          // This might involve a slightly different prompt or a mode for the same prompt.
-          // For now, we'll reuse the same prompt but it knows it's available.
         };
-        const {output: confirmedOutput} = await scheduleAppointmentPrompt(promptInputForNLU); // Re-call prompt with availability info
+        // Re-call prompt with availability info to generate final confirmation message
+        const {output: confirmedOutput} = await scheduleAppointmentPrompt(promptInputForConfirmation); 
         
         if (!confirmedOutput) {
              return { intent: 'error', confirmationMessage: "Lỗi xác nhận lịch hẹn.", requiresAssistance: true };
@@ -264,23 +292,24 @@ const scheduleAppointmentFlow = ai.defineFlow(
 
         return {
           ...confirmedOutput, // Use AI's generated message
-          intent: nluOutput.intent, // Preserve original intent (booked/rescheduled)
-          appointmentDetails: { // Ensure details are complete
+          intent: nluOutput.intent, 
+          appointmentDetails: { 
             ...nluOutput.appointmentDetails,
-            status: 'booked', // Explicitly set status
+            status: 'booked', 
           },
           originalAppointmentIdToModify: nluOutput.originalAppointmentIdToModify,
         };
 
       } else {
         // Slot is unavailable, inform AI to generate message with reason/alternatives
-        const promptInputForAlternatives = {
+        const promptInputForAlternatives: ScheduleAppointmentInput = {
           ...input,
           currentDateTime,
+          appointmentRules: appointmentRulesForAI.length > 0 ? appointmentRulesForAI : undefined,
           availabilityCheckResult: {
             status: "UNAVAILABLE",
             reason: availability.reason,
-            suggestedSlots: availability.suggestedSlots, // Pass suggestions if any
+            suggestedSlots: availability.suggestedSlots, 
           }
         };
          const {output: alternativeOutput} = await scheduleAppointmentPrompt(promptInputForAlternatives);
@@ -288,29 +317,50 @@ const scheduleAppointmentFlow = ai.defineFlow(
              return { intent: 'error', confirmationMessage: "Lỗi khi gợi ý lịch hẹn thay thế.", requiresAssistance: true };
          }
         return {
-            ...alternativeOutput, // Use AI's message for alternatives
-            intent: 'pending_alternatives', // Ensure intent reflects unavailability
-            suggestedSlots: availability.suggestedSlots || [], // Send TypeScript generated slots if any
+            ...alternativeOutput, 
+            intent: 'pending_alternatives', 
+            suggestedSlots: availability.suggestedSlots || alternativeOutput.suggestedSlots || [], 
         };
       }
     } else if (nluOutput.intent === 'cancelled' || nluOutput.intent === 'clarification_needed' || nluOutput.intent === 'no_action_needed' || nluOutput.intent === 'error') {
-        // For these intents, the NLU output is likely sufficient
-         if (nluOutput.intent === 'cancelled' && !nluOutput.originalAppointmentIdToModify) {
-            return {
-                intent: 'clarification_needed',
-                confirmationMessage: "Tôi cần biết bạn muốn hủy lịch hẹn nào. Bạn có thể cung cấp ID lịch hẹn hoặc mô tả lịch hẹn đó được không?",
-                missingInformation: "lịch hẹn gốc cần hủy",
-            };
+         if (nluOutput.intent === 'cancelled' && !nluOutput.originalAppointmentIdToModify && (input.existingAppointments?.length ?? 0) > 0) {
+            // If multiple appointments exist and AI didn't specify one for cancellation
+            if ((input.existingAppointments?.length ?? 0) > 1) {
+                return {
+                    intent: 'clarification_needed',
+                    confirmationMessage: "Bạn có nhiều lịch hẹn. Bạn muốn hủy lịch hẹn nào cụ thể? (Vui lòng cung cấp ID hoặc mô tả chi tiết).",
+                    missingInformation: "lịch hẹn cụ thể cần hủy",
+                };
+            } else if (input.existingAppointments?.length === 1) {
+                 // Auto-select the only existing appointment if not specified
+                 nluOutput.originalAppointmentIdToModify = input.existingAppointments[0].appointmentId;
+            }
         }
         // Validate specific parts of nluOutput if necessary, e.g., date formats in suggestedSlots
         if (nluOutput.intent === 'pending_alternatives' && nluOutput.suggestedSlots) {
             for (const slot of nluOutput.suggestedSlots) {
                 if (!/^\d{4}-\d{2}-\d{2}$/.test(slot.date) || !/^[0-2][0-9]:[0-5][0-9]$/.test(slot.time)) {
-                    return {
-                        intent: 'error',
-                        confirmationMessage: "Đã xảy ra lỗi với định dạng gợi ý lịch hẹn từ AI.",
-                        requiresAssistance: true,
-                    };
+                    // Attempt to reformat if it looks like a common AI mistake, e.g. "2 PM"
+                    try {
+                        const parsedTime = Date.parse(`1970/01/01 ${slot.time}`); // Try to parse common time formats
+                        if (!isNaN(parsedTime)) {
+                            slot.time = dateFnsFormat(new Date(parsedTime), "HH:mm");
+                        } else {
+                             console.warn("AI suggested invalid time format, requesting clarification:", slot);
+                             return {
+                                intent: 'clarification_needed',
+                                confirmationMessage: "Định dạng giờ gợi ý không hợp lệ. Bạn có thể cung cấp lại giờ mong muốn (HH:MM)?",
+                                missingInformation: "giờ hợp lệ (HH:MM)",
+                             };
+                        }
+                    } catch (e) {
+                        console.warn("AI suggested invalid time format, requesting clarification:", slot);
+                        return {
+                            intent: 'clarification_needed',
+                            confirmationMessage: "Định dạng giờ gợi ý không hợp lệ. Bạn có thể cung cấp lại giờ mong muốn (HH:MM)?",
+                            missingInformation: "giờ hợp lệ (HH:MM)",
+                        };
+                    }
                 }
             }
         }
