@@ -151,7 +151,6 @@ export function MessageBubble({
               viewerRole === 'customer_view' ? 'text-accent-foreground/70' : 'text-muted-foreground'
             )}>
             {new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-            {message.updatedAt && <em className="ml-1">(đã sửa)</em>}
           </span>
           {isOwnStaffMessage && onDeleteMessage && onEditMessage && (
             <div className="opacity-0 group-hover:opacity-100 transition-opacity duration-150 flex gap-0.5">
@@ -211,3 +210,4 @@ export function MessageBubble({
     </div>
   );
 }
+
