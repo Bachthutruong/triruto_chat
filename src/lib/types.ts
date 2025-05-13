@@ -4,6 +4,8 @@ export type Message = {
   content: string;
   timestamp: Date;
   name?: string; // Optional: display name for sender
+  userId?: string; // ID of the actual user who sent (if staff/admin sent as 'ai')
+  isPinned?: boolean;
 };
 
 export type AppointmentStatus = 'booked' | 'cancelled' | 'completed' | 'pending_confirmation' | 'rescheduled';
@@ -59,6 +61,7 @@ export type CustomerProfile = {
   appointmentIds: string[]; // IDs of appointments
   productIds: string[]; // IDs of products
   noteIds: string[]; // IDs of notes
+  pinnedMessageIds?: string[]; // IDs of pinned messages
   tags?: string[]; // e.g., "VIP", "Needs Follow-up"
   assignedStaffId?: string; // ID of staff member assigned to this customer
   assignedStaffName?: string; // Name of the assigned staff member
@@ -218,3 +221,6 @@ export type Reminder = {
   createdAt: Date;
   updatedAt: Date;
 };
+
+// For MessageBubble component to differentiate views
+export type MessageViewerRole = UserRole | 'customer_view';

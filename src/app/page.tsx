@@ -207,7 +207,8 @@ export default function HomePage() {
               suggestedReplies={suggestedReplies}
               onSendMessage={handleSendMessage}
               onSuggestedReplyClick={handleSendMessage} 
-              isLoading={isChatLoading} 
+              isLoading={isChatLoading}
+              viewerRole="customer_view" // Customer is always 'customer_view'
             />
           </CardContent>
         </Card>

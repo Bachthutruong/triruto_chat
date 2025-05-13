@@ -5,6 +5,7 @@ import mongoose, { Schema, Document, models, Model } from 'mongoose';
 export interface ICustomer extends Document, Omit<CustomerProfile, 'id' | 'assignedStaffName'> {
   // id is managed by MongoDB as _id
   // assignedStaffName will be populated
+  pinnedMessageIds: mongoose.Types.ObjectId[]; // Add this line
 }
 
 const CustomerSchema: Schema<ICustomer> = new Schema({
@@ -15,6 +16,7 @@ const CustomerSchema: Schema<ICustomer> = new Schema({
   appointmentIds: [{ type: Schema.Types.ObjectId, ref: 'Appointment' }],
   productIds: [{ type: String }], // For now, keeping product IDs simple, can be ObjectId if Product collection exists
   noteIds: [{ type: Schema.Types.ObjectId, ref: 'Note' }],
+  pinnedMessageIds: [{ type: Schema.Types.ObjectId, ref: 'Message', default: [] }], // Add this line
   tags: [{ type: String, index: true }],
   assignedStaffId: { type: Schema.Types.ObjectId, ref: 'User', index: true },
   lastInteractionAt: { type: Date, default: Date.now, index: true },

@@ -21,7 +21,6 @@ if (process.env.NODE_ENV !== 'production') {
 
 if (!process.env.MONGODB_URI) {
   console.warn("WARNING: MONGODB_URI is not defined in .env file. Using fallback for build purposes only. App will not function correctly without it at runtime.");
-  // Fallback for build, but this will cause runtime errors if not set
   process.env.MONGODB_URI = "mongodb://127.0.0.1:27017/aetherchat_fallback_build"; 
 }
 
@@ -32,7 +31,7 @@ import CustomerModel from '@/models/Customer.model';
 import MessageModel from '@/models/Message.model';
 import AppointmentModel from '@/models/Appointment.model';
 import AppSettingsModel from '@/models/AppSettings.model';
-import KeywordMappingModel from '@/models/KeywordMapping.model';
+import KeywordMappingModel from '@/models/KeywordMappingModel';
 import TrainingDataModel from '@/models/TrainingData.model';
 import AppointmentRuleModel from '@/models/AppointmentRule.model';
 import NoteModel from '@/models/Note.model'; // Import NoteModel
@@ -62,7 +61,7 @@ function formatChatHistoryForAI(messages: Message[]): string {
         const textAfterFile = match[3]?.trim();
         displayContent = `[Tệp đính kèm] ${textAfterFile || ''}`.trim();
       }
-      return `${msg.sender === 'user' ? 'Khách' : 'AI'}: ${displayContent}`;
+      return `${msg.sender === 'user' ? 'Khách' : 'AI/Nhân viên'}: ${displayContent}`; // Adjusted for internal view
     })
     .join('\n');
 }
@@ -92,12 +91,13 @@ function transformMessageDocToMessage(msgDoc: IMessage): Message {
         sender: msgDoc.sender as 'user' | 'ai' | 'system',
         content: msgDoc.content,
         timestamp: new Date(msgDoc.timestamp),
-        name: msgDoc.name,
+        name: msgDoc.name, // This will be Staff name for staff-sent messages, or AI name
+        userId: msgDoc.userId?.toString(), // Actual sender ID if staff/admin
+        isPinned: msgDoc.isPinned,
     };
 }
 
 function transformAppointmentDocToDetails(apptDoc: any): AppointmentDetails {
-    // Safety checks for populated fields
     const customerIdObj = apptDoc.customerId && typeof apptDoc.customerId === 'object' ? apptDoc.customerId : null;
     const staffIdObj = apptDoc.staffId && typeof apptDoc.staffId === 'object' ? apptDoc.staffId : null;
 
@@ -187,10 +187,8 @@ function transformAppSettingsDoc(doc: IAppSettings | null): AppSettings | null {
         specificDayRules: [],
     };
 
-    // Transform specificDayRules from Mongoose DocumentArray to plain objects
     const specificDayRulesPlain = doc.specificDayRules?.map(rule => {
         const plainRule: SpecificDayRule = {
-            // Mongoose _id becomes id
             id: (rule as any)._id ? (rule as any)._id.toString() : rule.id || new mongoose.Types.ObjectId().toString(), 
             date: rule.date,
             isOff: rule.isOff,
@@ -215,7 +213,6 @@ function transformAppSettingsDoc(doc: IAppSettings | null): AppSettings | null {
         openGraphImageUrl: doc.openGraphImageUrl,
         robotsTxtContent: doc.robotsTxtContent,
         sitemapXmlContent: doc.sitemapXmlContent,
-        // Scheduling rules
         numberOfStaff: doc.numberOfStaff ?? defaultSettings.numberOfStaff,
         defaultServiceDurationMinutes: doc.defaultServiceDurationMinutes ?? defaultSettings.defaultServiceDurationMinutes,
         workingHours: doc.workingHours && doc.workingHours.length > 0 ? doc.workingHours : defaultSettings.workingHours!,
@@ -235,7 +232,6 @@ export async function getAppSettings(): Promise<AppSettings | null> {
 
 export async function updateAppSettings(settings: Partial<Omit<AppSettings, 'id' | 'updatedAt'>>): Promise<AppSettings | null> {
     await dbConnect();
-    // Ensure specificDayRules have _id if they are new, or preserve existing _id
     const processedSettings = { ...settings };
     if (processedSettings.specificDayRules) {
         processedSettings.specificDayRules = processedSettings.specificDayRules.map(rule => {
@@ -290,6 +286,7 @@ export async function handleCustomerAccess(phoneNumber: string): Promise<{
     sender: 'system',
     content: welcomeMessageContent,
     timestamp: new Date(),
+    name: `${brandName} AI`, // System messages also come from 'brand AI'
   };
   
   if (initialMessages.length === 0 || (initialMessages.length > 0 && initialMessages[initialMessages.length-1]?.sender !== 'system')) {
@@ -464,6 +461,7 @@ export async function processUserMessage(
     timestamp: new Date(),
     name: currentUserSession.name || 'Khách',
     customerId: new mongoose.Types.ObjectId(customerId) as any,
+    userId: new mongoose.Types.ObjectId(customerId) as any, // User sent it
   };
   const savedUserMessageDoc = await new MessageModel(userMessageData).save();
   const userMessage = transformMessageDocToMessage(savedUserMessageDoc);
@@ -576,7 +574,7 @@ export async function processUserMessage(
                             status: 'booked', 
                             notes: scheduleOutputFromAI.appointmentDetails.notes,
                             packageType: scheduleOutputFromAI.appointmentDetails.packageType,
-                            priority: scheduleOutputFromAI.appointmentDetails.priority,
+                            priority: scheduleOutputFromAI.appointmentDetails,
                             updatedAt: new Date() 
                           },
                           { new: true }
@@ -664,11 +662,12 @@ export async function processUserMessage(
   const brandNameForAI = appSettings?.brandName || 'AetherChat';
 
   const aiMessageData: Partial<IMessage> = {
-    sender: 'ai',
+    sender: 'ai', // Always 'ai' from customer's perspective
     content: aiResponseContent, 
     timestamp: new Date(),
-    name: `${brandNameForAI} AI`,
+    name: `${brandNameForAI} AI`, // Generic name for customer view
     customerId: new mongoose.Types.ObjectId(customerId) as any,
+    // userId is not set here, as it's a true AI response or handled by staff through sendStaffMessage
   };
   const savedAiMessageDoc = await new MessageModel(aiMessageData).save();
   finalAiMessage = transformMessageDocToMessage(savedAiMessageDoc);
@@ -727,47 +726,50 @@ export async function processUserMessage(
 
 // --- Functions for Admin/Staff ---
 export async function getCustomersForStaffView(
-  requestingStaffId?: string, // ID of the staff making the request
-  requestingStaffRole?: UserRole, // Role of the staff making the request
-  filterTags?: string[] // Optional tags to filter by
+  requestingStaffId?: string, 
+  requestingStaffRole?: UserRole, 
+  filterTags?: string[] 
 ): Promise<CustomerProfile[]> {
   await dbConnect();
   const query: any = {};
 
   if (requestingStaffRole === 'staff' && requestingStaffId) {
-    // Staff see customers assigned to them OR unassigned customers OR customers with their specific staff tag
-     const staffSpecificTag = `staff:${requestingStaffId}`; // Example staff-specific tag
+     const staffSpecificTag = `staff:${requestingStaffId}`; 
      query.$or = [
       { assignedStaffId: new mongoose.Types.ObjectId(requestingStaffId) as any },
       { assignedStaffId: { $exists: false } },
-      { tags: staffSpecificTag } // Customers tagged specifically for this staff member
+      { tags: staffSpecificTag } 
     ];
-  } else if (requestingStaffRole === 'admin' && requestingStaffId) {
-     // Admin can see all, or if filterTags include an admin mention tag
+  } else if (requestingStaffRole === 'admin') {
+     // Admin sees all unless specific admin-mention tags are used for filtering
      if (filterTags && filterTags.some(tag => tag.startsWith('admin:'))) {
-        // If admin is specifically looking for chats mentioning an admin
         query.tags = { $in: filterTags.filter(tag => tag.startsWith('admin:')) };
      }
-     // If no admin-mention tag, admin sees all (no modification to 'query' needed here for all)
+     // No specific staffId filter for admin unless they are filtering by a staff-assignment tag.
   }
   
-
   if (filterTags && filterTags.length > 0) {
-    if (query.$or) { // If $or already exists (for staff view)
-      // We need to combine the tag filter with each condition in $or
-      query.$or = query.$or.map((condition: any) => ({
-        ...condition,
-        // Add tag filtering to existing conditions if not already conflicting
-        ...(condition.tags ? { tags: { $all: [...(Array.isArray(condition.tags.$in) ? condition.tags.$in : [condition.tags]), ...filterTags] } } : { tags: { $in: filterTags } })
-      }));
-       // Also, admin might be filtering general tags on all customers
-      if (requestingStaffRole === 'admin' && !query.tags) { // Only if not already filtered by admin-mention
-          query.tags = { $in: filterTags.filter(tag => !tag.startsWith('admin:')) }; // General tags for admin
-      }
+    const generalTagsToFilter = filterTags.filter(tag => !tag.startsWith('staff:') && !tag.startsWith('admin:'));
+    if (generalTagsToFilter.length > 0) {
+        if (query.$or) {
+            query.$or = query.$or.map((condition: any) => ({
+                $and: [condition, { tags: { $in: generalTagsToFilter } }]
+            }));
+            // If admin had an admin-mention tag filter, AND it with general tags
+            if (query.tags && query.tags.$in) {
+                 query.tags.$in = [...new Set([...query.tags.$in, ...generalTagsToFilter])];
+            } else if (requestingStaffRole === 'admin') {
+                 query.tags = { $in: generalTagsToFilter };
+            }
 
-    } else {
-      // If no $or, just apply the tag filter directly
-      query.tags = { $in: filterTags };
+        } else {
+            // If no $or (e.g. admin view, or staff view without specific staff tag filter)
+            if (query.tags && query.tags.$in) { // If admin-mention tag was already there
+                query.tags.$in = [...new Set([...query.tags.$in, ...generalTagsToFilter])];
+            } else {
+                query.tags = { $in: generalTagsToFilter };
+            }
+        }
     }
   }
   
@@ -785,6 +787,7 @@ export async function getCustomersForStaffView(
       appointmentIds: doc.appointmentIds.map(id => id.toString()),
       productIds: doc.productIds.map(id => id.toString()),
       noteIds: doc.noteIds.map(id => id.toString()),
+      pinnedMessageIds: doc.pinnedMessageIds?.map(id => id.toString()) || [],
       tags: doc.tags,
       assignedStaffId: doc.assignedStaffId?._id?.toString(),
       assignedStaffName: (doc.assignedStaffId as IUser)?.name,
@@ -821,7 +824,8 @@ export async function getCustomerDetails(customerId: string): Promise<{customer:
         appointmentIds: customerDoc.appointmentIds.map(id => id.toString()),
         productIds: customerDoc.productIds.map(id => id.toString()),
         noteIds: customerDoc.noteIds.map(id => id.toString()),
-        tags: doc.tags,
+        pinnedMessageIds: customerDoc.pinnedMessageIds?.map(id => id.toString()) || [],
+        tags: customerDoc.tags,
         assignedStaffId: customerDoc.assignedStaffId?._id?.toString(),
         assignedStaffName: (customerDoc.assignedStaffId as IUser)?.name,
         lastInteractionAt: new Date(customerDoc.lastInteractionAt),
@@ -842,10 +846,9 @@ export async function getAllUsers(roles: UserRole[] = ['staff', 'admin']): Promi
     return userDocs.map(transformUserToSession);
 }
 
-// Helper for assignment dropdowns
 export async function getStaffList(): Promise<{id: string, name: string}[]> {
     await dbConnect();
-    const staffUsers = await UserModel.find({ role: { $in: ['staff', 'admin'] } }, 'name'); // Admins can also be assigned
+    const staffUsers = await UserModel.find({ role: { $in: ['staff', 'admin'] } }, 'name');
     return staffUsers.map(user => ({
         id: (user._id as Types.ObjectId).toString(),
         name: user.name || `User ${user._id.toString().slice(-4)}`
@@ -915,6 +918,7 @@ export async function assignStaffToCustomer(customerId: string, staffId: string)
         appointmentIds: updatedCustomer.appointmentIds.map(id => id.toString()),
         productIds: updatedCustomer.productIds.map(id => id.toString()),
         noteIds: updatedCustomer.noteIds.map(id => id.toString()),
+        pinnedMessageIds: updatedCustomer.pinnedMessageIds?.map(id => id.toString()) || [],
         tags: updatedCustomer.tags,
         assignedStaffId: updatedCustomer.assignedStaffId?._id?.toString(),
         assignedStaffName: (updatedCustomer.assignedStaffId as IUser)?.name,
@@ -940,6 +944,7 @@ export async function unassignStaffFromCustomer(customerId: string): Promise<Cus
         appointmentIds: updatedCustomer.appointmentIds.map(id => id.toString()),
         productIds: updatedCustomer.productIds.map(id => id.toString()),
         noteIds: updatedCustomer.noteIds.map(id => id.toString()),
+        pinnedMessageIds: updatedCustomer.pinnedMessageIds?.map(id => id.toString()) || [],
         tags: updatedCustomer.tags,
         assignedStaffId: updatedCustomer.assignedStaffId ? (updatedCustomer.assignedStaffId as any)._id?.toString() : undefined,
         assignedStaffName: undefined, 
@@ -971,6 +976,7 @@ export async function addTagToCustomer(customerId: string, tag: string): Promise
         appointmentIds: customer.appointmentIds.map(id => id.toString()),
         productIds: customer.productIds.map(id => id.toString()),
         noteIds: customer.noteIds.map(id => id.toString()),
+        pinnedMessageIds: customer.pinnedMessageIds?.map(id => id.toString()) || [],
         tags: customer.tags,
         assignedStaffId: customer.assignedStaffId?._id?.toString(),
         assignedStaffName: (customer.assignedStaffId as IUser)?.name,
@@ -996,6 +1002,7 @@ export async function removeTagFromCustomer(customerId: string, tagToRemove: str
         appointmentIds: customer.appointmentIds.map(id => id.toString()),
         productIds: customer.productIds.map(id => id.toString()),
         noteIds: customer.noteIds.map(id => id.toString()),
+        pinnedMessageIds: customer.pinnedMessageIds?.map(id => id.toString()) || [],
         tags: customer.tags,
         assignedStaffId: customer.assignedStaffId?._id?.toString(),
         assignedStaffName: (customer.assignedStaffId as IUser)?.name,
@@ -1019,21 +1026,11 @@ export async function sendStaffMessage(
     throw new Error("Không tìm thấy khách hàng.");
   }
 
-  let senderName = staffSession.name || (staffSession.role === 'admin' ? 'Admin' : 'Nhân viên');
-  // For display purposes, if an admin is chatting where a staff member usually chats, 
-  // the customer might still see a generic "Support" or "AI" name.
-  // However, internally, we want to know who (staff or admin) sent the message.
-  // The "name" field in the message can be the actual staff/admin name.
-  // The client-side chat bubble rendering decides what to show to the customer.
-  // The current logic in processUserMessage sets AI message name to `${brandNameForAI} AI`.
-  // For staff messages, it's probably better to have a consistent "Staff" or brand AI name for customer view,
-  // but store the actual staff ID.
-
   const staffMessageData: Partial<IMessage> = {
-    sender: 'ai', // This tells the client to render it as an "AI/System/Staff" bubble, not a "user" bubble
+    sender: 'ai', // From customer's perspective, it's an 'ai' or system reply
     content: messageContent, 
     timestamp: new Date(),
-    name: senderName, // Actual staff/admin name for internal record
+    name: staffSession.name || (staffSession.role === 'admin' ? 'Admin' : 'Nhân viên'), // Actual staff/admin name
     customerId: (customer as any)._id,
     userId: new mongoose.Types.ObjectId(staffSession.id) as any, // ID of staff/admin who sent
   };
@@ -1140,6 +1137,7 @@ export async function updateCustomerInternalName(customerId: string, internalNam
         appointmentIds: customer.appointmentIds.map(id => id.toString()),
         productIds: customer.productIds.map(id => id.toString()),
         noteIds: customer.noteIds.map(id => id.toString()),
+        pinnedMessageIds: customer.pinnedMessageIds?.map(id => id.toString()) || [],
         tags: customer.tags,
         assignedStaffId: customer.assignedStaffId?._id?.toString(),
         assignedStaffName: (customer.assignedStaffId as IUser)?.name,
@@ -1403,7 +1401,11 @@ export async function updateCustomerNote(noteId: string, staffId: string, conten
     await dbConnect();
     const note = await NoteModel.findById(noteId);
     if (!note) throw new Error("Note not found.");
-    if (note.staffId.toString() !== staffId) { 
+    // Allow admin to edit any note, or staff to edit their own.
+    const staffUser = await UserModel.findById(staffId);
+    if (!staffUser) throw new Error("Staff user not found.");
+
+    if (staffUser.role !== 'admin' && note.staffId.toString() !== staffId) { 
         throw new Error("You are not authorized to edit this note.");
     }
     note.content = content;
@@ -1416,7 +1418,11 @@ export async function deleteCustomerNote(noteId: string, staffId: string): Promi
     await dbConnect();
     const note = await NoteModel.findById(noteId);
     if (!note) throw new Error("Note not found.");
-     if (note.staffId.toString() !== staffId) {
+    
+    const staffUser = await UserModel.findById(staffId);
+    if (!staffUser) throw new Error("Staff user not found.");
+    
+    if (staffUser.role !== 'admin' && note.staffId.toString() !== staffId) {
         throw new Error("You are not authorized to delete this note.");
     }
     await NoteModel.findByIdAndDelete(noteId);
@@ -1663,7 +1669,6 @@ export async function getAllCustomerTags(): Promise<string[]> {
   await dbConnect();
   try {
     const tags = await CustomerModel.distinct('tags');
-    // Filter out any null or empty string tags if they exist
     return tags.filter(tag => typeof tag === 'string' && tag.trim() !== '');
   } catch (error) {
     console.error("Error fetching all customer tags:", error);
@@ -1671,3 +1676,93 @@ export async function getAllCustomerTags(): Promise<string[]> {
   }
 }
 
+// --- Pin/Unpin Message Actions ---
+export async function pinMessageToCustomerChat(customerId: string, messageId: string, staffSession: UserSession): Promise<CustomerProfile | null> {
+  await dbConnect();
+  if (staffSession.role === 'customer') throw new Error("Customers cannot pin messages.");
+
+  const customer = await CustomerModel.findById(customerId);
+  if (!customer) throw new Error("Không tìm thấy khách hàng.");
+
+  const message = await MessageModel.findById(messageId);
+  if (!message || message.customerId?.toString() !== customerId) {
+    throw new Error("Không tìm thấy tin nhắn hoặc tin nhắn không thuộc về khách hàng này.");
+  }
+
+  if (customer.pinnedMessageIds && customer.pinnedMessageIds.length >= 3 && !customer.pinnedMessageIds.includes(message._id)) {
+    throw new Error("Chỉ có thể ghim tối đa 3 tin nhắn.");
+  }
+
+  if (!customer.pinnedMessageIds?.includes(message._id)) {
+    await CustomerModel.findByIdAndUpdate(customerId, { $addToSet: { pinnedMessageIds: message._id } });
+    await MessageModel.findByIdAndUpdate(messageId, { isPinned: true });
+  }
+  
+  const updatedCustomerDoc = await CustomerModel.findById(customerId).populate<{ assignedStaffId: IUser }>('assignedStaffId', 'name');
+  if (!updatedCustomerDoc) return null;
+  return {
+    id: updatedCustomerDoc._id.toString(),
+    phoneNumber: updatedCustomerDoc.phoneNumber,
+    name: updatedCustomerDoc.name,
+    internalName: updatedCustomerDoc.internalName,
+    chatHistoryIds: updatedCustomerDoc.chatHistoryIds.map(id => id.toString()),
+    appointmentIds: updatedCustomerDoc.appointmentIds.map(id => id.toString()),
+    productIds: updatedCustomerDoc.productIds.map(id => id.toString()),
+    noteIds: updatedCustomerDoc.noteIds.map(id => id.toString()),
+    pinnedMessageIds: updatedCustomerDoc.pinnedMessageIds?.map(id => id.toString()) || [],
+    tags: updatedCustomerDoc.tags,
+    assignedStaffId: updatedCustomerDoc.assignedStaffId?._id?.toString(),
+    assignedStaffName: (updatedCustomerDoc.assignedStaffId as IUser)?.name,
+    lastInteractionAt: new Date(updatedCustomerDoc.lastInteractionAt),
+    createdAt: new Date(updatedCustomerDoc.createdAt as Date),
+  };
+}
+
+export async function unpinMessageFromCustomerChat(customerId: string, messageId: string, staffSession: UserSession): Promise<CustomerProfile | null> {
+  await dbConnect();
+  if (staffSession.role === 'customer') throw new Error("Customers cannot unpin messages.");
+
+  await CustomerModel.findByIdAndUpdate(customerId, { $pull: { pinnedMessageIds: new mongoose.Types.ObjectId(messageId) as any } });
+  await MessageModel.findByIdAndUpdate(messageId, { isPinned: false });
+
+  const updatedCustomerDoc = await CustomerModel.findById(customerId).populate<{ assignedStaffId: IUser }>('assignedStaffId', 'name');
+  if (!updatedCustomerDoc) return null;
+    return {
+    id: updatedCustomerDoc._id.toString(),
+    phoneNumber: updatedCustomerDoc.phoneNumber,
+    name: updatedCustomerDoc.name,
+    internalName: updatedCustomerDoc.internalName,
+    chatHistoryIds: updatedCustomerDoc.chatHistoryIds.map(id => id.toString()),
+    appointmentIds: updatedCustomerDoc.appointmentIds.map(id => id.toString()),
+    productIds: updatedCustomerDoc.productIds.map(id => id.toString()),
+    noteIds: updatedCustomerDoc.noteIds.map(id => id.toString()),
+    pinnedMessageIds: updatedCustomerDoc.pinnedMessageIds?.map(id => id.toString()) || [],
+    tags: updatedCustomerDoc.tags,
+    assignedStaffId: updatedCustomerDoc.assignedStaffId?._id?.toString(),
+    assignedStaffName: (updatedCustomerDoc.assignedStaffId as IUser)?.name,
+    lastInteractionAt: new Date(updatedCustomerDoc.lastInteractionAt),
+    createdAt: new Date(updatedCustomerDoc.createdAt as Date),
+  };
+}
+
+// Fetch specific messages by their IDs
+export async function getMessagesByIds(messageIds: string[]): Promise<Message[]> {
+  await dbConnect();
+  const objectIds = messageIds.map(id => new mongoose.Types.ObjectId(id));
+  const messageDocs = await MessageModel.find({ _id: { $in: objectIds } });
+  // Ensure original order is preserved if possible, or sort by timestamp
+  const messagesMap = new Map(messageDocs.map(doc => [doc._id.toString(), transformMessageDocToMessage(doc)]));
+  return messageIds.map(id => messagesMap.get(id)).filter(Boolean) as Message[];
+}
+
+
+// --- Media History Actions ---
+export async function getCustomerMediaMessages(customerId: string): Promise<Message[]> {
+  await dbConnect();
+  const messages = await MessageModel.find({ 
+    customerId: new mongoose.Types.ObjectId(customerId) as any,
+    content: { $regex: /^data:(image|application)\/[^;]+;base64,/ } // Basic regex for data URIs
+  }).sort({ timestamp: -1 }); // Sort by newest first for media history
+
+  return messages.map(transformMessageDocToMessage);
+}

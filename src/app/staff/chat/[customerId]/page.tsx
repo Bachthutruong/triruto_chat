@@ -1,14 +1,14 @@
 // src/app/staff/chat/[customerId]/page.tsx
 'use client';
 
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import { useParams } from 'next/navigation';
 import { Card, CardHeader, CardTitle, CardContent, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Send, Paperclip, Smile, UserCircle, Edit2, Tag, Clock, Phone, Info, X, StickyNote, PlusCircle, Trash2, UserPlus, LogOutIcon, UserCheck, Users } from 'lucide-react';
+import { Send, Paperclip, Smile, UserCircle, Edit2, Tag, Clock, Phone, Info, X, StickyNote, PlusCircle, Trash2, UserPlus, LogOutIcon, UserCheck, Users, Thumbtack, ThumbtackOff } from 'lucide-react';
 import type { CustomerProfile, Message, AppointmentDetails, UserSession, Note } from '@/lib/types';
 import { 
   getCustomerDetails, 
@@ -21,7 +21,10 @@ import {
   addNoteToCustomer,
   deleteCustomerNote, 
   updateCustomerNote,
-  getStaffList
+  getStaffList,
+  pinMessageToCustomerChat,
+  unpinMessageFromCustomerChat,
+  getMessagesByIds, // New action to fetch specific messages
 } from '@/app/actions';
 import { Textarea } from '@/components/ui/textarea'; 
 import { useToast } from '@/hooks/use-toast';
@@ -29,7 +32,8 @@ import { format } from 'date-fns';
 import { vi } from 'date-fns/locale';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-
+import { MessageBubble } from '@/components/chat/MessageBubble'; // Using MessageBubble directly for more control
+import { MessageInputForm } from '@/components/chat/MessageInputForm';
 
 export default function StaffIndividualChatPage() {
   const params = useParams();
@@ -38,10 +42,12 @@ export default function StaffIndividualChatPage() {
 
   const [customer, setCustomer] = useState<CustomerProfile | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
+  const [pinnedMessages, setPinnedMessages] = useState<Message[]>([]);
   const [appointments, setAppointments] = useState<AppointmentDetails[]>([]);
   const [notes, setNotes] = useState<Note[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [newMessage, setNewMessage] = useState('');
+  const [isSendingMessage, setIsSendingMessage] = useState(false);
+  // const [newMessage, setNewMessage] = useState(''); // Handled by MessageInputForm
   const [staffSession, setStaffSession] = useState<UserSession | null>(null);
   const [isAssigning, setIsAssigning] = useState(false);
   const [newTagName, setNewTagName] = useState('');
@@ -56,14 +62,18 @@ export default function StaffIndividualChatPage() {
 
   const chatScrollAreaRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
+  const scrollToBottom = useCallback(() => {
     if (chatScrollAreaRef.current) {
       const viewport = chatScrollAreaRef.current.querySelector('div[data-radix-scroll-area-viewport]');
       if (viewport) {
         viewport.scrollTop = viewport.scrollHeight;
       }
     }
-  }, [messages]);
+  }, []);
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages, scrollToBottom]);
 
 
   useEffect(() => {
@@ -85,42 +95,94 @@ export default function StaffIndividualChatPage() {
     }
   }, [toast]);
 
-  useEffect(() => {
+  const fetchChatData = useCallback(async () => {
     if (customerId) {
-      const fetchData = async () => {
-        setIsLoading(true);
-        try {
-          const { customer: fetchedCustomer, messages: fetchedMessages, appointments: fetchedAppointments, notes: fetchedNotes } = await getCustomerDetails(customerId);
-          setCustomer(fetchedCustomer);
-          setMessages(fetchedMessages || []);
-          setAppointments(fetchedAppointments || []);
-          setNotes(fetchedNotes || []);
-          if (fetchedCustomer?.internalName) {
-            setInternalNameInput(fetchedCustomer.internalName);
-          } else if (fetchedCustomer) {
-            setInternalNameInput(''); 
-          }
-        } catch (error) {
-          console.error("Không thể tải chi tiết khách hàng:", error);
-          toast({ title: "Lỗi", description: "Không thể tải chi tiết khách hàng.", variant: "destructive" });
-        } finally {
-          setIsLoading(false);
+      setIsLoading(true);
+      try {
+        const { customer: fetchedCustomer, messages: fetchedMessages, appointments: fetchedAppointments, notes: fetchedNotes } = await getCustomerDetails(customerId);
+        setCustomer(fetchedCustomer);
+        
+        const allMsgs = fetchedMessages || [];
+        setMessages(allMsgs);
+        
+        if (fetchedCustomer?.pinnedMessageIds && fetchedCustomer.pinnedMessageIds.length > 0) {
+          const fetchedPinnedMessages = await getMessagesByIds(fetchedCustomer.pinnedMessageIds);
+          setPinnedMessages(fetchedPinnedMessages.map(m => ({...m, isPinned: true})));
+        } else {
+          setPinnedMessages([]);
         }
-      };
-      fetchData();
+
+        setAppointments(fetchedAppointments || []);
+        setNotes(fetchedNotes || []);
+        if (fetchedCustomer?.internalName) {
+          setInternalNameInput(fetchedCustomer.internalName);
+        } else if (fetchedCustomer) {
+          setInternalNameInput(''); 
+        }
+      } catch (error) {
+        console.error("Không thể tải chi tiết khách hàng:", error);
+        toast({ title: "Lỗi", description: "Không thể tải chi tiết khách hàng.", variant: "destructive" });
+      } finally {
+        setIsLoading(false);
+      }
     }
   }, [customerId, toast]);
 
-  const handleSendMessage = async () => {
-    if (!newMessage.trim() || !customer || !staffSession) return;
+  useEffect(() => {
+    fetchChatData();
+  }, [fetchChatData]);
+
+  const handleSendMessage = async (messageContent: string) => {
+    if (!messageContent.trim() || !customer || !staffSession) return;
+    setIsSendingMessage(true);
     try {
-      const sentMessage = await sendStaffMessage(staffSession, customer.id, newMessage);
+      const sentMessage = await sendStaffMessage(staffSession, customer.id, messageContent);
       setMessages(prev => [...prev, sentMessage]);
-      setNewMessage('');
+      // setNewMessage(''); // Done by MessageInputForm
     } catch (error: any) {
       toast({ title: "Lỗi gửi tin nhắn", description: error.message, variant: "destructive"});
+    } finally {
+      setIsSendingMessage(false);
     }
   };
+
+  const handlePinMessage = async (messageId: string) => {
+    if (!customer || !staffSession) return;
+    try {
+      const updatedCustomer = await pinMessageToCustomerChat(customer.id, messageId, staffSession);
+      if (updatedCustomer) {
+        setCustomer(updatedCustomer);
+        const messageToPin = messages.find(m => m.id === messageId) || pinnedMessages.find(m => m.id === messageId);
+        if (messageToPin && !pinnedMessages.find(pm => pm.id === messageId)) {
+          if (pinnedMessages.length >= 3) {
+            toast({title: "Thông báo", description: "Đã đạt tối đa 3 tin nhắn ghim. Bỏ ghim một tin nhắn trước."});
+            return;
+          }
+          setPinnedMessages(prev => [...prev, {...messageToPin, isPinned: true}]);
+        }
+        setMessages(prev => prev.map(m => m.id === messageId ? {...m, isPinned: true} : m));
+        toast({title: "Thành công", description: "Đã ghim tin nhắn."});
+      }
+    } catch (error: any) {
+      toast({title: "Lỗi", description: error.message, variant: "destructive"});
+    }
+  };
+
+  const handleUnpinMessage = async (messageId: string) => {
+    if (!customer || !staffSession) return;
+    try {
+      const updatedCustomer = await unpinMessageFromCustomerChat(customer.id, messageId, staffSession);
+      if (updatedCustomer) {
+        setCustomer(updatedCustomer);
+        setPinnedMessages(prev => prev.filter(m => m.id !== messageId));
+        setMessages(prev => prev.map(m => m.id === messageId ? {...m, isPinned: false} : m));
+        toast({title: "Thành công", description: "Đã bỏ ghim tin nhắn."});
+      }
+    } catch (error: any) {
+      toast({title: "Lỗi", description: error.message, variant: "destructive"});
+    }
+  };
+
 
   const handleAssignToSelf = async () => {
     if (!customer || !staffSession) return;
@@ -155,7 +217,6 @@ export default function StaffIndividualChatPage() {
     if (!customer || !staffSession) return;
     setIsAssigning(true);
     try {
-      // Staff can only unassign if they are assigned. Admin can unassign anyone.
       if (staffSession.role === 'admin' || customer.assignedStaffId === staffSession.id) {
         const updatedCustomer = await unassignStaffFromCustomer(customer.id);
         setCustomer(updatedCustomer);
@@ -172,10 +233,8 @@ export default function StaffIndividualChatPage() {
   
   const handleAddTag = async () => {
     if (!customer || !newTagName.trim() || !staffSession) return;
-    // Admin invitation tag
     if (newTagName.toLowerCase().startsWith("admin:") && staffSession.role !== 'admin') {
        toast({title: "Thông báo", description: "Chỉ Admin mới có thể tự mời chính mình bằng tag."});
-       // Or simply add the tag "Admin Attention"
     }
 
     try {
@@ -261,8 +320,8 @@ export default function StaffIndividualChatPage() {
     return <div className="flex items-center justify-center h-full"><p>Đang tải cuộc trò chuyện...</p></div>;
   }
 
-  if (!customer) {
-    return <div className="flex items-center justify-center h-full"><p>Không tìm thấy khách hàng.</p></div>;
+  if (!customer || !staffSession) {
+    return <div className="flex items-center justify-center h-full"><p>Không tìm thấy khách hàng hoặc phiên làm việc.</p></div>;
   }
 
   const getStatusLabel = (status: AppointmentDetails['status']) => {
@@ -281,7 +340,7 @@ export default function StaffIndividualChatPage() {
         <CardHeader className="flex flex-row items-center justify-between border-b p-4">
           <div className="flex items-center gap-3">
             <Avatar>
-              <AvatarImage src={`https://picsum.photos/seed/${customer.id}/40/40`} data-ai-hint="profile avatar" />
+              <AvatarImage src={`https://picsum.photos/seed/${customer.id}/40/40`} data-ai-hint="profile avatar"/>
               <AvatarFallback>{customer.name?.charAt(0) || customer.phoneNumber.charAt(0)}</AvatarFallback>
             </Avatar>
             <div>
@@ -304,37 +363,51 @@ export default function StaffIndividualChatPage() {
             )}
           </div>
         </CardHeader>
+        
+        {/* Pinned Messages Area */}
+        {pinnedMessages.length > 0 && (
+          <div className="p-2 border-b bg-amber-50 max-h-48 overflow-y-auto">
+            <h4 className="text-xs font-semibold text-amber-700 mb-1 sticky top-0 bg-amber-50 py-1 z-10">Tin nhắn đã ghim:</h4>
+            {pinnedMessages.map(msg => (
+              <MessageBubble 
+                key={`pinned-${msg.id}`} 
+                message={{...msg, isPinned: true}} 
+                viewerRole={staffSession.role} 
+                onPinMessage={handlePinMessage}
+                onUnpinMessage={handleUnpinMessage}
+              />
+            ))}
+          </div>
+        )}
 
         <ScrollArea className="flex-grow p-4 bg-muted/20" ref={chatScrollAreaRef}>
           <div className="space-y-3">
-            {messages.map(msg => (
-              <div key={msg.id} className={`flex ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}>
-                <div className={`max-w-[70%] p-3 rounded-lg ${msg.sender === 'user' ? 'bg-primary text-primary-foreground' : 'bg-background shadow'}`}>
-                  <p className="text-sm font-semibold mb-0.5">{msg.name || (msg.sender === 'user' ? 'Khách hàng' : 'Hệ thống')}</p>
-                  <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
-                  <p className="text-xs mt-1 opacity-70 text-right">{format(new Date(msg.timestamp), 'HH:mm', { locale: vi })}</p>
-                </div>
-              </div>
+            {messages.filter(m => !pinnedMessages.find(pm => pm.id === m.id)).map(msg => ( // Filter out messages already shown as pinned
+              <MessageBubble 
+                key={msg.id} 
+                message={msg} 
+                viewerRole={staffSession.role} 
+                onPinMessage={handlePinMessage}
+                onUnpinMessage={handleUnpinMessage}
+              />
             ))}
+            {isSendingMessage && messages[messages.length-1]?.userId === staffSession.id && (
+                <div className="flex items-end gap-2 my-2 justify-start">
+                  <Avatar className="h-8 w-8">
+                    <AvatarFallback className='bg-teal-500 text-white'>
+                      {staffSession.name?.charAt(0) || 'S'}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div className="max-w-[70%] rounded-lg px-4 py-2 shadow-md bg-card border animate-pulse">
+                    <p className="text-sm italic text-muted-foreground">Đang gửi...</p>
+                  </div>
+                </div>
+            )}
           </div>
         </ScrollArea>
         
-        <CardFooter className="p-4 border-t">
-            <div className="flex w-full items-center gap-2">
-                <Button variant="ghost" size="icon"><Smile className="h-5 w-5 text-muted-foreground" /></Button>
-                <Button variant="ghost" size="icon"><Paperclip className="h-5 w-5 text-muted-foreground" /></Button>
-                <Input 
-                    type="text" 
-                    placeholder="Nhập tin nhắn của bạn..." 
-                    className="flex-grow" 
-                    value={newMessage}
-                    onChange={(e) => setNewMessage(e.target.value)}
-                    onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
-                />
-                <Button onClick={handleSendMessage} disabled={!newMessage.trim()}>
-                    <Send className="h-5 w-5" />
-                </Button>
-            </div>
+        <CardFooter className="p-0 border-t"> {/* p-0 to allow MessageInputForm to manage its own padding */}
+           <MessageInputForm onSubmit={handleSendMessage} isLoading={isSendingMessage} />
         </CardFooter>
       </Card>
 
@@ -344,7 +417,6 @@ export default function StaffIndividualChatPage() {
         </CardHeader>
         <ScrollArea className="flex-grow">
           <CardContent className="p-4 space-y-4">
-            {/* Assignment Section */}
             {staffSession?.role === 'admin' && (
               <div className="border-b pb-3 mb-3">
                 <h4 className="font-semibold text-sm flex items-center mb-1"><Users className="mr-2 h-4 w-4 text-primary" />Phân công</h4>
@@ -428,7 +500,7 @@ export default function StaffIndividualChatPage() {
                 </div>
               ))}
               {appointments.length > 2 && <Button variant="link" size="sm" className="p-0 h-auto text-primary">Xem tất cả</Button>}
-              <Button variant="outline" size="sm" className="w-full mt-1">Lịch hẹn mới</Button>
+              {/* <Button variant="outline" size="sm" className="w-full mt-1">Lịch hẹn mới</Button> */}
             </div>
             <div className="border-t pt-3">
               <h4 className="font-semibold text-sm flex items-center mb-1"><StickyNote className="mr-2 h-4 w-4 text-primary" />Ghi chú nội bộ ({notes.length})</h4>
