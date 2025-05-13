@@ -5,8 +5,9 @@ import React, { useState, useRef } from 'react';
 import Image from 'next/image';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Send, Paperclip, X, FileText } from 'lucide-react';
+import { Send, Paperclip, X, FileText, Smile } from 'lucide-react'; // Added Smile
 import { useToast } from '@/hooks/use-toast';
+import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover'; // For emoji picker
 
 type MessageInputFormProps = {
   onSubmit: (messageContent: string) => void;
@@ -15,6 +16,7 @@ type MessageInputFormProps = {
 
 const MAX_FILE_SIZE_MB = 5; // Max file size in MB
 const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
+const commonEmojis = ['😀', '😂', '😍', '😊', '👍', '🙏', '❤️', '🎉'];
 
 export function MessageInputForm({ onSubmit, isLoading }: MessageInputFormProps) {
   const [message, setMessage] = useState('');
@@ -90,6 +92,10 @@ export function MessageInputForm({ onSubmit, isLoading }: MessageInputFormProps)
     setStagedFile(null);
   };
 
+  const handleEmojiClick = (emoji: string) => {
+    setMessage(prev => prev + emoji);
+  };
+
   return (
     <>
       {stagedFile && (
@@ -125,6 +131,28 @@ export function MessageInputForm({ onSubmit, isLoading }: MessageInputFormProps)
           className="hidden"
           accept="image/*,application/pdf,.doc,.docx,.txt,.xls,.xlsx"
         />
+        <Popover>
+          <PopoverTrigger asChild>
+            <Button type="button" variant="ghost" size="icon" disabled={isLoading} aria-label="Chọn emoji">
+              <Smile className="h-5 w-5" />
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent className="w-auto p-2">
+            <div className="flex gap-1">
+              {commonEmojis.map(emoji => (
+                <Button
+                  key={emoji}
+                  variant="ghost"
+                  size="icon"
+                  className="text-xl p-1 h-8 w-8"
+                  onClick={() => handleEmojiClick(emoji)}
+                >
+                  {emoji}
+                </Button>
+              ))}
+            </div>
+          </PopoverContent>
+        </Popover>
         <Input
           type="text"
           value={message}

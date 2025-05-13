@@ -5,16 +5,36 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/com
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Users, MessageSquarePlus, Search, Filter, Loader2, AlertTriangle, Tag } from 'lucide-react';
+import { Users, MessageSquarePlus, Search, Filter, Loader2, AlertTriangle, Tag, Eye, CircleDot } from 'lucide-react';
 import Link from 'next/link';
-import type { CustomerProfile, UserSession } from '@/lib/types';
+import type { CustomerProfile, UserSession, CustomerInteractionStatus } from '@/lib/types';
 import { getCustomersForStaffView, getAllCustomerTags } from '@/app/actions';
-import { format } from 'date-fns';
+import { format, formatDistanceToNowStrict } from 'date-fns';
 import { vi } from 'date-fns/locale';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { DialogFooter } from '@/components/ui/dialog'; // For Popover footer styling
+import { cn } from '@/lib/utils';
+
+const getInteractionStatusText = (status?: CustomerInteractionStatus) => {
+  switch (status) {
+    case 'unread': return 'Chưa đọc';
+    case 'read': return 'Đã xem';
+    case 'replied_by_staff': return 'NV đã trả lời';
+    default: return '';
+  }
+};
+
+const getInteractionStatusColor = (status?: CustomerInteractionStatus) => {
+  switch (status) {
+    case 'unread': return 'text-red-500';
+    case 'read': return 'text-blue-500';
+    case 'replied_by_staff': return 'text-green-500';
+    default: return 'text-muted-foreground';
+  }
+};
+
 
 export default function StaffChatPage() {
   const [activeCustomers, setActiveCustomers] = useState<CustomerProfile[]>([]);
@@ -175,22 +195,38 @@ export default function StaffChatPage() {
             {!isLoading && filteredCustomersBySearch.length === 0 && <p className="p-4 text-muted-foreground">Không tìm thấy khách hàng phù hợp.</p>}
             <ul className="divide-y divide-border">
               {filteredCustomersBySearch.map(customer => (
-                <li key={customer.id}>
+                <li key={customer.id} className={cn(customer.interactionStatus === 'unread' && 'bg-primary/5')}>
                   <Button variant="ghost" className="w-full justify-start h-auto p-3 rounded-none" asChild>
                     <Link href={staffSession?.role === 'admin' ? `/admin/chat/${customer.id}` : `/staff/chat/${customer.id}`}>
                       <div className="flex flex-col items-start text-left w-full">
-                        <div className="flex justify-between w-full">
-                           <span className="font-semibold truncate max-w-[calc(100%-50px)]">{customer.internalName || customer.name || customer.phoneNumber}</span>
-                           {customer.assignedStaffId === staffSession?.id && <span className="text-xs text-green-600 ml-1">(Bạn)</span>}
-                           {customer.assignedStaffId && customer.assignedStaffId !== staffSession?.id && <span className="text-xs text-blue-600 ml-1">({customer.assignedStaffName || 'NV khác'})</span>}
-                           {!customer.assignedStaffId && <span className="text-xs text-amber-600 ml-1">(Chưa giao)</span>}
+                        <div className="flex justify-between w-full items-center">
+                          <span className={cn("font-semibold truncate max-w-[calc(100%-100px)]", customer.interactionStatus === 'unread' && 'font-bold')}>
+                            {customer.interactionStatus === 'unread' && <CircleDot className="inline-block h-3 w-3 mr-1 text-red-500" />}
+                            {customer.internalName || customer.name || customer.phoneNumber}
+                          </span>
+                           <span className={cn("text-xs ml-1 shrink-0", getInteractionStatusColor(customer.interactionStatus))}>
+                             {getInteractionStatusText(customer.interactionStatus)}
+                           </span>
                         </div>
                         { (customer.internalName && (customer.name || customer.phoneNumber !== customer.internalName)) && 
                             <span className="text-xs text-muted-foreground truncate max-w-full">({customer.name || customer.phoneNumber})</span>
                         }
-                        <span className="text-xs text-muted-foreground">
-                          Tương tác cuối: {format(new Date(customer.lastInteractionAt), 'HH:mm dd/MM', { locale: vi })}
-                        </span>
+                        {customer.lastMessagePreview && (
+                           <p className="text-xs text-muted-foreground truncate max-w-full mt-0.5">
+                                {customer.lastMessagePreview}
+                           </p>
+                        )}
+                        <div className="flex justify-between w-full items-center mt-0.5">
+                            <span className="text-xs text-muted-foreground">
+                              {customer.lastMessageTimestamp ? 
+                                `${formatDistanceToNowStrict(new Date(customer.lastMessageTimestamp), { addSuffix: true, locale: vi })}` 
+                                : format(new Date(customer.lastInteractionAt), 'HH:mm dd/MM', { locale: vi })
+                              }
+                            </span>
+                            {customer.assignedStaffId === staffSession?.id && <span className="text-xs text-green-600">(Bạn)</span>}
+                            {customer.assignedStaffId && customer.assignedStaffId !== staffSession?.id && <span className="text-xs text-blue-600">({customer.assignedStaffName || 'NV khác'})</span>}
+                            {!customer.assignedStaffId && <span className="text-xs text-amber-600">(Chưa giao)</span>}
+                        </div>
                          {customer.tags && customer.tags.length > 0 && 
                             <div className="mt-1 flex flex-wrap gap-1">
                                 {customer.tags.slice(0,3).map(tag => (
@@ -219,4 +255,3 @@ export default function StaffChatPage() {
     </div>
   );
 }
-

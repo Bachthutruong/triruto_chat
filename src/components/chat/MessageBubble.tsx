@@ -1,25 +1,36 @@
 // src/components/chat/MessageBubble.tsx
-import type { Message, MessageViewerRole } from '@/lib/types';
+import type { Message, MessageViewerRole, UserSession } from '@/lib/types';
 import { cn } from '@/lib/utils';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import { User, Bot, FileText, Download, Brain, Edit, Trash2, Pin, PinOff } from 'lucide-react';
+import { User, Bot, FileText, Download, Brain, Edit, Trash2, Pin, PinOff, Smile } from 'lucide-react';
 import Image from 'next/image';
 import { useAppSettingsContext } from '@/contexts/AppSettingsContext';
 import { Button } from '@/components/ui/button';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 
 type MessageBubbleProps = {
   message: Message;
   viewerRole: MessageViewerRole; // 'customer_view', 'staff', 'admin'
+  currentStaffSessionId?: string; // ID of the currently logged-in staff/admin
   onPinMessage?: (messageId: string) => void;
   onUnpinMessage?: (messageId: string) => void;
-  // Add props for edit/delete if implementing later
+  onDeleteMessage?: (messageId: string) => void; // For staff deleting their own messages
+  onEditMessage?: (messageId: string, currentContent: string) => void; // For staff editing their own messages
 };
 
 function isImageDataURI(uri: string): boolean {
   return typeof uri === 'string' && uri.startsWith('data:image/');
 }
 
-export function MessageBubble({ message, viewerRole, onPinMessage, onUnpinMessage }: MessageBubbleProps) {
+export function MessageBubble({ 
+    message, 
+    viewerRole, 
+    currentStaffSessionId,
+    onPinMessage, 
+    onUnpinMessage,
+    onDeleteMessage,
+    onEditMessage 
+}: MessageBubbleProps) {
   const appSettings = useAppSettingsContext();
   const brandName = appSettings?.brandName || 'AetherChat';
 
@@ -41,12 +52,13 @@ export function MessageBubble({ message, viewerRole, onPinMessage, onUnpinMessag
       avatarFallback = displayName.charAt(0).toUpperCase() || 'K';
     }
   } else if (isAISender) { // Message sent by AI or Staff/Admin (appears as AI to customer)
-    avatarIcon = <Brain className="h-5 w-5" />; // Use Brain for AI/Staff originated
     if (viewerRole === 'customer_view') {
       displayName = `${brandName} AI`;
+      avatarIcon = <Bot className="h-5 w-5" />;
       avatarFallback = 'AI';
     } else { // Staff/Admin viewing message from AI or another staff/admin
       displayName = message.name || `${brandName} AI`; // message.name here would be the actual staff/admin sender name
+      avatarIcon = message.userId ? <User className="h-5 w-5" /> : <Brain className="h-5 w-5" />; // User icon if staff sent, Brain if pure AI
       avatarFallback = displayName.charAt(0).toUpperCase() || 'S';
     }
   }
@@ -108,12 +120,17 @@ export function MessageBubble({ message, viewerRole, onPinMessage, onUnpinMessag
   };
 
   const canPin = viewerRole !== 'customer_view' && onPinMessage && onUnpinMessage;
-
+  const isOwnStaffMessage = (viewerRole === 'staff' || viewerRole === 'admin') && message.userId === currentStaffSessionId && message.sender === 'ai';
+  
   return (
     <div className={cn('flex items-end gap-2 my-2 group relative', isUserSender ? 'justify-end' : 'justify-start')}>
       {!isUserSender && (
         <Avatar className="h-8 w-8">
-          <AvatarFallback className={cn('bg-accent text-accent-foreground', viewerRole !== 'customer_view' && isAISender && 'bg-teal-500 text-white')}>
+          <AvatarFallback className={cn(
+            'bg-accent text-accent-foreground', 
+            viewerRole !== 'customer_view' && isAISender && message.userId && 'bg-teal-500 text-white', // Staff sent message
+            viewerRole !== 'customer_view' && isAISender && !message.userId && 'bg-purple-500 text-white' // Pure AI message
+            )}>
             {avatarIcon}
           </AvatarFallback>
         </Avatar>
@@ -128,13 +145,47 @@ export function MessageBubble({ message, viewerRole, onPinMessage, onUnpinMessag
       >
         <p className="text-xs font-semibold mb-1">{displayName}</p>
         {renderContent()}
-        <p className={cn(
-            'text-xs mt-1',
-            isUserSender ? 'text-primary-foreground/70 text-right' : 
-            viewerRole === 'customer_view' ? 'text-accent-foreground/70 text-left' : 'text-muted-foreground text-left'
-          )}>
-          {new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-        </p>
+        <div className="flex items-center justify-between text-xs mt-1">
+          <span className={cn(
+              isUserSender ? 'text-primary-foreground/70' : 
+              viewerRole === 'customer_view' ? 'text-accent-foreground/70' : 'text-muted-foreground'
+            )}>
+            {new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+            {message.updatedAt && <em className="ml-1">(đã sửa)</em>}
+          </span>
+          {isOwnStaffMessage && onDeleteMessage && onEditMessage && (
+            <div className="opacity-0 group-hover:opacity-100 transition-opacity duration-150 flex gap-0.5">
+                <Button 
+                    variant="ghost" 
+                    size="icon" 
+                    className="h-5 w-5 text-muted-foreground hover:text-foreground" 
+                    onClick={() => onEditMessage(message.id, message.content)}
+                    title="Sửa tin nhắn"
+                >
+                    <Edit className="h-3 w-3" />
+                </Button>
+                <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                        <Button 
+                            variant="ghost" 
+                            size="icon" 
+                            className="h-5 w-5 text-muted-foreground hover:text-destructive"
+                            title="Xóa tin nhắn"
+                        >
+                            <Trash2 className="h-3 w-3" />
+                        </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                        <AlertDialogHeader><AlertDialogTitle>Xác nhận xóa</AlertDialogTitle><AlertDialogDescription>Bạn có chắc muốn xóa tin nhắn này?</AlertDialogDescription></AlertDialogHeader>
+                        <AlertDialogFooter>
+                        <AlertDialogCancel>Hủy</AlertDialogCancel>
+                        <AlertDialogAction onClick={() => onDeleteMessage(message.id)} className="bg-destructive hover:bg-destructive/90">Xóa</AlertDialogAction>
+                        </AlertDialogFooter>
+                    </AlertDialogContent>
+                </AlertDialog>
+            </div>
+          )}
+        </div>
       </div>
       {isUserSender && (
         <Avatar className="h-8 w-8">
@@ -155,13 +206,6 @@ export function MessageBubble({ message, viewerRole, onPinMessage, onUnpinMessag
               <Pin className="h-4 w-4" />
             </Button>
           )}
-          {/* Placeholder for Edit/Delete buttons for staff messages */}
-          {/* {viewerRole !== 'customer_view' && message.userId === currentStaffId && (
-            <>
-              <Button variant="ghost" size="icon" className="h-6 w-6" title="Sửa"><Edit className="h-4 w-4"/></Button>
-              <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive" title="Xóa"><Trash2 className="h-4 w-4"/></Button>
-            </>
-          )} */}
         </div>
       )}
     </div>

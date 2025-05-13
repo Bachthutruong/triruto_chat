@@ -7,6 +7,7 @@ export interface IMessage extends Document, Omit<Message, 'id'> {
   userId?: Schema.Types.ObjectId; // Link to the user (customer/staff/admin) who sent/received if applicable
                                   // For staff messages, this will be the staff's ID.
   isPinned?: boolean;
+  updatedAt?: Date; // For edited messages
 }
 
 const MessageSchema: Schema<IMessage> = new Schema({
@@ -17,7 +18,7 @@ const MessageSchema: Schema<IMessage> = new Schema({
   customerId: { type: Schema.Types.ObjectId, ref: 'Customer', index: true },
   userId: { type: Schema.Types.ObjectId, ref: 'User', index: true }, 
   isPinned: { type: Boolean, default: false },
-}, { timestamps: true });
+}, { timestamps: true }); // createdAt and updatedAt will be automatically managed by Mongoose
 
 MessageSchema.index({ customerId: 1, timestamp: 1 });
 

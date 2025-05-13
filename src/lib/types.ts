@@ -6,6 +6,7 @@ export type Message = {
   name?: string; // Optional: display name for sender
   userId?: string; // ID of the actual user who sent (if staff/admin sent as 'ai')
   isPinned?: boolean;
+  updatedAt?: Date; // For edited messages
 };
 
 export type AppointmentStatus = 'booked' | 'cancelled' | 'completed' | 'pending_confirmation' | 'rescheduled';
@@ -50,6 +51,7 @@ export type Note = {
 };
 
 export type UserRole = 'customer' | 'admin' | 'staff';
+export type CustomerInteractionStatus = 'unread' | 'read' | 'replied_by_staff';
 
 // Represents a customer profile, managed by staff/admin
 export type CustomerProfile = {
@@ -67,6 +69,9 @@ export type CustomerProfile = {
   assignedStaffName?: string; // Name of the assigned staff member
   lastInteractionAt: Date;
   createdAt: Date;
+  interactionStatus?: CustomerInteractionStatus;
+  lastMessagePreview?: string;
+  lastMessageTimestamp?: Date;
 };
 
 
@@ -224,3 +229,8 @@ export type Reminder = {
 
 // For MessageBubble component to differentiate views
 export type MessageViewerRole = UserRole | 'customer_view';
+
+export type MessageEditState = {
+  messageId: string;
+  currentContent: string;
+} | null;

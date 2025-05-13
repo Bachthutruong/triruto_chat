@@ -1,7 +1,7 @@
 // src/app/actions.ts
 'use server';
 
-import type { Message, UserSession, AppointmentDetails, Product, Note, CustomerProfile, UserRole, KeywordMapping, TrainingData, TrainingDataStatus, AppSettings, GetAppointmentsFilters, AdminDashboardStats, StaffDashboardStats, ProductItem, Reminder, ReminderStatus, ReminderPriority, SpecificDayRule } from '@/lib/types';
+import type { Message, UserSession, AppointmentDetails, Product, Note, CustomerProfile, UserRole, KeywordMapping, TrainingData, TrainingDataStatus, AppSettings, GetAppointmentsFilters, AdminDashboardStats, StaffDashboardStats, ProductItem, Reminder, ReminderStatus, ReminderPriority, SpecificDayRule, CustomerInteractionStatus } from '@/lib/types';
 import type { AppointmentRule as LibAppointmentRuleType } from '@/lib/types'; // Aliased for clarity
 import { answerUserQuestion } from '@/ai/flows/answer-user-question';
 import { generateSuggestedReplies } from '@/ai/flows/generate-suggested-replies';
@@ -21,10 +21,14 @@ if (process.env.NODE_ENV !== 'production') {
 }
 
 if (!process.env.MONGODB_URI) {
-  console.warn("WARNING: MONGODB_URI is not defined in .env. App may not function correctly at runtime.");
-  // Fallback only for build or non-critical environments, ensure MONGODB_URI is set for production.
-  // Consider a stricter check for production builds if MONGODB_URI is absolutely essential.
-  // process.env.MONGODB_URI = "mongodb://127.0.0.1:27017/aetherchat_fallback";
+  // If running in a Vercel deployment or similar environment where .env might not be present at build time,
+  // this warning is acceptable. The actual check for MONGODB_URI's presence for runtime is in dbConnect.
+  if (process.env.VERCEL_ENV) {
+     console.warn("MONGODB_URI not found at build time (Vercel). Will be checked at runtime.");
+  } else {
+     // For local development, this is a more critical warning if .env is expected.
+     console.warn("WARNING: MONGODB_URI is not defined in .env. App may not function correctly at runtime.");
+  }
 }
 
 
@@ -97,6 +101,7 @@ function transformMessageDocToMessage(msgDoc: IMessage): Message {
         name: msgDoc.name, 
         userId: msgDoc.userId?.toString(), 
         isPinned: msgDoc.isPinned,
+        updatedAt: msgDoc.updatedAt ? new Date(msgDoc.updatedAt) : undefined,
     };
 }
 
@@ -267,6 +272,8 @@ export async function handleCustomerAccess(phoneNumber: string): Promise<{
       phoneNumber,
       name: `Khách ${phoneNumber.slice(-4)}`, 
       lastInteractionAt: new Date(),
+      interactionStatus: 'unread',
+      lastMessageTimestamp: new Date(),
     });
     customer = await newCustomerDoc.save();
     userSession = transformCustomerToSession(customer);
@@ -473,6 +480,9 @@ export async function processUserMessage(
   await CustomerModel.findByIdAndUpdate(customerId, {
     $push: { chatHistoryIds: savedUserMessageDoc._id },
     lastInteractionAt: new Date(),
+    interactionStatus: 'unread',
+    lastMessagePreview: userMessage.content.substring(0, 100),
+    lastMessageTimestamp: userMessage.timestamp,
   });
   
   let updatedChatHistoryWithUserMsg = [...currentChatHistory, userMessage];
@@ -591,7 +601,7 @@ export async function processUserMessage(
                             status: 'booked', 
                             notes: scheduleOutputFromAI.appointmentDetails.notes,
                             packageType: scheduleOutputFromAI.appointmentDetails.packageType,
-                            priority: scheduleOutputFromAI.appointmentDetails, // Corrected, was missing .priority
+                            priority: scheduleOutputFromAI.appointmentDetails.priority, 
                             updatedAt: new Date() 
                           },
                           { new: true }
@@ -692,6 +702,8 @@ export async function processUserMessage(
   await CustomerModel.findByIdAndUpdate(customerId, {
     $push: { chatHistoryIds: savedAiMessageDoc._id },
     lastInteractionAt: new Date(),
+    // AI responses do not change interactionStatus to 'replied_by_staff'
+    // lastMessagePreview and lastMessageTimestamp are updated when user sends a message
   });
 
   let newSuggestedReplies: string[] = [];
@@ -754,29 +766,29 @@ export async function getCustomersForStaffView(
      const staffSpecificTag = `staff:${requestingStaffId}`; 
      query.$or = [
       { assignedStaffId: new mongoose.Types.ObjectId(requestingStaffId) as any },
-      { assignedStaffId: { $exists: false } },
-      { tags: staffSpecificTag } 
+      { assignedStaffId: { $exists: false } }, // Unassigned customers
+      { tags: staffSpecificTag }  // Customers tagged for this staff member
     ];
   } else if (requestingStaffRole === 'admin') {
+    // Admin sees all customers by default, tags are additive filters
      if (filterTags && filterTags.some(tag => tag.startsWith('admin:'))) {
+        // This specific logic for 'admin:' tags might be redundant if admin sees all and filters normally
+        // For now, let's assume if an 'admin:' tag is explicitly selected, we filter by it.
         query.tags = { $in: filterTags.filter(tag => tag.startsWith('admin:')) };
      }
   }
   
+  // Apply general tags if provided, combining with existing $or or query.tags
   if (filterTags && filterTags.length > 0) {
     const generalTagsToFilter = filterTags.filter(tag => !tag.startsWith('staff:') && !tag.startsWith('admin:'));
     if (generalTagsToFilter.length > 0) {
-        if (query.$or) {
+        if (query.$or) { // If staff query already exists
             query.$or = query.$or.map((condition: any) => ({
                 $and: [condition, { tags: { $in: generalTagsToFilter } }]
             }));
-            if (query.tags && query.tags.$in) {
-                 query.tags.$in = [...new Set([...query.tags.$in, ...generalTagsToFilter])];
-            } else if (requestingStaffRole === 'admin') {
-                 query.tags = { $in: generalTagsToFilter };
-            }
-
-        } else {
+            // This part might be complex if staff view also uses query.tags outside $or
+            // Let's simplify: if $or exists, we assume general tags apply to those $or conditions.
+        } else { // For admin or cases where $or wasn't set
             if (query.tags && query.tags.$in) { 
                 query.tags.$in = [...new Set([...query.tags.$in, ...generalTagsToFilter])];
             } else {
@@ -788,7 +800,7 @@ export async function getCustomersForStaffView(
   
   const customerDocs = await CustomerModel.find(query)
       .populate<{ assignedStaffId: IUser }>('assignedStaffId', 'name')
-      .sort({ lastInteractionAt: -1 })
+      .sort({ lastMessageTimestamp: -1, lastInteractionAt: -1 }) // Sort by last message first
       .limit(100); 
   
   return customerDocs.map(doc => ({
@@ -806,8 +818,21 @@ export async function getCustomersForStaffView(
       assignedStaffName: (doc.assignedStaffId as IUser)?.name,
       lastInteractionAt: new Date(doc.lastInteractionAt),
       createdAt: new Date(doc.createdAt as Date),
+      interactionStatus: doc.interactionStatus as CustomerInteractionStatus,
+      lastMessagePreview: doc.lastMessagePreview,
+      lastMessageTimestamp: doc.lastMessageTimestamp ? new Date(doc.lastMessageTimestamp) : undefined,
   }));
 }
+
+export async function markCustomerInteractionAsReadByStaff(customerId: string, staffId: string): Promise<void> {
+  await dbConnect();
+  const customer = await CustomerModel.findById(customerId);
+  if (customer && customer.interactionStatus === 'unread') {
+    // Only change from 'unread' to 'read'. 'replied_by_staff' implies staff has already interacted.
+    await CustomerModel.findByIdAndUpdate(customerId, { interactionStatus: 'read' });
+  }
+}
+
 
 export async function getCustomerDetails(customerId: string): Promise<{customer: CustomerProfile | null, messages: Message[], appointments: AppointmentDetails[], notes: Note[]}> {
     await dbConnect();
@@ -843,6 +868,9 @@ export async function getCustomerDetails(customerId: string): Promise<{customer:
         assignedStaffName: (customerDoc.assignedStaffId as IUser)?.name,
         lastInteractionAt: new Date(customerDoc.lastInteractionAt),
         createdAt: new Date(customerDoc.createdAt as Date),
+        interactionStatus: customerDoc.interactionStatus as CustomerInteractionStatus,
+        lastMessagePreview: customerDoc.lastMessagePreview,
+        lastMessageTimestamp: customerDoc.lastMessageTimestamp ? new Date(customerDoc.lastMessageTimestamp) : undefined,
     };
     
     return { 
@@ -918,7 +946,11 @@ export async function assignStaffToCustomer(customerId: string, staffId: string)
   await dbConnect();
   const updatedCustomer = await CustomerModel.findByIdAndUpdate(
     customerId,
-    { assignedStaffId: new mongoose.Types.ObjectId(staffId) as any, lastInteractionAt: new Date() },
+    { 
+      assignedStaffId: new mongoose.Types.ObjectId(staffId) as any, 
+      lastInteractionAt: new Date(),
+      interactionStatus: 'read', // When assigned, consider it read by the assigned staff
+    },
     { new: true }
   ).populate<{ assignedStaffId: IUser }>('assignedStaffId', 'name');
   if (!updatedCustomer) throw new Error("Không tìm thấy khách hàng.");
@@ -937,6 +969,9 @@ export async function assignStaffToCustomer(customerId: string, staffId: string)
         assignedStaffName: (updatedCustomer.assignedStaffId as IUser)?.name,
         lastInteractionAt: new Date(updatedCustomer.lastInteractionAt),
         createdAt: new Date(updatedCustomer.createdAt as Date),
+        interactionStatus: updatedCustomer.interactionStatus as CustomerInteractionStatus,
+        lastMessagePreview: updatedCustomer.lastMessagePreview,
+        lastMessageTimestamp: updatedCustomer.lastMessageTimestamp ? new Date(updatedCustomer.lastMessageTimestamp) : undefined,
   };
 }
 
@@ -944,7 +979,11 @@ export async function unassignStaffFromCustomer(customerId: string): Promise<Cus
   await dbConnect();
   const updatedCustomer = await CustomerModel.findByIdAndUpdate(
     customerId,
-    { $unset: { assignedStaffId: "" }, lastInteractionAt: new Date() },
+    { 
+      $unset: { assignedStaffId: "" }, 
+      lastInteractionAt: new Date(),
+      interactionStatus: 'unread', // When unassigned, it goes back to general pool, considered unread
+    },
     { new: true }
   );
   if (!updatedCustomer) throw new Error("Không tìm thấy khách hàng.");
@@ -963,6 +1002,9 @@ export async function unassignStaffFromCustomer(customerId: string): Promise<Cus
         assignedStaffName: undefined, 
         lastInteractionAt: new Date(updatedCustomer.lastInteractionAt),
         createdAt: new Date(updatedCustomer.createdAt as Date),
+        interactionStatus: updatedCustomer.interactionStatus as CustomerInteractionStatus,
+        lastMessagePreview: updatedCustomer.lastMessagePreview,
+        lastMessageTimestamp: updatedCustomer.lastMessageTimestamp ? new Date(updatedCustomer.lastMessageTimestamp) : undefined,
   };
 }
 
@@ -995,6 +1037,9 @@ export async function addTagToCustomer(customerId: string, tag: string): Promise
         assignedStaffName: (customer.assignedStaffId as IUser)?.name,
         lastInteractionAt: new Date(customer.lastInteractionAt),
         createdAt: new Date(customer.createdAt as Date),
+        interactionStatus: customer.interactionStatus as CustomerInteractionStatus,
+        lastMessagePreview: customer.lastMessagePreview,
+        lastMessageTimestamp: customer.lastMessageTimestamp ? new Date(customer.lastMessageTimestamp) : undefined,
   };
 }
 
@@ -1021,6 +1066,9 @@ export async function removeTagFromCustomer(customerId: string, tagToRemove: str
         assignedStaffName: (customer.assignedStaffId as IUser)?.name,
         lastInteractionAt: new Date(customer.lastInteractionAt),
         createdAt: new Date(customer.createdAt as Date),
+        interactionStatus: customer.interactionStatus as CustomerInteractionStatus,
+        lastMessagePreview: customer.lastMessagePreview,
+        lastMessageTimestamp: customer.lastMessageTimestamp ? new Date(customer.lastMessageTimestamp) : undefined,
   };
 }
 
@@ -1040,7 +1088,7 @@ export async function sendStaffMessage(
   }
 
   const staffMessageData: Partial<IMessage> = {
-    sender: 'ai', 
+    sender: 'ai', // Messages from staff/admin will appear as 'ai' to the customer for simplicity in MessageBubble
     content: messageContent, 
     timestamp: new Date(),
     name: staffSession.name || (staffSession.role === 'admin' ? 'Admin' : 'Nhân viên'), 
@@ -1051,8 +1099,92 @@ export async function sendStaffMessage(
   await CustomerModel.findByIdAndUpdate(customerId, {
     $push: { chatHistoryIds: savedStaffMessageDoc._id },
     lastInteractionAt: new Date(),
+    interactionStatus: 'replied_by_staff',
+    lastMessagePreview: messageContent.substring(0, 100),
+    lastMessageTimestamp: new Date(),
   });
   return transformMessageDocToMessage(savedStaffMessageDoc);
+}
+
+
+export async function editStaffMessage(
+  messageId: string,
+  newContent: string,
+  staffSession: UserSession
+): Promise<Message | null> {
+  await dbConnect();
+  const message = await MessageModel.findById(messageId);
+
+  if (!message) {
+    throw new Error("Không tìm thấy tin nhắn.");
+  }
+  if (message.sender === 'user' || message.userId?.toString() !== staffSession.id) {
+    throw new Error("Bạn không có quyền chỉnh sửa tin nhắn này.");
+  }
+
+  message.content = newContent;
+  message.updatedAt = new Date(); // Explicitly set updatedAt for the message
+  await message.save();
+
+  // If this was the last message for the customer, update lastMessagePreview
+  const customer = await CustomerModel.findById(message.customerId);
+  if (customer && customer.chatHistoryIds.includes(message._id) && customer.chatHistoryIds[customer.chatHistoryIds.length - 1].toString() === message._id.toString()) {
+      await CustomerModel.findByIdAndUpdate(customer._id, {
+          lastMessagePreview: newContent.substring(0, 100),
+          lastMessageTimestamp: message.updatedAt,
+      });
+  }
+
+  return transformMessageDocToMessage(message);
+}
+
+export async function deleteStaffMessage(
+  messageId: string,
+  staffSession: UserSession
+): Promise<{ success: boolean; customerId?: string }> {
+  await dbConnect();
+  const message = await MessageModel.findById(messageId);
+
+  if (!message) {
+    throw new Error("Không tìm thấy tin nhắn.");
+  }
+  if (message.sender === 'user' || message.userId?.toString() !== staffSession.id) {
+    throw new Error("Bạn không có quyền xóa tin nhắn này.");
+  }
+  
+  const customerIdString = message.customerId?.toString();
+
+  await MessageModel.findByIdAndDelete(messageId);
+
+  if (customerIdString) {
+    const customer = await CustomerModel.findByIdAndUpdate(
+      customerIdString,
+      { 
+        $pull: { 
+          chatHistoryIds: new mongoose.Types.ObjectId(messageId) as any,
+          pinnedMessageIds: new mongoose.Types.ObjectId(messageId) as any 
+        }
+      },
+      { new: true } // To get the updated customer doc to check last message
+    );
+
+    // If the deleted message was the last one, update lastMessagePreview and timestamp
+    if (customer && customer.chatHistoryIds.length > 0) {
+        const lastMessageDoc = await MessageModel.findById(customer.chatHistoryIds[customer.chatHistoryIds.length - 1]);
+        if (lastMessageDoc) {
+            await CustomerModel.findByIdAndUpdate(customerIdString, {
+                lastMessagePreview: lastMessageDoc.content.substring(0, 100),
+                lastMessageTimestamp: lastMessageDoc.timestamp,
+            });
+        }
+    } else if (customer) { // No messages left
+        await CustomerModel.findByIdAndUpdate(customerIdString, {
+            lastMessagePreview: '',
+            lastMessageTimestamp: customer.createdAt, // or some default, like registration time
+        });
+    }
+  }
+  return { success: true, customerId: customerIdString };
 }
 
 // --- Q&A Management Actions ---
@@ -1156,6 +1288,9 @@ export async function updateCustomerInternalName(customerId: string, internalNam
         assignedStaffName: (customer.assignedStaffId as IUser)?.name,
         lastInteractionAt: new Date(customer.lastInteractionAt),
         createdAt: new Date(customer.createdAt as Date), 
+        interactionStatus: customer.interactionStatus as CustomerInteractionStatus,
+        lastMessagePreview: customer.lastMessagePreview,
+        lastMessageTimestamp: customer.lastMessageTimestamp ? new Date(customer.lastMessageTimestamp) : undefined,
   };
 }
 
@@ -1362,7 +1497,7 @@ export async function getStaffDashboardStats(staffId: string): Promise<StaffDash
 
     const activeChatsAssignedToMeCount = await CustomerModel.countDocuments({
         assignedStaffId: new mongoose.Types.ObjectId(staffId) as any,
-        lastInteractionAt: { $gte: todayStart, $lt: todayEnd },
+        lastInteractionAt: { $gte: todayStart, $lt: todayEnd }, // Consider interaction status as well if needed
     });
     
     const myAppointmentsTodayCount = await AppointmentModel.countDocuments({
@@ -1670,7 +1805,10 @@ export async function getCustomersWithProductsAndReminders(staffId?: string): Pr
       tags: customer.tags || [],
       assignedStaffId: customer.assignedStaffId?._id.toString(),
       assignedStaffName: (customer.assignedStaffId as IUser)?.name, 
-      pendingRemindersCount
+      pendingRemindersCount,
+      interactionStatus: customer.interactionStatus as CustomerInteractionStatus,
+      lastMessagePreview: customer.lastMessagePreview,
+      lastMessageTimestamp: customer.lastMessageTimestamp ? new Date(customer.lastMessageTimestamp) : undefined,
     });
   }
   
@@ -1727,6 +1865,9 @@ export async function pinMessageToCustomerChat(customerId: string, messageId: st
     assignedStaffName: (updatedCustomerDoc.assignedStaffId as IUser)?.name,
     lastInteractionAt: new Date(updatedCustomerDoc.lastInteractionAt),
     createdAt: new Date(updatedCustomerDoc.createdAt as Date),
+    interactionStatus: updatedCustomerDoc.interactionStatus as CustomerInteractionStatus,
+    lastMessagePreview: updatedCustomerDoc.lastMessagePreview,
+    lastMessageTimestamp: updatedCustomerDoc.lastMessageTimestamp ? new Date(updatedCustomerDoc.lastMessageTimestamp) : undefined,
   };
 }
 
@@ -1754,6 +1895,9 @@ export async function unpinMessageFromCustomerChat(customerId: string, messageId
     assignedStaffName: (updatedCustomerDoc.assignedStaffId as IUser)?.name,
     lastInteractionAt: new Date(updatedCustomerDoc.lastInteractionAt),
     createdAt: new Date(updatedCustomerDoc.createdAt as Date),
+    interactionStatus: updatedCustomerDoc.interactionStatus as CustomerInteractionStatus,
+    lastMessagePreview: updatedCustomerDoc.lastMessagePreview,
+    lastMessageTimestamp: updatedCustomerDoc.lastMessageTimestamp ? new Date(updatedCustomerDoc.lastMessageTimestamp) : undefined,
   };
 }
 
@@ -1777,4 +1921,3 @@ export async function getCustomerMediaMessages(customerId: string): Promise<Mess
 
   return messages.map(transformMessageDocToMessage);
 }
-

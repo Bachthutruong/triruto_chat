@@ -8,8 +8,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Send, Paperclip, Smile, UserCircle, Edit2, Tag, Clock, Phone, Info, X, StickyNote, PlusCircle, Trash2, UserPlus, LogOutIcon, UserCheck, Users, Pin, PinOff } from 'lucide-react';
-import type { CustomerProfile, Message, AppointmentDetails, UserSession, Note } from '@/lib/types';
+import { Send, Paperclip, Smile, UserCircle, Edit2, Tag, Clock, Phone, Info, X, StickyNote, PlusCircle, Trash2, UserPlus, LogOutIcon, UserCheck, Users, Pin, PinOff, Edit } from 'lucide-react';
+import type { CustomerProfile, Message, AppointmentDetails, UserSession, Note, MessageEditState } from '@/lib/types';
 import { 
   getCustomerDetails, 
   sendStaffMessage, 
@@ -24,16 +24,21 @@ import {
   getStaffList,
   pinMessageToCustomerChat,
   unpinMessageFromCustomerChat,
-  getMessagesByIds, // New action to fetch specific messages
+  getMessagesByIds,
+  markCustomerInteractionAsReadByStaff,
+  deleteStaffMessage,
+  editStaffMessage
 } from '@/app/actions';
 import { Textarea } from '@/components/ui/textarea'; 
 import { useToast } from '@/hooks/use-toast';
 import { format } from 'date-fns';
 import { vi } from 'date-fns/locale';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
+import { Dialog, DialogHeader, DialogFooter, DialogContent, DialogTitle, DialogDescription, DialogClose } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { MessageBubble } from '@/components/chat/MessageBubble'; // Using MessageBubble directly for more control
+import { MessageBubble } from '@/components/chat/MessageBubble'; 
 import { MessageInputForm } from '@/components/chat/MessageInputForm';
+import { Label } from '@/components/ui/label';
 
 export default function StaffIndividualChatPage() {
   const params = useParams();
@@ -47,7 +52,6 @@ export default function StaffIndividualChatPage() {
   const [notes, setNotes] = useState<Note[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSendingMessage, setIsSendingMessage] = useState(false);
-  // const [newMessage, setNewMessage] = useState(''); // Handled by MessageInputForm
   const [staffSession, setStaffSession] = useState<UserSession | null>(null);
   const [isAssigning, setIsAssigning] = useState(false);
   const [newTagName, setNewTagName] = useState('');
@@ -59,6 +63,10 @@ export default function StaffIndividualChatPage() {
   
   const [allStaff, setAllStaff] = useState<{id: string, name: string}[]>([]);
   const [selectedStaffToAssign, setSelectedStaffToAssign] = useState<string>('');
+
+  const [messageEditState, setMessageEditState] = useState<MessageEditState>(null);
+  const [editedMessageContent, setEditedMessageContent] = useState('');
+
 
   const chatScrollAreaRef = useRef<HTMLDivElement>(null);
 
@@ -119,6 +127,13 @@ export default function StaffIndividualChatPage() {
         } else if (fetchedCustomer) {
           setInternalNameInput(''); 
         }
+
+        if (staffSession && fetchedCustomer && fetchedCustomer.interactionStatus === 'unread') {
+          await markCustomerInteractionAsReadByStaff(customerId, staffSession.id);
+          // Optionally re-fetch customer to update status locally, or update customer state directly
+          setCustomer(prev => prev ? {...prev, interactionStatus: 'read'} : null);
+        }
+
       } catch (error) {
         console.error("Không thể tải chi tiết khách hàng:", error);
         toast({ title: "Lỗi", description: "Không thể tải chi tiết khách hàng.", variant: "destructive" });
@@ -126,7 +141,7 @@ export default function StaffIndividualChatPage() {
         setIsLoading(false);
       }
     }
-  }, [customerId, toast]);
+  }, [customerId, toast, staffSession]); // Added staffSession as dependency
 
   useEffect(() => {
     fetchChatData();
@@ -139,12 +154,60 @@ export default function StaffIndividualChatPage() {
       const sentMessage = await sendStaffMessage(staffSession, customer.id, messageContent);
       setMessages(prev => [...prev, sentMessage]);
       // setNewMessage(''); // Done by MessageInputForm
+      setCustomer(prev => prev ? { ...prev, interactionStatus: 'replied_by_staff', lastMessagePreview: messageContent.substring(0,100), lastMessageTimestamp: new Date() } : null);
     } catch (error: any) {
       toast({ title: "Lỗi gửi tin nhắn", description: error.message, variant: "destructive"});
     } finally {
       setIsSendingMessage(false);
     }
   };
+
+  const handleEditMessage = (messageId: string, currentContent: string) => {
+    setMessageEditState({ messageId, currentContent });
+    setEditedMessageContent(currentContent);
+  };
+
+  const handleSaveEditedMessage = async () => {
+    if (!messageEditState || !staffSession) return;
+    setIsSendingMessage(true); // Reuse for loading state
+    try {
+      const updatedMessage = await editStaffMessage(messageEditState.messageId, editedMessageContent, staffSession);
+      if (updatedMessage) {
+        setMessages(prev => prev.map(m => m.id === updatedMessage.id ? updatedMessage : m));
+        if (pinnedMessages.find(pm => pm.id === updatedMessage.id)) {
+          setPinnedMessages(prev => prev.map(pm => pm.id === updatedMessage.id ? updatedMessage : pm));
+        }
+        toast({ title: "Thành công", description: "Đã sửa tin nhắn." });
+      }
+      setMessageEditState(null);
+      setEditedMessageContent('');
+    } catch (error: any) {
+      toast({ title: "Lỗi sửa tin nhắn", description: error.message, variant: "destructive" });
+    } finally {
+      setIsSendingMessage(false);
+    }
+  };
+
+
+  const handleDeleteMessage = async (messageId: string) => {
+    if (!staffSession) return;
+    try {
+      const result = await deleteStaffMessage(messageId, staffSession);
+      if (result.success) {
+        setMessages(prev => prev.filter(m => m.id !== messageId));
+        setPinnedMessages(prev => prev.filter(pm => pm.id !== messageId));
+        toast({ title: "Thành công", description: "Đã xóa tin nhắn." });
+        // If the deleted message was the last one, fetch customer list again or update preview locally
+        if (result.customerId && customer?.lastMessagePreview && messages.find(m=>m.id === messageId)?.content.startsWith(customer.lastMessagePreview)) {
+            // simplified update, full refresh might be better
+            fetchChatData(); 
+        }
+      }
+    } catch (error: any) {
+      toast({ title: "Lỗi xóa tin nhắn", description: error.message, variant: "destructive" });
+    }
+  };
+
 
   const handlePinMessage = async (messageId: string) => {
     if (!customer || !staffSession) return;
@@ -373,8 +436,11 @@ export default function StaffIndividualChatPage() {
                 key={`pinned-${msg.id}`} 
                 message={{...msg, isPinned: true}} 
                 viewerRole={staffSession.role} 
+                currentStaffSessionId={staffSession.id}
                 onPinMessage={handlePinMessage}
                 onUnpinMessage={handleUnpinMessage}
+                onDeleteMessage={handleDeleteMessage}
+                onEditMessage={handleEditMessage}
               />
             ))}
           </div>
@@ -382,13 +448,16 @@ export default function StaffIndividualChatPage() {
 
         <ScrollArea className="flex-grow p-4 bg-muted/20" ref={chatScrollAreaRef}>
           <div className="space-y-3">
-            {messages.filter(m => !pinnedMessages.find(pm => pm.id === m.id)).map(msg => ( // Filter out messages already shown as pinned
+            {messages.filter(m => !pinnedMessages.find(pm => pm.id === m.id)).map(msg => ( 
               <MessageBubble 
                 key={msg.id} 
                 message={msg} 
                 viewerRole={staffSession.role} 
+                currentStaffSessionId={staffSession.id}
                 onPinMessage={handlePinMessage}
                 onUnpinMessage={handleUnpinMessage}
+                onDeleteMessage={handleDeleteMessage}
+                onEditMessage={handleEditMessage}
               />
             ))}
             {isSendingMessage && messages[messages.length-1]?.userId === staffSession.id && (
@@ -406,7 +475,7 @@ export default function StaffIndividualChatPage() {
           </div>
         </ScrollArea>
         
-        <CardFooter className="p-0 border-t"> {/* p-0 to allow MessageInputForm to manage its own padding */}
+        <CardFooter className="p-0 border-t"> 
            <MessageInputForm onSubmit={handleSendMessage} isLoading={isSendingMessage} />
         </CardFooter>
       </Card>
@@ -562,6 +631,34 @@ export default function StaffIndividualChatPage() {
           </CardContent>
         </ScrollArea>
       </Card>
+
+       {/* Edit Message Dialog */}
+      <Dialog open={messageEditState !== null} onOpenChange={(isOpen) => !isOpen && setMessageEditState(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Sửa Tin nhắn</DialogTitle>
+            <DialogDescription>
+              Chỉnh sửa nội dung tin nhắn của bạn.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4">
+            <Label htmlFor="editMessageContent" className="sr-only">Nội dung tin nhắn</Label>
+            <Textarea
+              id="editMessageContent"
+              value={editedMessageContent}
+              onChange={(e) => setEditedMessageContent(e.target.value)}
+              rows={4}
+              autoFocus
+            />
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setMessageEditState(null)}>Hủy</Button>
+            <Button type="button" onClick={handleSaveEditedMessage} disabled={isSendingMessage || !editedMessageContent.trim()}>
+              {isSendingMessage ? "Đang lưu..." : "Lưu thay đổi"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
