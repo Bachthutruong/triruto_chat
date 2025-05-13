@@ -12,7 +12,7 @@ import { z } from 'genkit';
 export const AnswerUserQuestionInputSchema = z.object({
   question: z.string().describe('Câu hỏi từ người dùng.'),
   chatHistory: z.string().optional().describe('Lịch sử trò chuyện của người dùng.'),
-  mediaDataUri: z.string().optional().describe("Một tệp phương tiện (hình ảnh, tài liệu) dưới dạng URI dữ liệu. Định dạng dự kiến: 'data:<mimetype>;base64,<encoded_data>#filename=urlencodedfilename.ext'"),
+  mediaDataUri: z.string().optional().describe("Một tệp phương tiện (hình ảnh, tài liệu) dưới dạng URI dữ liệu. Định dạng dự kiến: 'data:&lt;mimetype&gt;;base64,&lt;encoded_data&gt;'"),
 });
 export type AnswerUserQuestionInput = z.infer<typeof AnswerUserQuestionInputSchema>;
 

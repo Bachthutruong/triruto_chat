@@ -326,7 +326,7 @@ export async function processUserMessage(
   });
   
   let updatedChatHistoryWithUserMsg = [...currentChatHistory, userMessage];
-  const formattedHistory = formatChatHistoryForAI(updatedChatHistoryWithUserMsg.slice(-10)); // Mask data URIs in history
+  const formattedHistory = formatChatHistoryForAI(updatedChatHistoryWithUserMsg.slice(-10)); 
 
   let aiResponseContent: string = "";
   let finalAiMessage: Message;
@@ -505,8 +505,13 @@ export async function processUserMessage(
         let mediaDataUriForAI: string | undefined = undefined;
 
         if (isDataUri) {
-          mediaDataUriForAI = userMessageContent;
-          // For file uploads, the "question" can be a generic prompt for the AI
+          // Strip the #filename=... suffix before sending to AI
+          const hashIndex = userMessageContent.lastIndexOf('#filename=');
+          if (hashIndex !== -1) {
+            mediaDataUriForAI = userMessageContent.substring(0, hashIndex);
+          } else {
+            mediaDataUriForAI = userMessageContent; // No filename suffix found
+          }
           questionForAI = "Tôi đã gửi một tệp đính kèm. Bạn có thể xem và cho tôi biết nội dung được không, hoặc trả lời câu hỏi liên quan nếu có trong lịch sử chat?";
         }
 
@@ -1457,3 +1462,4 @@ export async function getCustomersWithProductsAndReminders(staffId?: string): Pr
   
   return result;
 }
+
