@@ -54,7 +54,7 @@ import type { IReminder } from '@/models/Reminder.model';
 
 function formatChatHistoryForAI(messages: Message[]): string {
   return messages
-    .map(msg => `${msg.sender === 'user' ? 'Khách' : 'AI'}: ${msg.content}`)
+    .map(msg => `${msg.sender === 'user' ? 'Khách' : 'AI'}: ${msg.content.startsWith('data:') ? '[Tệp đính kèm]' : msg.content}`) // Mask data URIs for history
     .join('\n');
 }
 
@@ -312,7 +312,7 @@ export async function processUserMessage(
 
   const userMessageData: Partial<IMessage> = {
     sender: 'user',
-    content: userMessageContent,
+    content: userMessageContent, // This could be a data URI or text
     timestamp: new Date(),
     name: currentUserSession.name || 'Khách',
     customerId: new mongoose.Types.ObjectId(customerId) as any,
@@ -326,7 +326,7 @@ export async function processUserMessage(
   });
   
   let updatedChatHistoryWithUserMsg = [...currentChatHistory, userMessage];
-  const formattedHistory = formatChatHistoryForAI(updatedChatHistoryWithUserMsg.slice(-10));
+  const formattedHistory = formatChatHistoryForAI(updatedChatHistoryWithUserMsg.slice(-10)); // Mask data URIs in history
 
   let aiResponseContent: string = "";
   let finalAiMessage: Message;
@@ -335,7 +335,10 @@ export async function processUserMessage(
 
   const schedulingKeywords = ['book', 'schedule', 'appointment', 'meeting', 'reserve', 'đặt lịch', 'hẹn', 'cancel', 'hủy', 'reschedule', 'đổi lịch', 'dời lịch'];
   const lowerCaseUserMessage = userMessageContent.toLowerCase();
-  const hasSchedulingIntent = schedulingKeywords.some(keyword => lowerCaseUserMessage.includes(keyword));
+  const isDataUri = userMessageContent.startsWith('data:');
+  
+  // Determine if it's a scheduling intent (only for text messages)
+  const hasSchedulingIntent = !isDataUri && schedulingKeywords.some(keyword => lowerCaseUserMessage.includes(keyword));
 
   if (hasSchedulingIntent) {
     console.log(`[ACTIONS] User '${currentUserSession.phoneNumber}' has scheduling intent for: "${userMessageContent}"`);
@@ -385,7 +388,7 @@ export async function processUserMessage(
               notes: scheduleOutput.appointmentDetails.notes,
               packageType: scheduleOutput.appointmentDetails.packageType,
               priority: scheduleOutput.appointmentDetails.priority,
-            } as any; // Cast to any to avoid type issues
+            } as any; 
             
             console.log("[ACTIONS] Data prepared for DB (booked):", JSON.stringify(newAppointmentData, null, 2));
             try {
@@ -483,22 +486,34 @@ export async function processUserMessage(
       scheduleOutput = { intent: 'error', confirmationMessage: aiResponseContent, requiresAssistance: true };
       processedAppointmentDB = null; 
     }
-  } else { 
+  } else { // Not a scheduling intent, or it's a file upload
     let keywordFound = false;
-    const keywordMappings = await getKeywordMappings();
-    for (const mapping of keywordMappings) {
-      if (mapping.keywords.some(kw => lowerCaseUserMessage.includes(kw.toLowerCase()))) {
-        aiResponseContent = mapping.response;
-        keywordFound = true;
-        break;
-      }
+    if (!isDataUri) { // Only check keywords for text messages
+        const keywordMappings = await getKeywordMappings();
+        for (const mapping of keywordMappings) {
+          if (mapping.keywords.some(kw => lowerCaseUserMessage.includes(kw.toLowerCase()))) {
+            aiResponseContent = mapping.response;
+            keywordFound = true;
+            break;
+          }
+        }
     }
 
-    if (!keywordFound) {
+    if (!keywordFound) { // If no keyword match OR it's a data URI, send to general AI
       try {
+        let questionForAI = userMessageContent;
+        let mediaDataUriForAI: string | undefined = undefined;
+
+        if (isDataUri) {
+          mediaDataUriForAI = userMessageContent;
+          // For file uploads, the "question" can be a generic prompt for the AI
+          questionForAI = "Tôi đã gửi một tệp đính kèm. Bạn có thể xem và cho tôi biết nội dung được không, hoặc trả lời câu hỏi liên quan nếu có trong lịch sử chat?";
+        }
+
         const answerResult = await answerUserQuestion({
-          question: userMessageContent,
+          question: questionForAI,
           chatHistory: formattedHistory,
+          mediaDataUri: mediaDataUriForAI,
         });
         aiResponseContent = answerResult.answer;
       } catch (error) {
@@ -813,7 +828,7 @@ export async function removeTagFromCustomer(customerId: string, tagToRemove: str
 export async function sendStaffMessage(
   staffSession: UserSession,
   customerId: string,
-  messageContent: string
+  messageContent: string // Can be text or data URI
 ): Promise<Message> {
   await dbConnect();
   if (staffSession.role !== 'staff' && staffSession.role !== 'admin') {
@@ -829,7 +844,7 @@ export async function sendStaffMessage(
     timestamp: new Date(),
     name: staffSession.name || 'Nhân viên', 
     customerId: (customer as any)._id,
-    userId: new mongoose.Types.ObjectId(staffSession.id) as any,
+    userId: new mongoose.Types.ObjectId(staffSession.id) as any, // Staff user ID
   };
   const savedStaffMessageDoc = await new MessageModel(staffMessageData).save();
   await CustomerModel.findByIdAndUpdate(customerId, {

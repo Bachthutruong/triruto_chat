@@ -19,20 +19,28 @@ export async function answerUserQuestion(input: AnswerUserQuestionInput): Promis
 }
 
 const answerUserQuestionPrompt = ai.definePrompt({
-  name: 'answerUserQuestionPromptVietnamese', // Changed name to reflect language
+  name: 'answerUserQuestionPromptVietnamese', 
   input: {schema: AnswerUserQuestionInputSchema},
   output: {schema: AnswerUserQuestionOutputSchema},
   prompt: `Bạn là một trợ lý AI hữu ích. Vui lòng trả lời câu hỏi của người dùng bằng tiếng Việt.
-{{#if chatHistory}}Đây là lịch sử trò chuyện: {{{chatHistory}}}{{/if}}
+{{#if chatHistory}}Đây là lịch sử trò chuyện (tin nhắn mới nhất ở cuối):
+{{{chatHistory}}}
+{{/if}}
 
-Câu hỏi: {{{question}}}
+{{#if mediaDataUri}}
+Người dùng đã gửi một tệp đính kèm.
+{{media url=mediaDataUri}}
+Hãy xem xét tệp này trong câu trả lời của bạn nếu nó có liên quan đến câu hỏi. Nếu câu hỏi là về tệp, hãy mô tả hoặc phân tích nó.
+{{/if}}
 
-Trả lời: `,
+Câu hỏi của người dùng: {{{question}}}
+
+Trả lời của bạn (bằng tiếng Việt):`,
 });
 
 const answerUserQuestionFlow = ai.defineFlow(
   {
-    name: 'answerUserQuestionFlowVietnamese', // Changed name
+    name: 'answerUserQuestionFlowVietnamese', 
     inputSchema: AnswerUserQuestionInputSchema,
     outputSchema: AnswerUserQuestionOutputSchema,
   },
