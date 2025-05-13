@@ -12,6 +12,7 @@ import { Search, Phone, User, Tag, AlertCircle, BellRing, CalendarDays } from 'l
 import { useToast } from '@/hooks/use-toast';
 import { format } from 'date-fns';
 import { getCustomersWithProductsAndReminders } from '@/app/actions';
+import type { UserSession } from '@/lib/types';
 
 export default function StaffCustomersPage() {
   const [customers, setCustomers] = useState<any[]>([]);
@@ -20,12 +21,24 @@ export default function StaffCustomersPage() {
   const [isLoading, setIsLoading] = useState(true);
   const { toast } = useToast();
   const router = useRouter();
+  const [currentSession, setCurrentSession] = useState<UserSession | null>(null);
 
   useEffect(() => {
+    const sessionString = sessionStorage.getItem('aetherChatUserSession');
+    if (sessionString) {
+      setCurrentSession(JSON.parse(sessionString));
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!currentSession) return;
+
     const fetchCustomers = async () => {
       try {
         setIsLoading(true);
-        const data = await getCustomersWithProductsAndReminders();
+        // If admin, fetch all customers by passing undefined for staffId.
+        // Otherwise, fetch customers assigned to the staff.
+        const data = await getCustomersWithProductsAndReminders(currentSession.role === 'admin' ? undefined : currentSession.id);
         setCustomers(data);
         setFilteredCustomers(data);
       } catch (error) {
@@ -41,7 +54,7 @@ export default function StaffCustomersPage() {
     };
 
     fetchCustomers();
-  }, [toast]);
+  }, [toast, currentSession]);
 
   useEffect(() => {
     if (searchQuery.trim() === '') {
@@ -62,7 +75,11 @@ export default function StaffCustomersPage() {
   }, [customers, searchQuery]);
 
   const handleViewCustomer = (customerId: string) => {
-    router.push(`/staff/chat/${customerId}`);
+    if (currentSession?.role === 'admin') {
+      router.push(`/admin/chat/${customerId}`);
+    } else {
+      router.push(`/staff/chat/${customerId}`);
+    }
   };
 
   const formatDate = (date: Date) => {

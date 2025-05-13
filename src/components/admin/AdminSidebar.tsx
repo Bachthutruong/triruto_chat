@@ -4,7 +4,18 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { LayoutDashboard, Users, Settings, MessageSquareText, CalendarCog, ShieldAlert, Eye } from 'lucide-react'; 
+import { 
+    LayoutDashboard, 
+    Users, 
+    Settings, 
+    MessageSquareText, 
+    CalendarCog, 
+    Eye,
+    MessageSquare, // For Live Chats
+    User,          // For Khách hàng (Customers)
+    Package,       // For Sản phẩm/Dịch vụ
+    BellRing       // For Nhắc nhở Chăm sóc
+} from 'lucide-react'; 
 import { Logo } from '@/components/icons/Logo';
 import { useAppSettingsContext } from '@/contexts/AppSettingsContext';
 import {
@@ -18,11 +29,18 @@ import {
 
 const adminNavItems = [
   { href: '/admin/dashboard', label: 'Bảng điều khiển', icon: LayoutDashboard },
-  { href: '/admin/users', label: 'Quản lý Người dùng', icon: Users },
-  { href: '/admin/qna', label: 'Hỏi & Đáp / Từ khóa', icon: MessageSquareText },
+  // Operational Tools (from staff, adapted for admin)
+  { href: '/admin/chat', label: 'Live Chats', icon: MessageSquare },
+  { href: '/admin/customers', label: 'Khách hàng', icon: User },
+  { href: '/admin/products', label: 'Sản phẩm/Dịch vụ', icon: Package },
+  { href: '/admin/reminders', label: 'Nhắc nhở Chăm sóc', icon: BellRing },
+  // Appointment Management
   { href: '/admin/appointments/view', label: 'Xem Lịch hẹn', icon: Eye },
   { href: '/admin/appointments/rules', label: 'Quy tắc Đặt lịch', icon: CalendarCog },
-  { href: '/admin/settings', label: 'Cài đặt', icon: Settings },
+  // User & System Management
+  { href: '/admin/users', label: 'Quản lý Người dùng', icon: Users }, // Staff/Admin users
+  { href: '/admin/qna', label: 'Hỏi & Đáp / Từ khóa', icon: MessageSquareText },
+  { href: '/admin/settings', label: 'Cài đặt Chung', icon: Settings },
 ];
 
 export function AdminSidebar() {

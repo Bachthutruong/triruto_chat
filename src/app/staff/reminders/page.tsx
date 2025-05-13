@@ -40,11 +40,9 @@ import {
   createReminder, 
   updateReminder, 
   deleteReminder,
-  getUpcomingRemindersForStaff,
-  getOverdueRemindersForStaff,
   getCustomerListForSelect
 } from '@/app/actions';
-import type { Reminder, ReminderStatus, ReminderPriority } from '@/lib/types';
+import type { Reminder, ReminderStatus, ReminderPriority, UserSession } from '@/lib/types';
 
 type CustomerOption = {
   id: string;
@@ -67,20 +65,20 @@ export default function StaffRemindersPage() {
   const [currentReminder, setCurrentReminder] = useState<Reminder | null>(null);
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
-  const [customerId, setCustomerId] = useState('');
+  const [formCustomerId, setFormCustomerId] = useState(''); // Renamed to avoid conflict
   const [dueDate, setDueDate] = useState('');
   const [priority, setPriority] = useState<ReminderPriority>('medium');
   const [status, setStatus] = useState<ReminderStatus>('pending');
   
   // Load session data
-  const [staffId, setStaffId] = useState<string>('');
+  const [currentUserSession, setCurrentUserSession] = useState<UserSession | null>(null);
   
   useEffect(() => {
     const sessionString = sessionStorage.getItem('aetherChatUserSession');
     if (sessionString) {
       try {
         const session = JSON.parse(sessionString);
-        setStaffId(session.id);
+        setCurrentUserSession(session);
       } catch (error) {
         console.error('Error parsing session:', error);
       }
@@ -88,22 +86,38 @@ export default function StaffRemindersPage() {
   }, []);
   
   useEffect(() => {
-    if (!staffId) return;
+    if (!currentUserSession) return;
     
     const fetchReminders = async () => {
       try {
         setIsLoading(true);
         let data: Reminder[] = [];
         
+        const filters: Parameters<typeof getAllReminders>[0] = {};
+        if (currentUserSession.role !== 'admin') {
+            filters.staffId = currentUserSession.id;
+        }
+
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const endOfNextWeek = new Date(today);
+        endOfNextWeek.setDate(today.getDate() + 7);
+        endOfNextWeek.setHours(23, 59, 59, 999);
+
         switch (reminderMode) {
           case 'upcoming':
-            data = await getUpcomingRemindersForStaff(staffId);
+            filters.status = 'pending';
+            filters.dueAfter = today;
+            filters.dueBefore = endOfNextWeek;
+            data = await getAllReminders(filters);
             break;
           case 'overdue':
-            data = await getOverdueRemindersForStaff(staffId);
+            filters.status = 'pending';
+            filters.dueBefore = today; 
+            data = await getAllReminders(filters);
             break;
-          default:
-            data = await getAllReminders({ staffId });
+          default: // 'all'
+            data = await getAllReminders(filters);
             break;
         }
         
@@ -122,7 +136,7 @@ export default function StaffRemindersPage() {
     };
     
     fetchReminders();
-  }, [staffId, reminderMode, toast]);
+  }, [currentUserSession, reminderMode, toast]);
   
   useEffect(() => {
     const fetchCustomers = async () => {
@@ -158,7 +172,7 @@ export default function StaffRemindersPage() {
     setCurrentReminder(null);
     setTitle('');
     setDescription('');
-    setCustomerId('');
+    setFormCustomerId('');
     const tomorrow = format(addDays(new Date(), 1), 'yyyy-MM-dd');
     setDueDate(tomorrow);
     setPriority('medium');
@@ -171,7 +185,7 @@ export default function StaffRemindersPage() {
       setCurrentReminder(reminder);
       setTitle(reminder.title);
       setDescription(reminder.description);
-      setCustomerId(reminder.customerId);
+      setFormCustomerId(reminder.customerId);
       setDueDate(format(new Date(reminder.dueDate), 'yyyy-MM-dd'));
       setPriority(reminder.priority);
       setStatus(reminder.status);
@@ -185,7 +199,7 @@ export default function StaffRemindersPage() {
   
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!staffId) {
+    if (!currentUserSession) {
       toast({
         title: 'Lỗi',
         description: 'Không tìm thấy phiên đăng nhập, vui lòng đăng nhập lại.',
@@ -200,8 +214,8 @@ export default function StaffRemindersPage() {
       const reminderData = {
         title,
         description,
-        customerId,
-        staffId,
+        customerId: formCustomerId,
+        staffId: currentUserSession.id, // Creator is current staff/admin
         dueDate: new Date(dueDate),
         priority,
         status,
@@ -420,9 +434,9 @@ export default function StaffRemindersPage() {
               </div>
               
               <div className="space-y-2">
-                <Label htmlFor="customerId">Khách hàng <span className="text-red-500">*</span></Label>
-                <Select value={customerId} onValueChange={setCustomerId} disabled={currentReminder !== null || isSubmitting}>
-                  <SelectTrigger id="customerId">
+                <Label htmlFor="formCustomerId">Khách hàng <span className="text-red-500">*</span></Label>
+                <Select value={formCustomerId} onValueChange={setFormCustomerId} disabled={currentReminder !== null || isSubmitting}>
+                  <SelectTrigger id="formCustomerId">
                     <SelectValue placeholder="Chọn khách hàng" />
                   </SelectTrigger>
                   <SelectContent>
@@ -538,6 +552,7 @@ export default function StaffRemindersPage() {
             <TableRow>
               <TableHead>Tiêu đề</TableHead>
               <TableHead className="hidden md:table-cell">Khách hàng</TableHead>
+              { currentUserSession?.role === 'admin' && <TableHead className="hidden lg:table-cell">NV Phụ trách</TableHead>}
               <TableHead>Ngày hẹn</TableHead>
               <TableHead className="hidden md:table-cell">Mức độ</TableHead>
               <TableHead>Trạng thái</TableHead>
@@ -558,6 +573,9 @@ export default function StaffRemindersPage() {
                 <TableCell className="hidden md:table-cell">
                   {reminder.customerName || 'Không có tên'}
                 </TableCell>
+                { currentUserSession?.role === 'admin' && 
+                  <TableCell className="hidden lg:table-cell">{reminder.staffName || 'N/A'}</TableCell>
+                }
                 <TableCell>
                   <div className="flex flex-col">
                     <span>{formatReminderDate(reminder.dueDate)}</span>

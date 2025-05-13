@@ -35,8 +35,9 @@ export default function StaffChatPage() {
         setIsLoading(true);
         setError(null);
         try {
-          // Pass staffId to filter customers: assigned to current staff or unassigned
-          const customers = await getCustomersForStaffView(staffSession.id);
+          // If admin, fetch all customers by passing undefined for staffId.
+          // Otherwise, fetch customers assigned to the staff or unassigned.
+          const customers = await getCustomersForStaffView(staffSession.role === 'admin' ? undefined : staffSession.id);
           setActiveCustomers(customers);
         } catch (err) {
           console.error("Không thể tải danh sách khách hàng:", err);
@@ -110,7 +111,7 @@ export default function StaffChatPage() {
               {filteredCustomers.map(customer => (
                 <li key={customer.id}>
                   <Button variant="ghost" className="w-full justify-start h-auto p-3 rounded-none" asChild>
-                    <Link href={`/staff/chat/${customer.id}`}>
+                    <Link href={staffSession?.role === 'admin' ? `/admin/chat/${customer.id}` : `/staff/chat/${customer.id}`}>
                       <div className="flex flex-col items-start text-left w-full">
                         <div className="flex justify-between w-full">
                            <span className="font-semibold truncate max-w-[calc(100%-50px)]">{customer.internalName || customer.name || customer.phoneNumber}</span>
