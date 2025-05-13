@@ -20,9 +20,9 @@ if (process.env.NODE_ENV !== 'production') {
 }
 
 if (!process.env.MONGODB_URI) {
-  console.error("FATAL ERROR: MONGODB_URI is not defined in .env file.");
-  // For server components/actions, throwing an error might be better than process.exit
-  throw new Error("FATAL ERROR: MONGODB_URI is not defined. Please check your .env or .env.local file.");
+  console.warn("WARNING: MONGODB_URI is not defined in .env file. Using fallback for build purposes only. App will not function correctly without it at runtime.");
+  // Fallback for build, but this will cause runtime errors if not set
+  process.env.MONGODB_URI = "mongodb://127.0.0.1:27017/aetherchat_fallback_build"; 
 }
 
 
@@ -239,15 +239,8 @@ export async function updateAppSettings(settings: Partial<Omit<AppSettings, 'id'
     const processedSettings = { ...settings };
     if (processedSettings.specificDayRules) {
         processedSettings.specificDayRules = processedSettings.specificDayRules.map(rule => {
-            // If the rule comes from the client and might have a temporary 'id',
-            // mongoose will handle creating an _id if it's a new subdocument.
-            // If it's an existing subdocument, its _id should already be there.
-            // For simplicity, we assume client-side temporary 'id' is not passed or is ignored by Mongoose.
-            const { id, ...restOfRule } = rule; // remove client-side 'id' if present
-             // Mongoose subdocuments in an array usually have their _id managed.
-             // If 'id' here refers to the actual MongoDB _id as a string, we'd need to convert it.
-             // But for updates, we usually send the whole array and Mongoose figures it out.
-            return restOfRule as any; // Cast to any to match Mongoose's expectation for subdocument arrays
+            const { id, ...restOfRule } = rule; 
+            return restOfRule as any; 
         });
     }
 
@@ -313,7 +306,6 @@ export async function handleCustomerAccess(phoneNumber: string): Promise<{
       suggestedReplies = repliesResult.suggestedReplies;
     } catch (error) {
       console.error('Error generating initial suggested replies:', error);
-      // Fallback if AI generation fails and no configured questions
       suggestedReplies = ['Các dịch vụ của bạn?', 'Đặt lịch hẹn', 'Địa chỉ của bạn ở đâu?'];
     }
   }
@@ -366,7 +358,7 @@ export async function loginUser(phoneNumber: string, passwordAttempt: string): P
 
 interface AvailabilityResult {
   isAvailable: boolean;
-  reason?: string; // Reason for unavailability
+  reason?: string; 
   suggestedSlots?: { date: string; time: string; branch?: string }[];
 }
 
@@ -374,7 +366,7 @@ async function checkSlotAvailability(
   targetDate: Date,
   targetTime: string, // HH:MM
   appSettings: AppSettings,
-  serviceDurationMinutes?: number // Optional override for service duration
+  serviceDurationMinutes?: number 
 ): Promise<AvailabilityResult> {
   await dbConnect();
 
@@ -386,7 +378,7 @@ async function checkSlotAvailability(
   const settingsSpecificDayRules = appSettings.specificDayRules || [];
 
   const targetDateString = dateFnsFormat(targetDate, 'yyyy-MM-dd');
-  const targetDayOfWeek = getDay(targetDate); // 0 (Sunday) to 6 (Saturday)
+  const targetDayOfWeek = getDay(targetDate); 
 
   let activeRule: Partial<SpecificDayRule> = {};
   const specificRule = settingsSpecificDayRules.find(r => r.date === targetDateString);
@@ -404,19 +396,6 @@ async function checkSlotAvailability(
   const currentServiceDuration = activeRule.serviceDurationMinutes ?? settingsServiceDuration;
 
   if (!currentWorkingHours.includes(targetTime)) {
-     // Check if targetTime is within any defined working hour slot + duration
-    let timeIsWithinRange = false;
-    for (const startTime of currentWorkingHours) {
-        const slotStart = dateFnsParseISO(`${targetDateString}T${startTime}:00.000Z`);
-        const slotEnd = addMinutes(slotStart, currentServiceDuration);
-        const requestedTimeDate = dateFnsParseISO(`${targetDateString}T${targetTime}:00.000Z`);
-        
-        if (!isBefore(requestedTimeDate, slotStart) && isBefore(requestedTimeDate, slotEnd)) {
-             // This logic is a bit flawed if workingHours are just start times.
-             // Assuming workingHours are the exact bookable start times.
-        }
-    }
-     // For now, strict check: targetTime must be one of the defined start times.
     return { isAvailable: false, reason: `Thời gian ${targetTime} không nằm trong giờ làm việc.` };
   }
 
@@ -425,15 +404,14 @@ async function checkSlotAvailability(
 
   const overlappingAppointments = await AppointmentModel.find({
     date: targetDateString,
-    status: { $in: ['booked', 'pending_confirmation'] } // Consider booked and pending
+    status: { $in: ['booked', 'pending_confirmation'] } 
   });
 
   let concurrentAppointments = 0;
   for (const appt of overlappingAppointments) {
-    const existingApptStart = dateFnsParseISO(`${appt.date}T${appt.time}:00.000Z`); // Assuming appt.time is HH:MM
-    const existingApptEnd = addMinutes(existingApptStart, currentServiceDuration); // Use current service duration for comparison
+    const existingApptStart = dateFnsParseISO(`${appt.date}T${appt.time}:00.000Z`); 
+    const existingApptEnd = addMinutes(existingApptStart, currentServiceDuration); 
 
-    // Check for overlap: (StartA < EndB) and (StartB < EndA)
     if (isBefore(requestedStartTime, existingApptEnd) && isBefore(existingApptStart, requestedEndTime)) {
       concurrentAppointments++;
     }
@@ -444,7 +422,6 @@ async function checkSlotAvailability(
   }
 
   return { isAvailable: true };
-  // TODO: Implement suggestedSlots logic if needed for more complex scenarios
 }
 
 
@@ -508,8 +485,6 @@ export async function processUserMessage(
       throw new Error("Không thể tải cài đặt ứng dụng. Không thể xử lý tin nhắn.");
   }
 
-
-  // First, call AI to understand intent and extract details
   const customerAppointmentsDocs = await AppointmentModel.find({ 
       customerId: new mongoose.Types.ObjectId(customerId) as any, 
       status: { $nin: ['cancelled', 'completed'] } 
@@ -522,13 +497,16 @@ export async function processUserMessage(
     updatedAt: doc.updatedAt.toISOString(),
   }));
   
+  const appointmentRulesFromDB = await getAppointmentRules();
+
   scheduleOutputFromAI = await scheduleAppointmentAIFlow({
     userInput: textForAI, 
     phoneNumber: currentUserSession.phoneNumber,
     userId: customerId, 
-    existingAppointments: customerAppointmentsForAI,
+    existingAppointments: customerAppointmentsForAI.length > 0 ? customerAppointmentsForAI : undefined,
     currentDateTime: new Date().toISOString(),
     chatHistory: formattedHistory,
+    appointmentRules: appointmentRulesFromDB.length > 0 ? appointmentRulesFromDB : undefined,
   });
 
   console.log("[ACTIONS] AI scheduleOutput (initial parse):", JSON.stringify(scheduleOutputFromAI, null, 2));
@@ -545,16 +523,15 @@ export async function processUserMessage(
         aiResponseContent = "Xin lỗi, có lỗi với thông tin lịch hẹn từ AI. Vui lòng thử lại hoặc cung cấp chi tiết hơn (dịch vụ, ngày YYYY-MM-DD, giờ HH:MM).";
         processedAppointmentDB = null; 
     } else {
-        // Perform TypeScript availability check
         const targetDateObj = dateFnsParseISO(scheduleOutputFromAI.appointmentDetails.date);
         const availabilityResult = await checkSlotAvailability(
             targetDateObj,
-            scheduleOutputFromAI.appointmentDetails.time, // Assuming HH:MM
+            scheduleOutputFromAI.appointmentDetails.time, 
             appSettings
         );
 
         if (availabilityResult.isAvailable) {
-            aiResponseContent = scheduleOutputFromAI.confirmationMessage; // Use AI's confirmation if slot is good
+            aiResponseContent = scheduleOutputFromAI.confirmationMessage; 
             if (scheduleOutputFromAI.intent === 'booked') {
                 const newAppointmentData = {
                   customerId: new mongoose.Types.ObjectId(customerId) as any,
@@ -583,7 +560,7 @@ export async function processUserMessage(
                     aiResponseContent = "Đã xảy ra lỗi nghiêm trọng khi lưu lịch hẹn. Vui lòng thử lại sau.";
                     processedAppointmentDB = null;
                 }
-            } else { // Rescheduled
+            } else { 
                  if (!scheduleOutputFromAI.originalAppointmentIdToModify) {
                     aiResponseContent = "Không xác định được lịch hẹn gốc để đổi. Vui lòng thử lại.";
                     processedAppointmentDB = null;
@@ -617,14 +594,10 @@ export async function processUserMessage(
                     }
                  }
             }
-        } else { // Slot not available by TypeScript check
+        } else { 
             aiResponseContent = availabilityResult.reason || "Rất tiếc, thời gian bạn chọn không còn trống.";
-            // TODO: Generate suggested alternative slots based on rules
-            // For now, just use the AI's original confirmation which might be a pending_alternatives or clarification.
-            // Or, if scheduleOutputFromAI was 'booked', we override it to 'pending_alternatives'
             if (scheduleOutputFromAI.intent === 'booked') scheduleOutputFromAI.intent = 'pending_alternatives';
-            scheduleOutputFromAI.confirmationMessage = aiResponseContent; // Update the message for the user
-            // scheduleOutputFromAI.suggestedSlots = availabilityResult.suggestedSlots; // If we generated them
+            scheduleOutputFromAI.confirmationMessage = aiResponseContent; 
             processedAppointmentDB = null; 
         }
     }
@@ -652,8 +625,6 @@ export async function processUserMessage(
           }
       }
   } else if (scheduleOutputFromAI.intent === 'no_action_needed' || scheduleOutputFromAI.intent === 'clarification_needed' || scheduleOutputFromAI.intent === 'error' ) {
-    // If AI determines no booking action or needs more info, or error, just use its message.
-    // But first, check keyword mappings.
     let keywordFound = false;
     if (!mediaDataUriForAI) { 
         const keywordMappings = await getKeywordMappings();
@@ -667,7 +638,6 @@ export async function processUserMessage(
     }
 
     if (!keywordFound && scheduleOutputFromAI.intent === 'no_action_needed') {
-        // If still no_action_needed after keyword check, then use general AI
         try {
             const approvedTrainingDocs = await TrainingDataModel.find({ status: 'approved' }).sort({updatedAt: -1}).limit(5);
             const relevantTrainingData = approvedTrainingDocs.map(doc => ({
@@ -684,13 +654,11 @@ export async function processUserMessage(
             aiResponseContent = answerResult.answer;
           } catch (error) {
             console.error('Error answering user question:', error);
-            aiResponseContent = "Tôi đang gặp chút khó khăn để hiểu ý bạn. Bạn có thể hỏi theo cách khác được không?";
+            aiResponseContent = "Xin lỗi, tôi đang gặp chút khó khăn để hiểu ý bạn. Bạn có thể hỏi theo cách khác được không?";
           }
     } else if (!keywordFound) {
-        // For clarification_needed or error, use the AI's existing message from scheduleAppointmentAIFlow
         aiResponseContent = scheduleOutputFromAI.confirmationMessage;
     }
-    // If keywordFound, aiResponseContent is already set.
   }
   
   const brandNameForAI = appSettings?.brandName || 'AetherChat';
@@ -758,36 +726,47 @@ export async function processUserMessage(
 
 
 // --- Functions for Admin/Staff ---
-export async function getCustomersForStaffView(staffId?: string): Promise<CustomerProfile[]> {
-    await dbConnect();
-    const query: any = {};
-    if (staffId) {
-      query.$or = [
-        { assignedStaffId: new mongoose.Types.ObjectId(staffId) as any },
-        { assignedStaffId: { $exists: false } } 
-      ];
-    }
-    
-    const customerDocs = await CustomerModel.find(query)
-        .populate<{ assignedStaffId: IUser }>('assignedStaffId', 'name')
-        .sort({ lastInteractionAt: -1 })
-        .limit(50); 
-    
-    return customerDocs.map(doc => ({
-        id: (doc as any)._id.toString(),
-        phoneNumber: doc.phoneNumber,
-        name: doc.name,
-        internalName: doc.internalName,
-        chatHistoryIds: doc.chatHistoryIds.map(id => id.toString()),
-        appointmentIds: doc.appointmentIds.map(id => id.toString()),
-        productIds: doc.productIds.map(id => id.toString()),
-        noteIds: doc.noteIds.map(id => id.toString()),
-        tags: doc.tags,
-        assignedStaffId: doc.assignedStaffId?._id?.toString(),
-        assignedStaffName: (doc.assignedStaffId as IUser)?.name,
-        lastInteractionAt: new Date(doc.lastInteractionAt),
-        createdAt: new Date(doc.createdAt as Date),
-    }));
+export async function getCustomersForStaffView(
+  requestingStaffId?: string, // ID of the staff making the request
+  requestingStaffRole?: UserRole, // Role of the staff making the request
+  filterTags?: string[] // Optional tags to filter by
+): Promise<CustomerProfile[]> {
+  await dbConnect();
+  const query: any = {};
+
+  if (requestingStaffRole === 'staff' && requestingStaffId) {
+    // Staff see customers assigned to them OR unassigned customers
+    query.$or = [
+      { assignedStaffId: new mongoose.Types.ObjectId(requestingStaffId) as any },
+      { assignedStaffId: { $exists: false } },
+    ];
+  } 
+  // Admins see all customers (no specific query modifications needed for role here, default is all)
+
+  if (filterTags && filterTags.length > 0) {
+    query.tags = { $in: filterTags };
+  }
+  
+  const customerDocs = await CustomerModel.find(query)
+      .populate<{ assignedStaffId: IUser }>('assignedStaffId', 'name')
+      .sort({ lastInteractionAt: -1 })
+      .limit(100); // Increased limit slightly for admin view
+  
+  return customerDocs.map(doc => ({
+      id: (doc as any)._id.toString(),
+      phoneNumber: doc.phoneNumber,
+      name: doc.name,
+      internalName: doc.internalName,
+      chatHistoryIds: doc.chatHistoryIds.map(id => id.toString()),
+      appointmentIds: doc.appointmentIds.map(id => id.toString()),
+      productIds: doc.productIds.map(id => id.toString()),
+      noteIds: doc.noteIds.map(id => id.toString()),
+      tags: doc.tags,
+      assignedStaffId: doc.assignedStaffId?._id?.toString(),
+      assignedStaffName: (doc.assignedStaffId as IUser)?.name,
+      lastInteractionAt: new Date(doc.lastInteractionAt),
+      createdAt: new Date(doc.createdAt as Date),
+  }));
 }
 
 export async function getCustomerDetails(customerId: string): Promise<{customer: CustomerProfile | null, messages: Message[], appointments: AppointmentDetails[], notes: Note[]}> {
@@ -833,11 +812,22 @@ export async function getCustomerDetails(customerId: string): Promise<{customer:
     };
 }
 
-export async function getAllUsers(): Promise<UserSession[]> {
+export async function getAllUsers(roles: UserRole[] = ['staff', 'admin']): Promise<UserSession[]> {
     await dbConnect();
-    const userDocs = await UserModel.find({ role: { $in: ['staff', 'admin'] } });
+    const userDocs = await UserModel.find({ role: { $in: roles } });
     return userDocs.map(transformUserToSession);
 }
+
+// Helper for assignment dropdowns
+export async function getStaffList(): Promise<{id: string, name: string}[]> {
+    await dbConnect();
+    const staffUsers = await UserModel.find({ role: { $in: ['staff', 'admin'] } }, 'name');
+    return staffUsers.map(user => ({
+        id: (user._id as Types.ObjectId).toString(),
+        name: user.name || `User ${user._id.toString().slice(-4)}`
+    }));
+}
+
 
 export async function createStaffOrAdminUser(
   name: string,
@@ -928,7 +918,7 @@ export async function unassignStaffFromCustomer(customerId: string): Promise<Cus
         noteIds: updatedCustomer.noteIds.map(id => id.toString()),
         tags: updatedCustomer.tags,
         assignedStaffId: updatedCustomer.assignedStaffId ? (updatedCustomer.assignedStaffId as any)._id?.toString() : undefined,
-        assignedStaffName: undefined, // explicitly unassigned
+        assignedStaffName: undefined, 
         lastInteractionAt: new Date(updatedCustomer.lastInteractionAt),
         createdAt: new Date(updatedCustomer.createdAt as Date),
   };
@@ -1008,7 +998,7 @@ export async function sendStaffMessage(
     sender: 'ai', // Staff messages are marked as 'ai' for display consistency in client chat bubble
     content: messageContent, 
     timestamp: new Date(),
-    name: staffSession.name || 'Nhân viên', 
+    name: staffSession.name || (staffSession.role === 'admin' ? 'Admin' : 'Nhân viên'), 
     customerId: (customer as any)._id,
     userId: new mongoose.Types.ObjectId(staffSession.id) as any, // ID of staff who sent
   };
@@ -1132,7 +1122,7 @@ export async function getAppointments(filters: GetAppointmentsFilters): Promise<
   if (filters.date) {
     const parsedDate = parse(filters.date, 'yyyy-MM-dd', new Date());
     if (isValid(parsedDate)) {
-      query.date = filters.date; // Keep as YYYY-MM-DD string for matching
+      query.date = filters.date; 
     } else {
       console.warn(`[ACTIONS] Invalid date format received in getAppointments: ${filters.date}`);
     }
@@ -1163,7 +1153,7 @@ export async function getAppointments(filters: GetAppointmentsFilters): Promise<
   const appointmentDocs = await AppointmentModel.find(query)
     .populate<{ customerId: ICustomer }>('customerId', 'name phoneNumber')
     .populate<{ staffId: IUser }>('staffId', 'name')
-    .sort({ date: 1, time: 1 }); // Ensure consistent sorting
+    .sort({ date: 1, time: 1 }); 
   
   console.log(`[ACTIONS] Found ${appointmentDocs.length} appointments with query.`);
   return appointmentDocs.map(transformAppointmentDocToDetails);
@@ -1293,7 +1283,7 @@ export async function getAdminDashboardStats(): Promise<AdminDashboardStats> {
 
     const activeUserCount = await CustomerModel.countDocuments({ lastInteractionAt: { $gte: sevenDaysAgo } });
     const chatsTodayCount = await MessageModel.countDocuments({ createdAt: { $gte: todayStart, $lt: todayEnd } });
-    const openIssuesCount = await CustomerModel.countDocuments({ tags: "Cần hỗ trợ" }); // Ensure this tag matches exactly
+    const openIssuesCount = await CustomerModel.countDocuments({ tags: "Cần hỗ trợ" }); 
 
     const recentAppointmentsDocs = await AppointmentModel.find({})
         .sort({ createdAt: -1 })
@@ -1310,11 +1300,11 @@ export async function getAdminDashboardStats(): Promise<AdminDashboardStats> {
         recentAppointments: recentAppointmentsDocs.map(transformAppointmentDocToDetails),
         recentCustomers: recentCustomersDocs.map(doc => ({
             id: (doc as any)._id.toString(),
-            name: doc.name || `Khách ${doc.phoneNumber.slice(-4)}`, // Fallback for name
+            name: doc.name || `Khách ${doc.phoneNumber.slice(-4)}`, 
             phoneNumber: doc.phoneNumber,
             createdAt: new Date(doc.createdAt as Date),
         })),
-        systemStatus: 'Optimal', // Placeholder, can be enhanced
+        systemStatus: 'Optimal', 
     };
 }
 
@@ -1322,7 +1312,7 @@ export async function getStaffDashboardStats(staffId: string): Promise<StaffDash
     await dbConnect();
     const todayStart = startOfDay(new Date());
     const todayEnd = endOfDay(new Date());
-    const todayDateString = formatISO(todayStart, { representation: 'date' }); // YYYY-MM-DD
+    const todayDateString = formatISO(todayStart, { representation: 'date' }); 
 
     const activeChatsAssignedToMeCount = await CustomerModel.countDocuments({
         assignedStaffId: new mongoose.Types.ObjectId(staffId) as any,
@@ -1399,7 +1389,6 @@ export async function deleteCustomerNote(noteId: string, staffId: string): Promi
     return { success: true };
 }
 
-// New helper functions for transforming documents
 function transformProductDocToProduct(doc: any): ProductItem {
   return {
     id: doc._id.toString(),
@@ -1440,7 +1429,6 @@ function transformReminderDocToReminder(doc: any): Reminder {
   };
 }
 
-// Product Actions
 export async function getAllProducts(): Promise<ProductItem[]> {
   await dbConnect();
   const products = await ProductModel.find({}).sort({ createdAt: -1 });
@@ -1479,7 +1467,6 @@ export async function deleteProduct(productId: string): Promise<{ success: boole
   return { success: !!result };
 }
 
-// Reminder Actions
 export async function getAllReminders(filters: {
   staffId?: string;
   customerId?: string;
@@ -1537,7 +1524,6 @@ export async function updateReminder(
 ): Promise<Reminder | null> {
   await dbConnect();
   
-  // If status is being updated to 'completed', set completedAt to now
   if (data.status === 'completed' && !data.completedAt) {
     data.completedAt = new Date();
   }
@@ -1559,7 +1545,6 @@ export async function deleteReminder(reminderId: string): Promise<{ success: boo
   return { success: !!result };
 }
 
-// Get upcoming reminders for a staff member
 export async function getUpcomingRemindersForStaff(staffId: string): Promise<Reminder[]> {
   await dbConnect();
   
@@ -1582,7 +1567,6 @@ export async function getUpcomingRemindersForStaff(staffId: string): Promise<Rem
   return reminders.map(transformReminderDocToReminder);
 }
 
-// Get overdue reminders for a staff member
 export async function getOverdueRemindersForStaff(staffId: string): Promise<Reminder[]> {
   await dbConnect();
   
@@ -1601,7 +1585,6 @@ export async function getOverdueRemindersForStaff(staffId: string): Promise<Remi
   return reminders.map(transformReminderDocToReminder);
 }
 
-// Get customers with their products and count of pending reminders
 export async function getCustomersWithProductsAndReminders(staffId?: string): Promise<any[]> {
   await dbConnect();
   

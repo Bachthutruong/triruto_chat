@@ -1,10 +1,11 @@
+// src/app/staff/chat/page.tsx
 'use client';
 import { useState, useEffect } from 'react';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Users, MessageSquarePlus, Search, Filter, Loader2, AlertTriangle } from 'lucide-react';
+import { Users, MessageSquarePlus, Search, Filter, Loader2, AlertTriangle, Tag } from 'lucide-react';
 import Link from 'next/link';
 import type { CustomerProfile, UserSession } from '@/lib/types';
 import { getCustomersForStaffView } from '@/app/actions';
@@ -14,6 +15,7 @@ import { vi } from 'date-fns/locale';
 export default function StaffChatPage() {
   const [activeCustomers, setActiveCustomers] = useState<CustomerProfile[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
+  const [filterTag, setFilterTag] = useState('');
   const [staffSession, setStaffSession] = useState<UserSession | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -29,33 +31,42 @@ export default function StaffChatPage() {
     }
   }, []);
 
+  const fetchCustomers = async () => {
+    if (!staffSession) return;
+    setIsLoading(true);
+    setError(null);
+    try {
+      const tagsToFilter = filterTag.trim() ? filterTag.trim().split(',').map(t => t.trim()) : undefined;
+      const customers = await getCustomersForStaffView(
+        staffSession.id, 
+        staffSession.role,
+        tagsToFilter
+      );
+      setActiveCustomers(customers);
+    } catch (err) {
+      console.error("Không thể tải danh sách khách hàng:", err);
+      setError("Không thể tải danh sách khách hàng. Vui lòng thử lại.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   useEffect(() => {
     if (staffSession) {
-      const fetchCustomers = async () => {
-        setIsLoading(true);
-        setError(null);
-        try {
-          // If admin, fetch all customers by passing undefined for staffId.
-          // Otherwise, fetch customers assigned to the staff or unassigned.
-          const customers = await getCustomersForStaffView(staffSession.role === 'admin' ? undefined : staffSession.id);
-          setActiveCustomers(customers);
-        } catch (err) {
-          console.error("Không thể tải danh sách khách hàng:", err);
-          setError("Không thể tải danh sách khách hàng. Vui lòng thử lại.");
-        } finally {
-          setIsLoading(false);
-        }
-      };
       fetchCustomers();
     }
-  }, [staffSession]);
+  }, [staffSession, filterTag]); // Re-fetch when filterTag changes
 
-  const filteredCustomers = activeCustomers.filter(customer =>
+  const filteredCustomersBySearch = activeCustomers.filter(customer =>
     (customer.name?.toLowerCase() || '').includes(searchTerm.toLowerCase()) ||
     (customer.internalName?.toLowerCase() || '').includes(searchTerm.toLowerCase()) ||
     customer.phoneNumber.includes(searchTerm) ||
     (customer.tags || []).some(tag => tag.toLowerCase().includes(searchTerm.toLowerCase()))
   );
+
+  const handleFilterApply = () => {
+    fetchCustomers();
+  };
 
   if (isLoading && !error) {
     return (
@@ -91,7 +102,7 @@ export default function StaffChatPage() {
         <CardHeader>
           <CardTitle className="flex items-center"><Users className="mr-2 h-5 w-5" /> Hàng đợi Khách hàng</CardTitle>
           <CardDescription>Khách hàng đang chờ, được giao cho bạn, hoặc chưa được giao.</CardDescription>
-          <div className="flex gap-2 pt-2">
+          <div className="flex flex-col gap-2 pt-2">
             <Input 
               placeholder="Tìm theo tên, SĐT, nhãn..." 
               value={searchTerm}
@@ -99,16 +110,25 @@ export default function StaffChatPage() {
               className="h-9"
               icon={<Search className="h-4 w-4 text-muted-foreground" />}
             />
-            {/* <Button variant="outline" size="icon" className="h-9 w-9">
-              <Filter className="h-4 w-4" />
-            </Button> */}
+            <div className="flex gap-2">
+              <Input 
+                placeholder="Lọc theo nhãn (vd: VIP, Cần hỗ trợ)" 
+                value={filterTag}
+                onChange={(e) => setFilterTag(e.target.value)}
+                className="h-9 flex-grow"
+                icon={<Tag className="h-4 w-4 text-muted-foreground" />}
+              />
+              <Button variant="outline" size="icon" className="h-9 w-9" onClick={handleFilterApply}>
+                <Filter className="h-4 w-4" />
+              </Button>
+            </div>
           </div>
         </CardHeader>
         <ScrollArea className="flex-grow">
           <CardContent className="p-0">
-            {filteredCustomers.length === 0 && <p className="p-4 text-muted-foreground">Không tìm thấy khách hàng phù hợp.</p>}
+            {filteredCustomersBySearch.length === 0 && <p className="p-4 text-muted-foreground">Không tìm thấy khách hàng phù hợp.</p>}
             <ul className="divide-y divide-border">
-              {filteredCustomers.map(customer => (
+              {filteredCustomersBySearch.map(customer => (
                 <li key={customer.id}>
                   <Button variant="ghost" className="w-full justify-start h-auto p-3 rounded-none" asChild>
                     <Link href={staffSession?.role === 'admin' ? `/admin/chat/${customer.id}` : `/staff/chat/${customer.id}`}>

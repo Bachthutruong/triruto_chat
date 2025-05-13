@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Send, Paperclip, Smile, UserCircle, Edit2, Tag, Clock, Phone, Info, X, StickyNote, PlusCircle, Trash2 } from 'lucide-react';
+import { Send, Paperclip, Smile, UserCircle, Edit2, Tag, Clock, Phone, Info, X, StickyNote, PlusCircle, Trash2, UserPlus, LogOutIcon, UserCheck, Users } from 'lucide-react';
 import type { CustomerProfile, Message, AppointmentDetails, UserSession, Note } from '@/lib/types';
 import { 
   getCustomerDetails, 
@@ -20,13 +20,16 @@ import {
   updateCustomerInternalName,
   addNoteToCustomer,
   deleteCustomerNote, 
-  updateCustomerNote
+  updateCustomerNote,
+  getStaffList
 } from '@/app/actions';
 import { Textarea } from '@/components/ui/textarea'; 
 import { useToast } from '@/hooks/use-toast';
 import { format } from 'date-fns';
 import { vi } from 'date-fns/locale';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+
 
 export default function StaffIndividualChatPage() {
   const params = useParams();
@@ -47,6 +50,9 @@ export default function StaffIndividualChatPage() {
   const [newNoteContent, setNewNoteContent] = useState('');
   const [editingNote, setEditingNote] = useState<Note | null>(null);
   const [editingNoteContent, setEditingNoteContent] = useState('');
+  
+  const [allStaff, setAllStaff] = useState<{id: string, name: string}[]>([]);
+  const [selectedStaffToAssign, setSelectedStaffToAssign] = useState<string>('');
 
   const chatScrollAreaRef = useRef<HTMLDivElement>(null);
 
@@ -63,9 +69,21 @@ export default function StaffIndividualChatPage() {
   useEffect(() => {
     const sessionString = sessionStorage.getItem('aetherChatUserSession');
     if (sessionString) {
-      setStaffSession(JSON.parse(sessionString));
+      const session = JSON.parse(sessionString);
+      setStaffSession(session);
+      if (session.role === 'admin') {
+        const fetchStaff = async () => {
+          try {
+            const staff = await getStaffList();
+            setAllStaff(staff);
+          } catch (error) {
+            toast({ title: "Lỗi", description: "Không thể tải danh sách nhân viên.", variant: "destructive" });
+          }
+        };
+        fetchStaff();
+      }
     }
-  }, []);
+  }, [toast]);
 
   useEffect(() => {
     if (customerId) {
@@ -117,14 +135,34 @@ export default function StaffIndividualChatPage() {
       setIsAssigning(false);
     }
   };
-
-  const handleUnassign = async () => {
-    if (!customer) return;
+  
+  const handleAssignToSelectedStaff = async () => {
+    if (!customer || !staffSession || staffSession.role !== 'admin' || !selectedStaffToAssign) return;
     setIsAssigning(true);
     try {
-      const updatedCustomer = await unassignStaffFromCustomer(customer.id);
+      const updatedCustomer = await assignStaffToCustomer(customer.id, selectedStaffToAssign);
       setCustomer(updatedCustomer);
-      toast({ title: "Thành công", description: `Khách hàng đã được đưa trở lại hàng đợi chung.`});
+      toast({ title: "Thành công", description: `Khách hàng đã được giao cho nhân viên đã chọn.`});
+      setSelectedStaffToAssign('');
+    } catch (error: any) {
+      toast({ title: "Lỗi", description: error.message, variant: "destructive"});
+    } finally {
+      setIsAssigning(false);
+    }
+  }
+
+  const handleUnassign = async () => {
+    if (!customer || !staffSession) return;
+    setIsAssigning(true);
+    try {
+      // Staff can only unassign if they are assigned. Admin can unassign anyone.
+      if (staffSession.role === 'admin' || customer.assignedStaffId === staffSession.id) {
+        const updatedCustomer = await unassignStaffFromCustomer(customer.id);
+        setCustomer(updatedCustomer);
+        toast({ title: "Thành công", description: `Khách hàng đã được đưa trở lại hàng đợi chung.`});
+      } else {
+        toast({ title: "Không được phép", description: "Bạn không được phép thực hiện hành động này.", variant: "destructive"});
+      }
     } catch (error: any) {
       toast({ title: "Lỗi", description: error.message, variant: "destructive"});
     } finally {
@@ -134,6 +172,12 @@ export default function StaffIndividualChatPage() {
   
   const handleAddTag = async () => {
     if (!customer || !newTagName.trim() || !staffSession) return;
+    // Admin invitation tag
+    if (newTagName.toLowerCase().startsWith("admin:") && staffSession.role !== 'admin') {
+       toast({title: "Thông báo", description: "Chỉ Admin mới có thể tự mời chính mình bằng tag."});
+       // Or simply add the tag "Admin Attention"
+    }
+
     try {
         const updatedCustomer = await addTagToCustomer(customer.id, newTagName.trim());
         setCustomer(updatedCustomer);
@@ -247,15 +291,15 @@ export default function StaffIndividualChatPage() {
               </p>
             </div>
           </div>
-          <div>
-            {!customer.assignedStaffId && staffSession && (
+          <div className="flex gap-2">
+            {staffSession?.role === 'staff' && !customer.assignedStaffId && (
               <Button variant="outline" size="sm" onClick={handleAssignToSelf} disabled={isAssigning}>
-                {isAssigning ? "Đang giao..." : "Nhận xử lý"}
+                <UserCheck className="mr-1 h-4 w-4"/> {isAssigning ? "Đang nhận..." : "Nhận xử lý"}
               </Button>
             )}
-            {customer.assignedStaffId === staffSession?.id && (
-                 <Button variant="outline" size="sm" onClick={handleUnassign} disabled={isAssigning} className="ml-2">
-                     {isAssigning ? "Đang xử lý..." : "Trả về hàng đợi"}
+             {staffSession?.role === 'staff' && customer.assignedStaffId === staffSession?.id && (
+                 <Button variant="outline" size="sm" onClick={handleUnassign} disabled={isAssigning}>
+                     <LogOutIcon className="mr-1 h-4 w-4"/> {isAssigning ? "Đang trả..." : "Trả về hàng đợi"}
                  </Button>
             )}
           </div>
@@ -300,6 +344,36 @@ export default function StaffIndividualChatPage() {
         </CardHeader>
         <ScrollArea className="flex-grow">
           <CardContent className="p-4 space-y-4">
+            {/* Assignment Section */}
+            {staffSession?.role === 'admin' && (
+              <div className="border-b pb-3 mb-3">
+                <h4 className="font-semibold text-sm flex items-center mb-1"><Users className="mr-2 h-4 w-4 text-primary" />Phân công</h4>
+                {customer.assignedStaffId ? (
+                  <div className="flex items-center justify-between text-xs">
+                    <span>Đang xử lý: {customer.assignedStaffName || customer.assignedStaffId}</span>
+                     <Button variant="outline" size="xs" onClick={handleUnassign} disabled={isAssigning}>
+                        {isAssigning ? "Đang hủy..." : "Hủy giao"}
+                     </Button>
+                  </div>
+                ) : <p className="text-xs text-muted-foreground mb-1">Khách chưa được giao.</p>}
+                <div className="flex gap-1 mt-1">
+                    <Select value={selectedStaffToAssign} onValueChange={setSelectedStaffToAssign} >
+                        <SelectTrigger className="h-7 text-xs flex-grow" disabled={isAssigning}>
+                            <SelectValue placeholder="Chọn nhân viên để giao" />
+                        </SelectTrigger>
+                        <SelectContent>
+                            {allStaff.map(staff => (
+                                <SelectItem key={staff.id} value={staff.id} className="text-xs">{staff.name}</SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
+                    <Button size="sm" onClick={handleAssignToSelectedStaff} className="h-7 text-xs px-2 shrink-0" disabled={!selectedStaffToAssign || isAssigning}>
+                        {isAssigning ? "Đang giao..." : "Giao"}
+                    </Button>
+                </div>
+              </div>
+            )}
+
             <div>
               <h4 className="font-semibold text-sm flex items-center mb-1"><UserCircle className="mr-2 h-4 w-4 text-primary" />Chi tiết</h4>
               <p className="text-xs"><span className="text-muted-foreground">Điện thoại:</span> {customer.phoneNumber}</p>
@@ -330,12 +404,15 @@ export default function StaffIndividualChatPage() {
                             </Button>
                         </span>
                     ))}
+                     {customer.tags?.includes(`Admin:${staffSession?.name}`) && staffSession?.role === 'admin' && (
+                        <span className="text-xs bg-yellow-100 text-yellow-700 px-2 py-0.5 rounded-full">Đã mời Admin</span>
+                    )}
                 </div>
                 <div className="flex gap-1">
                     <Input 
                         value={newTagName} 
                         onChange={(e) => setNewTagName(e.target.value)} 
-                        placeholder="Thêm nhãn mới"
+                        placeholder="Thêm nhãn mới (vd: Admin:TênAdmin)"
                         className="h-7 text-xs"
                         onKeyPress={(e) => { if (e.key === 'Enter') handleAddTag(); }}
                     />
@@ -351,7 +428,6 @@ export default function StaffIndividualChatPage() {
                 </div>
               ))}
               {appointments.length > 2 && <Button variant="link" size="sm" className="p-0 h-auto text-primary">Xem tất cả</Button>}
-              {/* Consider linking to /staff/appointments?customerId=... for staff */}
               <Button variant="outline" size="sm" className="w-full mt-1">Lịch hẹn mới</Button>
             </div>
             <div className="border-t pt-3">
