@@ -1,8 +1,8 @@
 // src/components/chat/MessageBubble.tsx
-import type { Message, MessageViewerRole, UserSession } from '@/lib/types';
+import type { Message, MessageViewerRole } from '@/lib/types';
 import { cn } from '@/lib/utils';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import { User, Bot, FileText, Download, Brain, Edit, Trash2, Pin, PinOff, Smile } from 'lucide-react';
+import { User, Bot, FileText, Download, Brain, Edit, Trash2, Pin, PinOff } from 'lucide-react';
 import Image from 'next/image';
 import { useAppSettingsContext } from '@/contexts/AppSettingsContext';
 import { Button } from '@/components/ui/button';
@@ -10,17 +10,24 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 
 type MessageBubbleProps = {
   message: Message;
-  viewerRole: MessageViewerRole; // 'customer_view', 'staff', 'admin'
-  currentStaffSessionId?: string; // ID of the currently logged-in staff/admin
+  viewerRole: MessageViewerRole; 
+  currentStaffSessionId?: string; 
   onPinMessage?: (messageId: string) => void;
   onUnpinMessage?: (messageId: string) => void;
-  onDeleteMessage?: (messageId: string) => void; // For staff deleting their own messages
-  onEditMessage?: (messageId: string, currentContent: string) => void; // For staff editing their own messages
+  onDeleteMessage?: (messageId: string) => void; 
+  onEditMessage?: (messageId: string, currentContent: string) => void; 
 };
 
 function isImageDataURI(uri: string): boolean {
-  return typeof uri === 'string' && uri.startsWith('data:image/');
+  const mimeMatch = uri.match(/^data:(image\/[^;]+);base64,/);
+  return !!mimeMatch;
 }
+
+function getMimeTypeFromDataUri(dataUri: string): string | null {
+  const match = dataUri.match(/^data:([A-Za-z-+\/]+);base64,/);
+  return match ? match[1] : null;
+}
+
 
 export function MessageBubble({ 
     message, 
@@ -34,35 +41,35 @@ export function MessageBubble({
   const appSettings = useAppSettingsContext();
   const brandName = appSettings?.brandName || 'AetherChat';
 
-  const isUserSender = message.sender === 'user'; // Customer sending message
-  const isAISender = message.sender === 'ai';     // AI or Staff/Admin sending message (appears as AI to customer)
+  const isUserSender = message.sender === 'user'; 
+  const isAISender = message.sender === 'ai';     
   const isSystemSender = message.sender === 'system';
 
   let displayName = 'Hệ thống';
   let avatarIcon = <Bot className="h-5 w-5" />;
-  let avatarFallback = 'AI';
+  let avatarFallbackText = 'AI';
 
-  if (isUserSender) { // Message sent by the customer
+  if (isUserSender) { 
     avatarIcon = <User className="h-5 w-5" />;
     if (viewerRole === 'customer_view') {
       displayName = 'Bạn';
-      avatarFallback = 'B';
-    } else { // Staff/Admin viewing customer's message
-      displayName = message.name || 'Khách hàng';
-      avatarFallback = displayName.charAt(0).toUpperCase() || 'K';
+      avatarFallbackText = 'B';
+    } else { 
+      displayName = message.name || `Người dùng ${message.userId?.slice(-4) || 'ẩn danh'}`;
+      avatarFallbackText = displayName.charAt(0).toUpperCase() || 'K';
     }
-  } else if (isAISender) { // Message sent by AI or Staff/Admin (appears as AI to customer)
+  } else if (isAISender) { 
     if (viewerRole === 'customer_view') {
       displayName = `${brandName} AI`;
       avatarIcon = <Bot className="h-5 w-5" />;
-      avatarFallback = 'AI';
-    } else { // Staff/Admin viewing message from AI or another staff/admin
-      displayName = message.name || `${brandName} AI`; // message.name here would be the actual staff/admin sender name
-      avatarIcon = message.userId ? <User className="h-5 w-5" /> : <Brain className="h-5 w-5" />; // User icon if staff sent, Brain if pure AI
-      avatarFallback = displayName.charAt(0).toUpperCase() || 'S';
+      avatarFallbackText = 'AI';
+    } else { 
+      displayName = message.name || `${brandName} AI`; 
+      avatarIcon = message.userId ? <User className="h-5 w-5" /> : <Brain className="h-5 w-5" />; 
+      avatarFallbackText = displayName.charAt(0).toUpperCase() || 'S';
     }
   }
-  // System messages don't have avatars or detailed display names in this context
+  
 
   if (isSystemSender) {
     return (
@@ -81,31 +88,36 @@ export function MessageBubble({
         const fileNameEncoded = match[2];
         const textContent = match[3]?.trim(); 
         
-        let fileName = "attached_file";
+        let fileName = "tệp_đính_kèm";
         try {
             fileName = decodeURIComponent(fileNameEncoded);
         } catch (e) { 
-            console.warn("Failed to decode filename from URI", e);
+            console.warn("Không thể giải mã tên tệp từ URI", e);
         }
 
         const fileElement = isImageDataURI(fileDataUri) ? (
+          <div className="my-1 relative max-w-xs h-auto aspect-auto" data-ai-hint="user image preview">
             <Image 
               src={fileDataUri} 
               alt={fileName || 'Hình ảnh được gửi'} 
-              width={200} 
-              height={200} 
-              className="rounded-md object-contain max-w-xs my-1"
-              data-ai-hint="user image"
+              width={250}  // Increased default width
+              height={250} // Increased default height
+              className="rounded-md object-contain" // Ensure it contains within bounds
+              style={{maxWidth: '100%', height: 'auto'}} // Responsive styling
             />
+          </div>
         ) : (
             <a
               href={fileDataUri}
               download={fileName}
-              className="flex items-center gap-2 p-2 my-1 bg-secondary/50 hover:bg-secondary rounded-md text-sm text-foreground"
+              className="flex items-center gap-2 p-2 my-1 bg-secondary/50 hover:bg-secondary rounded-md text-sm text-foreground transition-colors"
             >
-              <FileText className="h-5 w-5 text-primary" />
-              <span className="truncate max-w-[150px] sm:max-w-xs">{fileName}</span>
-              <Download className="h-4 w-4 ml-auto text-muted-foreground flex-shrink-0" />
+              <FileText className="h-6 w-6 text-primary flex-shrink-0" />
+              <div className="flex flex-col overflow-hidden">
+                <span className="truncate font-medium" title={fileName}>{fileName}</span>
+                <span className="text-xs text-muted-foreground">Nhấn để tải về</span>
+              </div>
+              <Download className="h-5 w-5 ml-auto text-muted-foreground flex-shrink-0" />
             </a>
         );
 
@@ -128,8 +140,8 @@ export function MessageBubble({
         <Avatar className="h-8 w-8">
           <AvatarFallback className={cn(
             'bg-accent text-accent-foreground', 
-            viewerRole !== 'customer_view' && isAISender && message.userId && 'bg-teal-500 text-white', // Staff sent message
-            viewerRole !== 'customer_view' && isAISender && !message.userId && 'bg-purple-500 text-white' // Pure AI message
+            viewerRole !== 'customer_view' && isAISender && message.userId && 'bg-teal-500 text-white', 
+            viewerRole !== 'customer_view' && isAISender && !message.userId && 'bg-purple-500 text-white' 
             )}>
             {avatarIcon}
           </AvatarFallback>
@@ -143,7 +155,9 @@ export function MessageBubble({
             : viewerRole === 'customer_view' ? 'bg-accent text-accent-foreground rounded-bl-none' : 'bg-card border rounded-bl-none'
         )}
       >
-        <p className="text-xs font-semibold mb-1">{displayName}</p>
+        {(viewerRole !== 'customer_view' || !isUserSender) && ( // Show sender name unless it's customer viewing their own message
+            <p className="text-xs font-semibold mb-1">{displayName}</p>
+        )}
         {renderContent()}
         <div className="flex items-center justify-between text-xs mt-1">
           <span className={cn(
@@ -210,4 +224,3 @@ export function MessageBubble({
     </div>
   );
 }
-

@@ -3,12 +3,13 @@
 
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { useParams } from 'next/navigation';
+import NextImage from 'next/image'; // Renamed to avoid conflict with Lucide's Image
 import { Card, CardHeader, CardTitle, CardContent, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Send, Paperclip, Smile, UserCircle, Edit2, Tag, Clock, Phone, Info, X, StickyNote, PlusCircle, Trash2, UserPlus, LogOutIcon, UserCheck, Users, Pin, PinOff, Edit, Image as ImageIcon, ExternalLink } from 'lucide-react';
+import { Send, Paperclip, Smile, UserCircle, Edit2, Tag, Clock, Phone, Info, X, StickyNote, PlusCircle, Trash2, UserPlus, LogOutIcon, UserCheck, Users, Pin, PinOff, Edit, Image as ImageIcon, ExternalLink, FileText, Download } from 'lucide-react';
 import type { CustomerProfile, Message, AppointmentDetails, UserSession, Note, MessageEditState } from '@/lib/types';
 import { 
   getCustomerDetails, 
@@ -38,11 +39,22 @@ import { Dialog, DialogHeader, DialogFooter, DialogContent, DialogTitle, DialogD
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ChatWindow } from '@/components/chat/ChatWindow'; 
 import { Label } from '@/components/ui/label';
-import Link from 'next/link'; // Import Link
+import Link from 'next/link'; 
 
-// This component renders the detailed view of a single customer's chat.
-// It is intended to be used as the child of StaffChatLayout or AdminChatLayout
-// when a specific customerId is present in the URL.
+const MAX_FILE_SIZE_MB = 5;
+const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
+
+function getMimeTypeFromDataUri(dataUri: string): string | null {
+  const match = dataUri.match(/^data:([A-Za-z-+\/]+);base64,/);
+  return match ? match[1] : null;
+}
+
+function isImageDataUri(uri: string): boolean {
+  const mime = getMimeTypeFromDataUri(uri);
+  return mime ? mime.startsWith('image/') : false;
+}
+
+
 export default function StaffIndividualChatPage() {
   const params = useParams();
   const customerId = params.customerId as string;
@@ -68,7 +80,11 @@ export default function StaffIndividualChatPage() {
   const [selectedStaffToAssign, setSelectedStaffToAssign] = useState<string>('');
 
   const [messageEditState, setMessageEditState] = useState<MessageEditState>(null);
-  const [editedMessageContent, setEditedMessageContent] = useState('');
+  // For editing messages with attachments
+  const [currentAttachmentInEdit, setCurrentAttachmentInEdit] = useState<{ dataUri: string; name: string; type: string | null } | null>(null);
+  const [stagedEditFile, setStagedEditFile] = useState<{ dataUri: string; name: string; type: string } | null>(null);
+  const [editTextContent, setEditTextContent] = useState(''); // Only text part for editing
+  const editFileInputRef = useRef<HTMLInputElement>(null);
 
 
   const fetchChatData = useCallback(async () => {
@@ -150,14 +166,48 @@ export default function StaffIndividualChatPage() {
 
   const handleEditMessage = (messageId: string, currentContent: string) => {
     setMessageEditState({ messageId, currentContent });
-    setEditedMessageContent(currentContent);
+    const dataUriRegex = /^(data:[^;]+;base64,[^#]+)#filename=([^#\s]+)(?:\n([\s\S]*))?$/;
+    const match = currentContent.match(dataUriRegex);
+
+    if (match) {
+      const fileDataUri = match[1];
+      const fileNameEncoded = match[2];
+      const textMsgContent = match[3]?.trim() || '';
+      let fileName = "attached_file";
+      try {
+        fileName = decodeURIComponent(fileNameEncoded);
+      } catch (e) { /* ignore */ }
+      
+      setCurrentAttachmentInEdit({ dataUri: fileDataUri, name: fileName, type: getMimeTypeFromDataUri(fileDataUri) });
+      setEditTextContent(textMsgContent);
+    } else {
+      setCurrentAttachmentInEdit(null);
+      setEditTextContent(currentContent);
+    }
+    setStagedEditFile(null); // Clear any previously staged file for new edit
   };
 
   const handleSaveEditedMessage = async () => {
     if (!messageEditState || !staffSession) return;
     setIsSendingMessage(true); 
+    
+    let finalContent = editTextContent.trim();
+    const fileToUse = stagedEditFile || currentAttachmentInEdit;
+
+    if (fileToUse) {
+      const encodedName = encodeURIComponent(fileToUse.name);
+      const fileString = `${fileToUse.dataUri}#filename=${encodedName}`;
+      finalContent = finalContent ? `${fileString}\n${finalContent}` : fileString;
+    }
+
+    if (!finalContent && !fileToUse) {
+      toast({ title: "Không có nội dung", description: "Tin nhắn không thể để trống.", variant: "destructive" });
+      setIsSendingMessage(false);
+      return;
+    }
+    
     try {
-      const updatedMessage = await editStaffMessage(messageEditState.messageId, editedMessageContent, staffSession);
+      const updatedMessage = await editStaffMessage(messageEditState.messageId, finalContent, staffSession);
       if (updatedMessage) {
         setMessages(prev => prev.map(m => m.id === updatedMessage.id ? updatedMessage : m));
         if (pinnedMessages.find(pm => pm.id === updatedMessage.id)) {
@@ -166,11 +216,33 @@ export default function StaffIndividualChatPage() {
         toast({ title: "Thành công", description: "Đã sửa tin nhắn." });
       }
       setMessageEditState(null);
-      setEditedMessageContent('');
+      setEditTextContent('');
+      setCurrentAttachmentInEdit(null);
+      setStagedEditFile(null);
     } catch (error: any) {
       toast({ title: "Lỗi sửa tin nhắn", description: error.message, variant: "destructive" });
     } finally {
       setIsSendingMessage(false);
+    }
+  };
+  
+  const handleEditFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      if (file.size > MAX_FILE_SIZE_BYTES) {
+        toast({ title: "Tệp quá lớn", description: `Kích thước tệp không được vượt quá ${MAX_FILE_SIZE_MB}MB.`, variant: "destructive" });
+        if(editFileInputRef.current) editFileInputRef.current.value = "";
+        return;
+      }
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        if (reader.result) {
+          setStagedEditFile({ dataUri: reader.result as string, name: file.name, type: file.type });
+          setCurrentAttachmentInEdit(null); // New file replaces current if any
+        }
+        if(editFileInputRef.current) editFileInputRef.current.value = "";
+      };
+      reader.readAsDataURL(file);
     }
   };
 
@@ -381,7 +453,7 @@ export default function StaffIndividualChatPage() {
 
 
   return (
-    <div className="flex flex-col md:flex-row h-full gap-0 md:gap-4"> {/* Changed from h-[calc...] to h-full */}
+    <div className="flex flex-col md:flex-row h-full gap-0 md:gap-4"> 
       <Card className="flex-grow h-full flex flex-col">
         <CardHeader className="flex flex-row items-center justify-between border-b p-4">
           <div className="flex items-center gap-3">
@@ -432,7 +504,7 @@ export default function StaffIndividualChatPage() {
         />
       </Card>
 
-      <Card className="w-full md:max-w-xs lg:max-w-sm xl:max-w-md h-full flex-col hidden md:flex"> {/* Adjusted max-widths */}
+      <Card className="w-full md:max-w-xs lg:max-w-sm xl:max-w-md h-full flex-col hidden md:flex"> 
         <CardHeader className="border-b">
           <CardTitle className="flex items-center"><Info className="mr-2 h-5 w-5" /> Thông tin Khách hàng</CardTitle>
         </CardHeader>
@@ -583,27 +655,57 @@ export default function StaffIndividualChatPage() {
         </ScrollArea>
       </Card>
 
-      <Dialog open={messageEditState !== null} onOpenChange={(isOpen) => !isOpen && setMessageEditState(null)}>
-        <DialogContent>
+      <Dialog open={messageEditState !== null} onOpenChange={(isOpen) => { if (!isOpen) { setMessageEditState(null); setCurrentAttachmentInEdit(null); setStagedEditFile(null); setEditTextContent('');}}}>
+        <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>Sửa Tin nhắn</DialogTitle>
-            <DialogDescription>
-              Chỉnh sửa nội dung tin nhắn của bạn.
-            </DialogDescription>
           </DialogHeader>
-          <div className="py-4">
-            <Label htmlFor="editMessageContent" className="sr-only">Nội dung tin nhắn</Label>
-            <Textarea
-              id="editMessageContent"
-              value={editedMessageContent}
-              onChange={(e) => setEditedMessageContent(e.target.value)}
-              rows={4}
-              autoFocus
-            />
+          <div className="py-4 space-y-3">
+            {(stagedEditFile || currentAttachmentInEdit) && (
+              <div className="border rounded-md p-2">
+                <Label className="text-xs text-muted-foreground">Tệp đính kèm hiện tại/mới:</Label>
+                <div className="flex items-center justify-between mt-1">
+                  <div className="flex items-center gap-2 text-sm overflow-hidden">
+                    {(stagedEditFile || currentAttachmentInEdit)?.type?.startsWith('image/') ? (
+                       <NextImage data-ai-hint="image file attachment" src={(stagedEditFile || currentAttachmentInEdit)!.dataUri} alt={(stagedEditFile || currentAttachmentInEdit)!.name} width={40} height={40} className="rounded object-cover flex-shrink-0" />
+                    ) : (
+                      <FileText className="h-6 w-6 text-muted-foreground flex-shrink-0" />
+                    )}
+                    <span className="truncate" title={(stagedEditFile || currentAttachmentInEdit)!.name}>{(stagedEditFile || currentAttachmentInEdit)!.name}</span>
+                  </div>
+                  <Button variant="ghost" size="icon" onClick={() => { setStagedEditFile(null); setCurrentAttachmentInEdit(null); }} title="Gỡ bỏ tệp đính kèm">
+                    <X className="h-4 w-4 text-destructive" />
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            <div>
+              <Label htmlFor="editMessageContent" className="text-xs text-muted-foreground">Nội dung tin nhắn (tùy chọn nếu có tệp):</Label>
+              <Textarea
+                id="editMessageContent"
+                value={editTextContent}
+                onChange={(e) => setEditTextContent(e.target.value)}
+                rows={3}
+                autoFocus
+                className="mt-1"
+              />
+            </div>
+            <div>
+              <Label htmlFor="editFileAttachment" className="text-xs text-muted-foreground">Thay đổi/Thêm tệp đính kèm mới:</Label>
+              <Input 
+                id="editFileAttachment" 
+                type="file" 
+                ref={editFileInputRef} 
+                onChange={handleEditFileChange} 
+                className="mt-1 text-sm"
+                accept="image/*,application/pdf,.doc,.docx,.txt,.xls,.xlsx"
+              />
+            </div>
           </div>
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => setMessageEditState(null)}>Hủy</Button>
-            <Button type="button" onClick={handleSaveEditedMessage} disabled={isSendingMessage || !editedMessageContent.trim()}>
+            <Button type="button" variant="outline" onClick={() => { setMessageEditState(null); setCurrentAttachmentInEdit(null); setStagedEditFile(null); setEditTextContent(''); }}>Hủy</Button>
+            <Button type="button" onClick={handleSaveEditedMessage} disabled={isSendingMessage || (!editTextContent.trim() && !stagedEditFile && !currentAttachmentInEdit)}>
               {isSendingMessage ? "Đang lưu..." : "Lưu thay đổi"}
             </Button>
           </DialogFooter>

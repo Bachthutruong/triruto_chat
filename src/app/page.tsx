@@ -199,8 +199,8 @@ export default function HomePage() {
       }
       
       return (
-        <Card className="w-full max-w-2xl h-[70vh] shadow-2xl rounded-lg flex flex-col">
-          <CardContent className="p-0 flex-grow flex flex-col overflow-hidden">
+        <div className="w-full h-[70vh] flex flex-col">
+          <div className="p-0 flex-grow flex flex-col overflow-hidden">
             <ChatWindow
               userSession={userSession}
               messages={messages}
@@ -210,8 +210,8 @@ export default function HomePage() {
               isLoading={isChatLoading}
               viewerRole="customer_view" // Customer is always 'customer_view'
             />
-          </CardContent>
-        </Card>
+          </div>
+        </div>
       );
     }
     
@@ -224,7 +224,7 @@ export default function HomePage() {
   };
 
   return (
-    <div className="flex flex-col min-h-screen bg-muted/40">
+    <div className="flex flex-col min-h-screen bg-background">
       <AppHeader userSession={userSession} onLogout={handleLogout}/>
       <main className="flex-grow container mx-auto py-8 px-4 flex justify-center items-center">
         {renderContent()}
