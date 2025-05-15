@@ -28,8 +28,8 @@ import mongoose from 'mongoose';
 
 // This prompt focuses on NLU and NLG, guided by TypeScript availability checks.
 const scheduleAppointmentPrompt = ai.definePrompt({
-  name: 'scheduleAppointmentPromptVietnameseEnhanced', 
-  input: { schema: ScheduleAppointmentInputSchema }, 
+  name: 'scheduleAppointmentPromptVietnameseEnhanced',
+  input: { schema: ScheduleAppointmentInputSchema },
   output: { schema: ScheduleAppointmentOutputSchema },
   prompt: `Bạn là một trợ lý AI cho một salon/spa, giúp người dùng quản lý lịch hẹn bằng tiếng Việt.
 Số điện thoại của người dùng: {{{phoneNumber}}}. ID người dùng: {{{userId}}}. Ngày/giờ hiện tại: {{{currentDateTime}}}.
@@ -165,7 +165,7 @@ async function findNextAvailableSlots(
 
       const slotStartDateTime = dateFnsParseISO(`${currentDateString}T${slotTime}:00.000Z`);
       if (!isValidDate(slotStartDateTime)) continue;
-      
+
       const slotEndDateTime = addMinutes(slotStartDateTime, serviceDuration);
 
       let overlappingCount = 0;
@@ -179,7 +179,7 @@ async function findNextAvailableSlots(
             exApptDuration = exApptSpecificRule.serviceDurationMinutes;
         }
         // Future: could use exAppt.service to find its specific duration from product list
-        
+
         const exApptEnd = addMinutes(exApptStart, exApptDuration);
 
         if (isBefore(slotStartDateTime, exApptEnd) && isBefore(exApptStart, slotEndDateTime)) {
@@ -204,10 +204,10 @@ async function checkRealAvailability(
   targetDateObj: Date, // Date object for the requested day
   targetTime: string, // HH:MM format for the requested time
   serviceDurationMinutesOverride?: number
-): Promise<{ 
-    isAvailable: boolean; 
-    reason?: string; 
-    suggestedSlots?: { date: string; time: string; service?: string; branch?: string }[] 
+): Promise<{
+    isAvailable: boolean;
+    reason?: string;
+    suggestedSlots?: { date: string; time: string; service?: string; branch?: string }[]
 }> {
   const appSettings = await getAppSettings();
   if (!appSettings) {
@@ -216,7 +216,7 @@ async function checkRealAvailability(
 
   // Use the service duration from override if provided, else from app settings, else default to 60
   const effectiveServiceDuration = serviceDurationMinutesOverride || appSettings.defaultServiceDurationMinutes || 60;
-  
+
   const targetDateString = dateFnsFormat(targetDateObj, 'yyyy-MM-dd');
   const targetDayOfWeek = getDay(targetDateObj);
 
@@ -230,15 +230,15 @@ async function checkRealAvailability(
 
   if (specificRuleForDay) {
     if (specificRuleForDay.isOff) isDayOff = true;
-    currentWorkingHours = specificRuleForDay.workingHours && specificRuleForDay.workingHours.length > 0 
-                            ? specificRuleForDay.workingHours 
+    currentWorkingHours = specificRuleForDay.workingHours && specificRuleForDay.workingHours.length > 0
+                            ? specificRuleForDay.workingHours
                             : currentWorkingHours;
     currentNumStaff = specificRuleForDay.numberOfStaff ?? currentNumStaff;
     // specificRuleForDay.serviceDurationMinutes would define the "slot size" for that day,
     // but effectiveServiceDuration is what we're trying to fit.
   } else {
     if (appSettings.weeklyOffDays?.includes(targetDayOfWeek)) isDayOff = true;
-    if (appSettings.oneTimeOffDates?.includes(currentDateString)) isDayOff = true;
+    if (appSettings.oneTimeOffDates?.includes(targetDateString)) isDayOff = true;
   }
 
   if (isDayOff) {
@@ -246,12 +246,12 @@ async function checkRealAvailability(
     const suggestedAlternativeSlots = await findNextAvailableSlots(
         addDays(targetDateObj, 1), // Start search from next day
         "00:00", // Dummy time, not relevant as we search whole days
-        appSettings, 
-        effectiveServiceDuration, 
+        appSettings,
+        effectiveServiceDuration,
         async (dateStr: string) => AppointmentModel.find({ date: dateStr, status: { $in: ['booked', 'pending_confirmation', 'rescheduled'] } }, 'date time service').lean()
     );
-    return { 
-        isAvailable: false, 
+    return {
+        isAvailable: false,
         reason: `Ngày ${targetDateString} là ngày nghỉ.`,
         suggestedSlots: suggestedAlternativeSlots.map(s => ({ date: s.date, time: s.time }))
     };
@@ -259,14 +259,14 @@ async function checkRealAvailability(
 
   if (currentWorkingHours.length === 0 || currentNumStaff <= 0) {
      const suggestedAlternativeSlots = await findNextAvailableSlots(
-        addDays(targetDateObj, 1), 
+        addDays(targetDateObj, 1),
         "00:00",
-        appSettings, 
-        effectiveServiceDuration, 
+        appSettings,
+        effectiveServiceDuration,
         async (dateStr: string) => AppointmentModel.find({ date: dateStr, status: { $in: ['booked', 'pending_confirmation', 'rescheduled'] } }, 'date time service').lean()
     );
-    return { 
-        isAvailable: false, 
+    return {
+        isAvailable: false,
         reason: `Không có giờ làm việc hoặc nhân viên được cấu hình cho ngày ${targetDateString}.`,
         suggestedSlots: suggestedAlternativeSlots.map(s => ({ date: s.date, time: s.time }))
     };
@@ -279,14 +279,14 @@ async function checkRealAvailability(
 
   if (!currentWorkingHours.includes(targetTime)) {
      const suggestedAlternativeSlots = await findNextAvailableSlots(
-        targetDateObj, 
+        targetDateObj,
         targetTime, // Pass original target time to start search after it on the same day
-        appSettings, 
-        effectiveServiceDuration, 
+        appSettings,
+        effectiveServiceDuration,
         async (dateStr: string) => AppointmentModel.find({ date: dateStr, status: { $in: ['booked', 'pending_confirmation', 'rescheduled'] } }, 'date time service').lean()
     );
-     return { 
-        isAvailable: false, 
+     return {
+        isAvailable: false,
         reason: `Thời gian ${targetTime} không phải là giờ bắt đầu dịch vụ hợp lệ trong ngày ${targetDateString}. Các giờ có thể đặt: ${currentWorkingHours.join(', ')}.`,
         suggestedSlots: suggestedAlternativeSlots.map(s => ({ date: s.date, time: s.time }))
     };
@@ -310,7 +310,7 @@ async function checkRealAvailability(
     if (exApptSpecificRule && exApptSpecificRule.serviceDurationMinutes) {
         exApptDuration = exApptSpecificRule.serviceDurationMinutes;
     }
-    
+
     const exApptEnd = addMinutes(exApptStart, exApptDuration);
 
     if (isBefore(appointmentStartDateTime, exApptEnd) && isBefore(exApptStart, appointmentEndDateTime)) {
@@ -320,19 +320,19 @@ async function checkRealAvailability(
 
   if (overlappingCount >= currentNumStaff) {
     const suggestedAlternativeSlots = await findNextAvailableSlots(
-        targetDateObj, 
+        targetDateObj,
         targetTime, // Pass the failed time to search after it
-        appSettings, 
+        appSettings,
         effectiveServiceDuration,
         async (dateStr: string) => AppointmentModel.find({ date: dateStr, status: { $in: ['booked', 'pending_confirmation', 'rescheduled'] } }, 'date time service').lean()
     );
-    return { 
-        isAvailable: false, 
+    return {
+        isAvailable: false,
         reason: `Xin lỗi, đã đủ ${currentNumStaff} nhân viên bận vào lúc ${targetTime} ngày ${targetDateString}.`,
         suggestedSlots: suggestedAlternativeSlots.map(s => ({ date: s.date, time: s.time }))
     };
   }
-  
+
   return { isAvailable: true };
 }
 
@@ -367,8 +367,8 @@ const scheduleAppointmentFlow = ai.defineFlow(
         updatedAt: rule.updatedAt?.toISOString(),
     }));
 
-    let promptInputForNLU: ScheduleAppointmentInput = { 
-        ...input, 
+    let promptInputForNLU: ScheduleAppointmentInput = {
+        ...input,
         currentDateTime,
         appointmentRules: appointmentRulesForAI.length > 0 ? appointmentRulesForAI : undefined,
     };
@@ -381,10 +381,10 @@ const scheduleAppointmentFlow = ai.defineFlow(
         requiresAssistance: true,
       };
     }
-    
-    if ((nluOutput.intent === 'booked' || nluOutput.intent === 'rescheduled') && 
+
+    if ((nluOutput.intent === 'booked' || nluOutput.intent === 'rescheduled') &&
         nluOutput.appointmentDetails?.date && nluOutput.appointmentDetails?.time &&
-        /^\d{4}-\d{2}-\d{2}$/.test(nluOutput.appointmentDetails.date) && 
+        /^\d{4}-\d{2}-\d{2}$/.test(nluOutput.appointmentDetails.date) &&
         /^[0-2][0-9]:[0-5][0-9]$/.test(nluOutput.appointmentDetails.time)
     ) {
       const targetDate = dateFnsParseISO(nluOutput.appointmentDetails.date); // This should be date object
@@ -397,8 +397,8 @@ const scheduleAppointmentFlow = ai.defineFlow(
             missingInformation: "ngày hợp lệ",
         };
       }
-      
-      // Determine service duration for checkRealAvailability. 
+
+      // Determine service duration for checkRealAvailability.
       // For now, we'll let checkRealAvailability use its default or settings.
       // Future: if nluOutput.appointmentDetails.service is present,
       // we could look up its duration from a product/service list and pass as override.
@@ -414,24 +414,24 @@ const scheduleAppointmentFlow = ai.defineFlow(
             confirmedSlot: {
               date: nluOutput.appointmentDetails.date,
               time: nluOutput.appointmentDetails.time,
-              service: nluOutput.appointmentDetails.service, 
+              service: nluOutput.appointmentDetails.service,
               branch: nluOutput.appointmentDetails.branch,
             },
-            isStatusUnavailable: false, 
+            isStatusUnavailable: false,
           },
         };
-        const {output: confirmedOutput} = await scheduleAppointmentPrompt(promptInputForConfirmation); 
-        
+        const {output: confirmedOutput} = await scheduleAppointmentPrompt(promptInputForConfirmation);
+
         if (!confirmedOutput) {
              return { intent: 'error', confirmationMessage: "Lỗi xác nhận lịch hẹn.", requiresAssistance: true };
         }
 
         return {
           ...confirmedOutput,
-          intent: nluOutput.intent, 
-          appointmentDetails: { 
+          intent: nluOutput.intent,
+          appointmentDetails: {
             ...nluOutput.appointmentDetails,
-            status: 'booked', 
+            status: 'booked',
           },
           originalAppointmentIdToModify: nluOutput.originalAppointmentIdToModify,
         };
@@ -444,7 +444,7 @@ const scheduleAppointmentFlow = ai.defineFlow(
           availabilityCheckResult: {
             status: "UNAVAILABLE",
             reason: availability.reason,
-            suggestedSlots: availability.suggestedSlots, 
+            suggestedSlots: availability.suggestedSlots,
             isStatusUnavailable: true,
           }
         };
@@ -453,9 +453,9 @@ const scheduleAppointmentFlow = ai.defineFlow(
              return { intent: 'error', confirmationMessage: "Lỗi khi gợi ý lịch hẹn thay thế.", requiresAssistance: true };
          }
         return {
-            ...alternativeOutput, 
-            intent: 'pending_alternatives', 
-            suggestedSlots: availability.suggestedSlots || alternativeOutput.suggestedSlots || [], 
+            ...alternativeOutput,
+            intent: 'pending_alternatives',
+            suggestedSlots: availability.suggestedSlots || alternativeOutput.suggestedSlots || [],
         };
       }
     } else if (nluOutput.intent === 'cancelled' || nluOutput.intent === 'clarification_needed' || nluOutput.intent === 'no_action_needed' || nluOutput.intent === 'error') {
@@ -474,7 +474,7 @@ const scheduleAppointmentFlow = ai.defineFlow(
             for (const slot of nluOutput.suggestedSlots) {
                 if (!/^\d{4}-\d{2}-\d{2}$/.test(slot.date) || !/^[0-2][0-9]:[0-5][0-9]$/.test(slot.time)) {
                     try {
-                        const parsedTime = Date.parse(`1970/01/01 ${slot.time}`); 
+                        const parsedTime = Date.parse(`1970/01/01 ${slot.time}`);
                         if (!isNaN(parsedTime)) {
                             slot.time = dateFnsFormat(new Date(parsedTime), "HH:mm");
                         } else {
