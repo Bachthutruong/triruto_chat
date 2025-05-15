@@ -38,15 +38,17 @@ Số điện thoại của người dùng: {{{phoneNumber}}}. ID người dùng:
 **Thông tin kiểm tra lịch trống (từ hệ thống):**
 Trạng thái: {{availabilityCheckResult.status}}
 {{#if availabilityCheckResult.reason}}Lý do: {{availabilityCheckResult.reason}}{{/if}}
-{{#if availabilityCheckResult.suggestedSlots.length}}
-Các khung giờ gợi ý (do hệ thống đề xuất):
-{{#each availabilityCheckResult.suggestedSlots}}
-- Ngày: {{date}} lúc {{time}}{{#if branch}} tại {{branch}}{{/if}}
-{{/each}}
-Hãy sử dụng thông tin này để trả lời người dùng một cách tự nhiên.
-{{else if (eq availabilityCheckResult.status "UNAVAILABLE")}}
-Rất tiếc, hiện tại không có khung giờ nào phù hợp trong thời gian tới. Bạn có muốn thử tìm kiếm vào một ngày khác xa hơn không?
-{{/if}}
+  {{#if availabilityCheckResult.suggestedSlots.length}}
+  Các khung giờ gợi ý (do hệ thống đề xuất):
+  {{#each availabilityCheckResult.suggestedSlots}}
+  - Ngày: {{date}} lúc {{time}}{{#if branch}} tại {{branch}}{{/if}}
+  {{/each}}
+  Hãy sử dụng thông tin này để trả lời người dùng một cách tự nhiên.
+  {{else}} {{! This means suggestedSlots is empty }}
+    {{#if availabilityCheckResult.isStatusUnavailable}}
+    Rất tiếc, hiện tại không có khung giờ nào phù hợp trong thời gian tới. Bạn có muốn thử tìm kiếm vào một ngày khác xa hơn không?
+    {{/if}}
+  {{/if}}
 {{#if availabilityCheckResult.confirmedSlot}}
 Khung giờ được xác nhận (nếu có thể đặt): Ngày {{availabilityCheckResult.confirmedSlot.date}} lúc {{availabilityCheckResult.confirmedSlot.time}}
 {{/if}}
@@ -414,7 +416,8 @@ const scheduleAppointmentFlow = ai.defineFlow(
               time: nluOutput.appointmentDetails.time,
               service: nluOutput.appointmentDetails.service, 
               branch: nluOutput.appointmentDetails.branch,
-            }
+            },
+            isStatusUnavailable: false, 
           },
         };
         const {output: confirmedOutput} = await scheduleAppointmentPrompt(promptInputForConfirmation); 
@@ -442,6 +445,7 @@ const scheduleAppointmentFlow = ai.defineFlow(
             status: "UNAVAILABLE",
             reason: availability.reason,
             suggestedSlots: availability.suggestedSlots, 
+            isStatusUnavailable: true,
           }
         };
          const {output: alternativeOutput} = await scheduleAppointmentPrompt(promptInputForAlternatives);
@@ -502,4 +506,3 @@ const scheduleAppointmentFlow = ai.defineFlow(
     }
   }
 );
-

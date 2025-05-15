@@ -52,6 +52,7 @@ export const ScheduleAppointmentInputSchema = z.object({
     reason: z.string().optional(),
     suggestedSlots: z.array(z.object({ date: z.string(), time: z.string(), service: z.string().optional(), branch: z.string().optional() })).optional(),
     confirmedSlot: z.object({ date: z.string(), time: z.string(), service: z.string().optional(), branch: z.string().optional() }).optional(),
+    isStatusUnavailable: z.boolean().optional().describe("Flag indicating if the status is UNAVAILABLE, for Handlebars logic."),
   }).optional().describe("Kết quả kiểm tra lịch trống từ hệ thống (chỉ dùng nội bộ)."),
 });
 export type ScheduleAppointmentInput = z.infer<typeof ScheduleAppointmentInputSchema>;
