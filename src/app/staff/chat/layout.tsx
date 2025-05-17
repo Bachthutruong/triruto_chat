@@ -9,8 +9,9 @@ import { Users, Search, Filter, Loader2, AlertTriangle, Tag, CircleDot } from 'l
 import Link from 'next/link';
 import type { CustomerProfile, UserSession, CustomerInteractionStatus } from '@/lib/types';
 import { getCustomersForStaffView, getAllCustomerTags } from '@/app/actions';
-import { format, formatDistanceToNowStrict } from 'date-fns';
-import { vi } from 'date-fns/locale';
+// import { format, formatDistanceToNowStrict } from 'date-fns'; // Removed direct use
+// import { vi } from 'date-fns/locale'; // Removed direct use
+import { DynamicTimeDisplay } from '@/components/layout/DynamicTimeDisplay'; // Added
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
@@ -93,6 +94,7 @@ export default function StaffChatLayout({ children }: { children: ReactNode }) {
     if (staffSession) {
       fetchCustomers();
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [staffSession, selectedTags]);
 
   const filteredCustomersBySearch = activeCustomers.filter(customer =>
@@ -109,7 +111,8 @@ export default function StaffChatLayout({ children }: { children: ReactNode }) {
 
   const handleClearTagFilter = () => {
     setSelectedTags([]);
-    setIsTagPopoverOpen(false);
+    // No need to explicitly call fetchCustomers here if selectedTags change triggers it
+    // setIsTagPopoverOpen(false); // Popover will close on selection or button click
   };
 
   if (isLoading && !error && !staffSession) {
@@ -131,9 +134,9 @@ export default function StaffChatLayout({ children }: { children: ReactNode }) {
   }
 
   return (
-    <div className="flex h-[calc(100vh-var(--header-height,4rem)-2rem)] gap-4">
-      <Card className="w-full md:w-1/3 lg:w-1/4 h-full flex flex-col">
-        <CardHeader>
+    <div className="flex h-full gap-0"> {/* Adjusted for full height and no gap */}
+      <Card className="w-full md:w-1/3 lg:w-1/4 h-full flex flex-col rounded-none border-r border-border"> {/* No rounded corners, border-r */}
+        <CardHeader className="border-b border-border"> {/* Border for header */}
           <CardTitle className="flex items-center"><Users className="mr-2 h-5 w-5" /> Hàng đợi Khách hàng</CardTitle>
           <CardDescription>Khách hàng đang chờ, được giao cho bạn, hoặc chưa được giao.</CardDescription>
           <div className="flex flex-col gap-2 pt-2">
@@ -216,12 +219,11 @@ export default function StaffChatLayout({ children }: { children: ReactNode }) {
                            </p>
                         )}
                         <div className="flex justify-between w-full items-center mt-0.5">
-                            <span className="text-xs text-muted-foreground">
-                              {customer.lastMessageTimestamp ?
-                                `${formatDistanceToNowStrict(new Date(customer.lastMessageTimestamp), { addSuffix: true, locale: vi })}`
-                                : format(new Date(customer.lastInteractionAt), 'HH:mm dd/MM', { locale: vi })
-                              }
-                            </span>
+                           <DynamicTimeDisplay 
+                              timestamp={customer.lastMessageTimestamp || customer.lastInteractionAt} 
+                              type={customer.lastMessageTimestamp ? "distance" : "format"}
+                              className="text-xs text-muted-foreground"
+                            />
                             {customer.assignedStaffId === staffSession?.id && <span className="text-xs text-green-600">(Bạn)</span>}
                             {customer.assignedStaffId && customer.assignedStaffId !== staffSession?.id && <span className="text-xs text-blue-600">({customer.assignedStaffName || 'NV khác'})</span>}
                             {!customer.assignedStaffId && <span className="text-xs text-amber-600">(Chưa giao)</span>}

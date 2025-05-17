@@ -9,8 +9,9 @@ import { Users, Search, Filter, Loader2, AlertTriangle, Tag, CircleDot } from 'l
 import Link from 'next/link';
 import type { CustomerProfile, UserSession, CustomerInteractionStatus } from '@/lib/types';
 import { getCustomersForStaffView, getAllCustomerTags } from '@/app/actions';
-import { format, formatDistanceToNowStrict } from 'date-fns';
-import { vi } from 'date-fns/locale';
+// import { format, formatDistanceToNowStrict } from 'date-fns'; // Removed direct use
+// import { vi } from 'date-fns/locale'; // Removed direct use
+import { DynamicTimeDisplay } from '@/components/layout/DynamicTimeDisplay'; // Added
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
@@ -94,6 +95,7 @@ export default function AdminChatLayout({ children }: { children: ReactNode }) {
     if (adminSession) {
       fetchCustomers();
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [adminSession, selectedTags]);
 
 
@@ -111,7 +113,7 @@ export default function AdminChatLayout({ children }: { children: ReactNode }) {
 
   const handleClearTagFilter = () => {
     setSelectedTags([]);
-    setIsTagPopoverOpen(false);
+    // setIsTagPopoverOpen(false); // Popover will close on selection/button
   };
 
 
@@ -134,9 +136,9 @@ export default function AdminChatLayout({ children }: { children: ReactNode }) {
   }
 
   return (
-    <div className="flex h-[calc(100vh-var(--header-height,4rem)-2rem)] gap-4">
-      <Card className="w-full md:w-1/3 lg:w-1/4 h-full flex flex-col">
-        <CardHeader>
+    <div className="flex h-full gap-0"> {/* Adjusted for full height and no gap */}
+      <Card className="w-full md:w-1/3 lg:w-1/4 h-full flex flex-col rounded-none border-r border-border"> {/* No rounded corners, border-r */}
+        <CardHeader className="border-b border-border"> {/* Border for header */}
           <CardTitle className="flex items-center"><Users className="mr-2 h-5 w-5" /> Danh sách Khách hàng</CardTitle>
           <CardDescription>Tất cả khách hàng trong hệ thống.</CardDescription>
            <div className="flex flex-col gap-2 pt-2">
@@ -219,12 +221,11 @@ export default function AdminChatLayout({ children }: { children: ReactNode }) {
                            </p>
                         )}
                         <div className="flex justify-between w-full items-center mt-0.5">
-                            <span className="text-xs text-muted-foreground">
-                             {customer.lastMessageTimestamp ?
-                                `${formatDistanceToNowStrict(new Date(customer.lastMessageTimestamp), { addSuffix: true, locale: vi })}`
-                                : format(new Date(customer.lastInteractionAt), 'HH:mm dd/MM', { locale: vi })
-                              }
-                            </span>
+                            <DynamicTimeDisplay 
+                              timestamp={customer.lastMessageTimestamp || customer.lastInteractionAt} 
+                              type={customer.lastMessageTimestamp ? "distance" : "format"}
+                              className="text-xs text-muted-foreground"
+                            />
                            {customer.assignedStaffId && <span className="text-xs text-blue-600">({customer.assignedStaffName || 'NV được giao'})</span>}
                            {!customer.assignedStaffId && <span className="text-xs text-amber-600">(Chưa giao)</span>}
                         </div>
