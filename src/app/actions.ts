@@ -67,7 +67,7 @@ function transformConversationDoc(doc: IConversation | null): Conversation | nul
         staffId: doc.staffId ? (doc.staffId as Types.ObjectId).toString() : undefined,
         title: doc.title,
         participants: doc.participants.map((p: any) => ({ 
-            userId: p.userId?.toString(), // Add null check for userId
+            userId: p.userId?.toString(), 
             role: p.role,
             name: p.name,
             phoneNumber: p.phoneNumber,
@@ -294,7 +294,7 @@ export async function createNewConversationForUser(userId: string, title?: strin
 
     const newConversation = new ConversationModel({
         customerId: user._id,
-        title: title || `Cuộc trò chuyện ${new Date().toLocaleString('vi-VN')}`,
+        title: title || `Cuộc trò chuyện với ${user.name || user.phoneNumber} lúc ${new Date().toLocaleString('vi-VN')}`,
         participants: [{
             userId: user._id,
             role: 'customer',
@@ -306,11 +306,10 @@ export async function createNewConversationForUser(userId: string, title?: strin
     });
     const savedConversation = await newConversation.save();
 
-    // Initialize conversationIds if it's undefined before pushing
-    if (user.conversationIds === undefined) {
+    if (!user.conversationIds) { // Ensure conversationIds is initialized
         user.conversationIds = [];
     }
-    user.conversationIds.push(savedConversation._id as any);
+    user.conversationIds.push(savedConversation._id);
     await user.save();
 
     return transformConversationDoc(savedConversation);
@@ -321,7 +320,7 @@ export async function handleCustomerAccess(phoneNumber: string): Promise<{
   initialMessages: Message[];
   initialSuggestedReplies: string[];
   activeConversationId: string;
-  conversations: Conversation[]; // Ensure this is always an array
+  conversations: Conversation[]; 
 }> {
   await dbConnect();
   if (!validatePhoneNumber(phoneNumber)) {
@@ -333,30 +332,27 @@ export async function handleCustomerAccess(phoneNumber: string): Promise<{
   if (!customer) {
     customer = new CustomerModel({
       phoneNumber,
-      name: `Người dùng ${phoneNumber}`, // Default name
+      name: `Người dùng ${phoneNumber}`, 
       lastInteractionAt: new Date(),
       interactionStatus: 'unread',
       lastMessageTimestamp: new Date(),
-      conversationIds: [], // Initialize conversationIds
+      conversationIds: [], 
     });
     await customer.save();
   } else {
-    // Ensure conversationIds is an array if customer exists but it's undefined
-    if (customer.conversationIds === undefined) {
+    if (!customer.conversationIds) {
       customer.conversationIds = [];
-      // Optionally save the customer if you want to persist this empty array now
-      // await customer.save(); 
+      // await customer.save(); // Only save if necessary and if it doesn't cause recursion
     }
   }
   
-  // Find the most recent conversation or create a new one
   if (customer.conversationIds && customer.conversationIds.length > 0) {
-    activeConversation = await ConversationModel.findById(customer.conversationIds[customer.conversationIds.length - 1]) 
+    activeConversation = await ConversationModel.findById(customer.conversationIds[customer.conversationIds.length - 1])
                                           .sort({ lastMessageTimestamp: -1 });
   }
 
   if (!activeConversation) {
-    const newConvDoc = await createNewConversationForUser(customer._id.toString(), `Trò chuyện với ${customer.name || customer.phoneNumber}`);
+    const newConvDoc = await createNewConversationForUser(customer._id.toString());
     if (!newConvDoc || !newConvDoc.id) throw new Error("Không thể tạo cuộc trò chuyện mới.");
     activeConversation = await ConversationModel.findById(newConvDoc.id); 
   }
@@ -403,7 +399,7 @@ export async function handleCustomerAccess(phoneNumber: string): Promise<{
     initialMessages,
     initialSuggestedReplies: configuredSuggestedQuestions,
     activeConversationId: activeConversation._id.toString(),
-    conversations: allUserConversations, // This should now always be an array
+    conversations: allUserConversations,
   };
 }
 
@@ -466,7 +462,7 @@ export async function getConversationHistory(conversationId: string): Promise<Me
         console.warn(`[ACTIONS] Invalid conversationId for getConversationHistory: ${conversationId}`);
         return [];
     }
-    const conversation = await ConversationModel.findById(conversationId).populate('messageIds');
+    const conversation = await ConversationModel.findById(conversationId);
     if (!conversation || !conversation.messageIds) {
         return [];
     }
@@ -477,11 +473,12 @@ export async function getConversationHistory(conversationId: string): Promise<Me
 export async function getUserConversations(userId: string): Promise<Conversation[]> {
     await dbConnect();
     const customer = await CustomerModel.findById(userId).populate({
-        path: 'conversationIds',
+        path: 'conversationIds', // Correct path
+        model: ConversationModel, // Explicitly state the model
         options: { sort: { lastMessageTimestamp: -1 } } 
     });
     if (!customer || !customer.conversationIds || customer.conversationIds.length === 0) {
-        return []; // Return empty array if no conversations or customer not found
+        return []; 
     }
     return (customer.conversationIds as unknown as IConversation[]).map(transformConversationDoc).filter(Boolean) as Conversation[];
 }
@@ -495,10 +492,9 @@ export async function processUserMessage(
   await dbConnect();
 
   const customerId = currentUserSession.id; 
-  if (!mongoose.Types.ObjectId.isValid(currentConversationId)) {
-      throw new Error("Mã cuộc trò chuyện không hợp lệ.");
+  if (!mongoose.Types.ObjectId.isValid(currentConversationId) || !mongoose.Types.ObjectId.isValid(customerId)) {
+      throw new Error("Mã cuộc trò chuyện hoặc khách hàng không hợp lệ.");
   }
-
 
   let textForAI = userMessageContent;
   let mediaDataUriForAI: string | undefined = undefined;
@@ -522,7 +518,6 @@ export async function processUserMessage(
           textForAI = `Tôi đã gửi một tệp: ${originalFileName}. Bạn có thể phân tích hoặc mô tả nó không?`;
       }
   }
-
 
   const userMessageData: Partial<IMessage> = {
     sender: 'user',
@@ -555,7 +550,7 @@ export async function processUserMessage(
   let aiResponseContent: string = "";
   let finalAiMessage: Message;
   let processedAppointmentDB: IAppointment | null = null; 
-  let scheduleOutputFromAI: ScheduleAppointmentOutput | null = null;
+  let scheduleOutputFromAI: ScheduleOutput | null = null;
   const appSettings = await getAppSettings(); 
   if (!appSettings) {
       throw new Error("Không thể tải cài đặt ứng dụng. Không thể xử lý tin nhắn.");
@@ -891,13 +886,13 @@ export async function getCustomersForStaffView(
       phoneNumber: doc.phoneNumber,
       name: doc.name || `Người dùng ${doc.phoneNumber}`,
       internalName: doc.internalName,
-      conversationIds: (doc.conversationIds as Types.ObjectId[] || []).map(id => id.toString()),
-      appointmentIds: (doc.appointmentIds as Types.ObjectId[] || []).map(id => id.toString()),
-      productIds: (doc.productIds as string[] || []).map(id => id.toString()),
-      noteIds: (doc.noteIds as Types.ObjectId[] || []).map(id => id.toString()),
-      pinnedMessageIds: (doc.pinnedMessageIds as Types.ObjectId[] || []).map(id => id.toString()),
-      messagePinningAllowedConversationIds: (doc.messagePinningAllowedConversationIds as Types.ObjectId[] || []).map(id => id.toString()),
-      pinnedConversationIds: (doc.pinnedConversationIds as Types.ObjectId[] || []).map(id => id.toString()),
+      conversationIds: (doc.conversationIds || []).map(id => id.toString()),
+      appointmentIds: (doc.appointmentIds || []).map(id => id.toString()),
+      productIds: (doc.productIds || []).map(id => id.toString()),
+      noteIds: (doc.noteIds || []).map(id => id.toString()),
+      pinnedMessageIds: (doc.pinnedMessageIds || []).map(id => id.toString()),
+      messagePinningAllowedConversationIds: (doc.messagePinningAllowedConversationIds || []).map(id => id.toString()),
+      pinnedConversationIds: (doc.pinnedConversationIds || []).map(id => id.toString()),
       tags: doc.tags || [],
       assignedStaffId: doc.assignedStaffId?._id?.toString(),
       assignedStaffName: (doc.assignedStaffId as IUser)?.name,
@@ -922,8 +917,9 @@ export async function getCustomerDetails(customerId: string): Promise<{customer:
     await dbConnect();
     const customerDoc = await CustomerModel.findById(customerId)
       .populate<{ assignedStaffId: IUser }>('assignedStaffId', 'name')
-      .populate({ // Populate to get conversation objects
-        path: 'conversationIds',
+      .populate({ 
+        path: 'conversationIds', // Correct path
+        model: ConversationModel, // Explicitly state the model
         options: { sort: { lastMessageTimestamp: -1 } }
       }); 
 
@@ -962,12 +958,12 @@ export async function getCustomerDetails(customerId: string): Promise<{customer:
         name: customerDoc.name || `Người dùng ${customerDoc.phoneNumber}`,
         internalName: customerDoc.internalName,
         conversationIds: transformedConversations.map(c => c.id),
-        appointmentIds: (customerDoc.appointmentIds as Types.ObjectId[] || []).map(id => id.toString()),
-        productIds: (customerDoc.productIds as string[] || []).map(id => id.toString()),
-        noteIds: (customerDoc.noteIds as Types.ObjectId[] || []).map(id => id.toString()),
-        pinnedMessageIds: (customerDoc.pinnedMessageIds as Types.ObjectId[] || []).map(id => id.toString()),
-        messagePinningAllowedConversationIds: (customerDoc.messagePinningAllowedConversationIds as Types.ObjectId[] || []).map(id => id.toString()),
-        pinnedConversationIds: (customerDoc.pinnedConversationIds as Types.ObjectId[] || []).map(id => id.toString()),
+        appointmentIds: (customerDoc.appointmentIds || []).map(id => id.toString()),
+        productIds: (customerDoc.productIds || []).map(id => id.toString()),
+        noteIds: (customerDoc.noteIds || []).map(id => id.toString()),
+        pinnedMessageIds: (customerDoc.pinnedMessageIds || []).map(id => id.toString()),
+        messagePinningAllowedConversationIds: (customerDoc.messagePinningAllowedConversationIds || []).map(id => id.toString()),
+        pinnedConversationIds: (customerDoc.pinnedConversationIds || []).map(id => id.toString()),
         tags: customerDoc.tags || [],
         assignedStaffId: customerDoc.assignedStaffId?._id?.toString(),
         assignedStaffName: (customerDoc.assignedStaffId as IUser)?.name,
@@ -1066,13 +1062,13 @@ export async function assignStaffToCustomer(customerId: string, staffId: string)
         phoneNumber: updatedCustomerDoc.phoneNumber,
         name: updatedCustomerDoc.name || `Người dùng ${updatedCustomerDoc.phoneNumber}`,
         internalName: updatedCustomerDoc.internalName,
-        conversationIds: (updatedCustomerDoc.conversationIds as Types.ObjectId[] || []).map(id => id.toString()),
-        appointmentIds: (updatedCustomerDoc.appointmentIds as Types.ObjectId[] || []).map(id => id.toString()),
-        productIds: (updatedCustomerDoc.productIds as string[] || []).map(id => id.toString()),
-        noteIds: (updatedCustomerDoc.noteIds as Types.ObjectId[] || []).map(id => id.toString()),
-        pinnedMessageIds: (updatedCustomerDoc.pinnedMessageIds as Types.ObjectId[] || []).map(id => id.toString()),
-        messagePinningAllowedConversationIds: (updatedCustomerDoc.messagePinningAllowedConversationIds as Types.ObjectId[] || []).map(id => id.toString()),
-        pinnedConversationIds: (updatedCustomerDoc.pinnedConversationIds as Types.ObjectId[] || []).map(id => id.toString()),
+        conversationIds: (updatedCustomerDoc.conversationIds || []).map(id => id.toString()),
+        appointmentIds: (updatedCustomerDoc.appointmentIds || []).map(id => id.toString()),
+        productIds: (updatedCustomerDoc.productIds || []).map(id => id.toString()),
+        noteIds: (updatedCustomerDoc.noteIds || []).map(id => id.toString()),
+        pinnedMessageIds: (updatedCustomerDoc.pinnedMessageIds || []).map(id => id.toString()),
+        messagePinningAllowedConversationIds: (updatedCustomerDoc.messagePinningAllowedConversationIds || []).map(id => id.toString()),
+        pinnedConversationIds: (updatedCustomerDoc.pinnedConversationIds || []).map(id => id.toString()),
         tags: updatedCustomerDoc.tags || [],
         assignedStaffId: updatedCustomerDoc.assignedStaffId?._id?.toString(),
         assignedStaffName: (updatedCustomerDoc.assignedStaffId as IUser)?.name,
@@ -1101,13 +1097,13 @@ export async function unassignStaffFromCustomer(customerId: string): Promise<Cus
         phoneNumber: updatedCustomerDoc.phoneNumber,
         name: updatedCustomerDoc.name || `Người dùng ${updatedCustomerDoc.phoneNumber}`,
         internalName: updatedCustomerDoc.internalName,
-        conversationIds: (updatedCustomerDoc.conversationIds as Types.ObjectId[] || []).map(id => id.toString()),
-        appointmentIds: (updatedCustomerDoc.appointmentIds as Types.ObjectId[] || []).map(id => id.toString()),
-        productIds: (updatedCustomerDoc.productIds as string[] || []).map(id => id.toString()),
-        noteIds: (updatedCustomerDoc.noteIds as Types.ObjectId[] || []).map(id => id.toString()),
-        pinnedMessageIds: (updatedCustomerDoc.pinnedMessageIds as Types.ObjectId[] || []).map(id => id.toString()),
-        messagePinningAllowedConversationIds: (updatedCustomerDoc.messagePinningAllowedConversationIds as Types.ObjectId[] || []).map(id => id.toString()),
-        pinnedConversationIds: (updatedCustomerDoc.pinnedConversationIds as Types.ObjectId[] || []).map(id => id.toString()),
+        conversationIds: (updatedCustomerDoc.conversationIds || []).map(id => id.toString()),
+        appointmentIds: (updatedCustomerDoc.appointmentIds || []).map(id => id.toString()),
+        productIds: (updatedCustomerDoc.productIds || []).map(id => id.toString()),
+        noteIds: (updatedCustomerDoc.noteIds || []).map(id => id.toString()),
+        pinnedMessageIds: (updatedCustomerDoc.pinnedMessageIds || []).map(id => id.toString()),
+        messagePinningAllowedConversationIds: (updatedCustomerDoc.messagePinningAllowedConversationIds || []).map(id => id.toString()),
+        pinnedConversationIds: (updatedCustomerDoc.pinnedConversationIds || []).map(id => id.toString()),
         tags: updatedCustomerDoc.tags || [],
         assignedStaffId: updatedCustomerDoc.assignedStaffId ? (updatedCustomerDoc.assignedStaffId as any)._id?.toString() : undefined,
         assignedStaffName: undefined, 
@@ -1138,13 +1134,13 @@ export async function addTagToCustomer(customerId: string, tag: string): Promise
         phoneNumber: customer.phoneNumber,
         name: customer.name || `Người dùng ${customer.phoneNumber}`,
         internalName: customer.internalName,
-        conversationIds: (customer.conversationIds as Types.ObjectId[] || []).map(id => id.toString()),
-        appointmentIds: (customer.appointmentIds as Types.ObjectId[] || []).map(id => id.toString()),
-        productIds: (customer.productIds as string[] || []).map(id => id.toString()),
-        noteIds: (customer.noteIds as Types.ObjectId[] || []).map(id => id.toString()),
-        pinnedMessageIds: (customer.pinnedMessageIds as Types.ObjectId[] || []).map(id => id.toString()),
-        messagePinningAllowedConversationIds: (customer.messagePinningAllowedConversationIds as Types.ObjectId[] || []).map(id => id.toString()),
-        pinnedConversationIds: (customer.pinnedConversationIds as Types.ObjectId[] || []).map(id => id.toString()),
+        conversationIds: (customer.conversationIds || []).map(id => id.toString()),
+        appointmentIds: (customer.appointmentIds || []).map(id => id.toString()),
+        productIds: (customer.productIds || []).map(id => id.toString()),
+        noteIds: (customer.noteIds || []).map(id => id.toString()),
+        pinnedMessageIds: (customer.pinnedMessageIds || []).map(id => id.toString()),
+        messagePinningAllowedConversationIds: (customer.messagePinningAllowedConversationIds || []).map(id => id.toString()),
+        pinnedConversationIds: (customer.pinnedConversationIds || []).map(id => id.toString()),
         tags: customer.tags || [],
         assignedStaffId: customer.assignedStaffId?._id?.toString(),
         assignedStaffName: (customer.assignedStaffId as IUser)?.name,
@@ -1169,13 +1165,13 @@ export async function removeTagFromCustomer(customerId: string, tagToRemove: str
         phoneNumber: customer.phoneNumber,
         name: customer.name || `Người dùng ${customer.phoneNumber}`,
         internalName: customer.internalName,
-        conversationIds: (customer.conversationIds as Types.ObjectId[] || []).map(id => id.toString()),
-        appointmentIds: (customer.appointmentIds as Types.ObjectId[] || []).map(id => id.toString()),
-        productIds: (customer.productIds as string[] || []).map(id => id.toString()),
-        noteIds: (customer.noteIds as Types.ObjectId[] || []).map(id => id.toString()),
-        pinnedMessageIds: (customer.pinnedMessageIds as Types.ObjectId[] || []).map(id => id.toString()),
-        messagePinningAllowedConversationIds: (customer.messagePinningAllowedConversationIds as Types.ObjectId[] || []).map(id => id.toString()),
-        pinnedConversationIds: (customer.pinnedConversationIds as Types.ObjectId[] || []).map(id => id.toString()),
+        conversationIds: (customer.conversationIds || []).map(id => id.toString()),
+        appointmentIds: (customer.appointmentIds || []).map(id => id.toString()),
+        productIds: (customer.productIds || []).map(id => id.toString()),
+        noteIds: (customer.noteIds || []).map(id => id.toString()),
+        pinnedMessageIds: (customer.pinnedMessageIds || []).map(id => id.toString()),
+        messagePinningAllowedConversationIds: (customer.messagePinningAllowedConversationIds || []).map(id => id.toString()),
+        pinnedConversationIds: (customer.pinnedConversationIds || []).map(id => id.toString()),
         tags: customer.tags || [],
         assignedStaffId: customer.assignedStaffId?._id?.toString(),
         assignedStaffName: (customer.assignedStaffId as IUser)?.name,
@@ -1434,13 +1430,13 @@ export async function updateCustomerInternalName(customerId: string, internalNam
         phoneNumber: customer.phoneNumber,
         name: customer.name || `Người dùng ${customer.phoneNumber}`,
         internalName: customer.internalName,
-        conversationIds: (customer.conversationIds as Types.ObjectId[] || []).map(id => id.toString()),
-        appointmentIds: (customer.appointmentIds as Types.ObjectId[] || []).map(id => id.toString()),
-        productIds: (customer.productIds as string[] || []).map(id => id.toString()),
-        noteIds: (customer.noteIds as Types.ObjectId[] || []).map(id => id.toString()),
-        pinnedMessageIds: (customer.pinnedMessageIds as Types.ObjectId[] || []).map(id => id.toString()),
-        messagePinningAllowedConversationIds: (customer.messagePinningAllowedConversationIds as Types.ObjectId[] || []).map(id => id.toString()),
-        pinnedConversationIds: (customer.pinnedConversationIds as Types.ObjectId[] || []).map(id => id.toString()),
+        conversationIds: (customer.conversationIds || []).map(id => id.toString()),
+        appointmentIds: (customer.appointmentIds || []).map(id => id.toString()),
+        productIds: (customer.productIds || []).map(id => id.toString()),
+        noteIds: (customer.noteIds || []).map(id => id.toString()),
+        pinnedMessageIds: (customer.pinnedMessageIds || []).map(id => id.toString()),
+        messagePinningAllowedConversationIds: (customer.messagePinningAllowedConversationIds || []).map(id => id.toString()),
+        pinnedConversationIds: (customer.pinnedConversationIds || []).map(id => id.toString()),
         tags: customer.tags || [],
         assignedStaffId: customer.assignedStaffId?._id?.toString(),
         assignedStaffName: (customer.assignedStaffId as IUser)?.name,
@@ -2118,13 +2114,13 @@ export async function pinConversationForUser(userId: string, conversationId: str
         phoneNumber: updatedCustomer.phoneNumber,
         name: updatedCustomer.name || `Người dùng ${updatedCustomer.phoneNumber}`,
         internalName: updatedCustomer.internalName,
-        conversationIds: (updatedCustomer.conversationIds as Types.ObjectId[] || []).map(id => id.toString()),
-        appointmentIds: (updatedCustomer.appointmentIds as Types.ObjectId[] || []).map(id => id.toString()),
-        productIds: (updatedCustomer.productIds as string[] || []).map(id => id.toString()),
-        noteIds: (updatedCustomer.noteIds as Types.ObjectId[] || []).map(id => id.toString()),
-        pinnedMessageIds: (updatedCustomer.pinnedMessageIds as Types.ObjectId[] || []).map(id => id.toString()),
-        messagePinningAllowedConversationIds: (updatedCustomer.messagePinningAllowedConversationIds as Types.ObjectId[] || []).map(id => id.toString()),
-        pinnedConversationIds: (updatedCustomer.pinnedConversationIds as Types.ObjectId[] || []).map(id => id.toString()),
+        conversationIds: (updatedCustomer.conversationIds || []).map(id => id.toString()),
+        appointmentIds: (updatedCustomer.appointmentIds || []).map(id => id.toString()),
+        productIds: (updatedCustomer.productIds || []).map(id => id.toString()),
+        noteIds: (updatedCustomer.noteIds || []).map(id => id.toString()),
+        pinnedMessageIds: (updatedCustomer.pinnedMessageIds || []).map(id => id.toString()),
+        messagePinningAllowedConversationIds: (updatedCustomer.messagePinningAllowedConversationIds || []).map(id => id.toString()),
+        pinnedConversationIds: (updatedCustomer.pinnedConversationIds || []).map(id => id.toString()),
         tags: updatedCustomer.tags || [],
         assignedStaffId: updatedCustomer.assignedStaffId?._id?.toString(),
         assignedStaffName: (updatedCustomer.assignedStaffId as IUser)?.name,
@@ -2153,13 +2149,13 @@ export async function unpinConversationForUser(userId: string, conversationId: s
         phoneNumber: updatedCustomer.phoneNumber,
         name: updatedCustomer.name || `Người dùng ${updatedCustomer.phoneNumber}`,
         internalName: updatedCustomer.internalName,
-        conversationIds: (updatedCustomer.conversationIds as Types.ObjectId[] || []).map(id => id.toString()),
-        appointmentIds: (updatedCustomer.appointmentIds as Types.ObjectId[] || []).map(id => id.toString()),
-        productIds: (updatedCustomer.productIds as string[] || []).map(id => id.toString()),
-        noteIds: (updatedCustomer.noteIds as Types.ObjectId[] || []).map(id => id.toString()),
-        pinnedMessageIds: (updatedCustomer.pinnedMessageIds as Types.ObjectId[] || []).map(id => id.toString()),
-        messagePinningAllowedConversationIds: (updatedCustomer.messagePinningAllowedConversationIds as Types.ObjectId[] || []).map(id => id.toString()),
-        pinnedConversationIds: (updatedCustomer.pinnedConversationIds as Types.ObjectId[] || []).map(id => id.toString()),
+        conversationIds: (updatedCustomer.conversationIds || []).map(id => id.toString()),
+        appointmentIds: (updatedCustomer.appointmentIds || []).map(id => id.toString()),
+        productIds: (updatedCustomer.productIds || []).map(id => id.toString()),
+        noteIds: (updatedCustomer.noteIds || []).map(id => id.toString()),
+        pinnedMessageIds: (updatedCustomer.pinnedMessageIds || []).map(id => id.toString()),
+        messagePinningAllowedConversationIds: (updatedCustomer.messagePinningAllowedConversationIds || []).map(id => id.toString()),
+        pinnedConversationIds: (updatedCustomer.pinnedConversationIds || []).map(id => id.toString()),
         tags: updatedCustomer.tags || [],
         assignedStaffId: updatedCustomer.assignedStaffId?._id?.toString(),
         assignedStaffName: (updatedCustomer.assignedStaffId as IUser)?.name,
