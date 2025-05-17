@@ -1,3 +1,4 @@
+
 // src/app/page.tsx
 'use client';
 
@@ -7,25 +8,26 @@ import Link from 'next/link';
 import { AppHeader } from '@/components/layout/AppHeader';
 import { AppFooter } from '@/components/layout/AppFooter';
 import { ChatInterface } from '@/components/chat/ChatInterface';
-import type { Message, UserSession, Conversation, MessageViewerRole } from '@/lib/types';
+import type { Message, UserSession, Conversation, MessageViewerRole, AppointmentBookingFormData } from '@/lib/types';
 import { 
   handleCustomerAccess, 
   processUserMessage, 
-  // createNewConversationForUser, // Removed as it's not exported from actions
+  createNewConversationForUser,
   getConversationHistory, 
   getUserConversations,
   getMessagesByIds,
   updateConversationTitle,
   pinConversationForUser,
   unpinConversationForUser,
-  createNewConversationForUser // Corrected import if this is the intended function
+  handleBookAppointmentFromForm // Added this
 } from './actions'; 
 import { useToast } from '@/hooks/use-toast';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { LogIn, Loader2 } from 'lucide-react';
 import { useAppSettingsContext } from '@/contexts/AppSettingsContext';
-import { getAppSettings } from './actions'; // Import if used directly
+import { getAppSettings } from './actions'; 
+import { AppointmentBookingForm } from '@/components/chat/AppointmentBookingForm'; // Added this
 
 export default function HomePage() {
   const [currentUserSession, setCurrentUserSession] = useState<UserSession | null>(null);
@@ -36,11 +38,12 @@ export default function HomePage() {
   const [isChatLoading, setIsChatLoading] = useState<boolean>(false); 
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
+  const [isBookingModalOpen, setIsBookingModalOpen] = useState(false); // State for booking modal
   
   const { toast } = useToast();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const appSettingsContext = useAppSettingsContext(); // Use context directly
+  const appSettingsContext = useAppSettingsContext(); 
   const brandName = appSettingsContext?.brandName || 'AetherChat';
 
 
@@ -55,7 +58,7 @@ export default function HomePage() {
       setCurrentMessages(messages);
       setActiveConversationId(conversationId);
       
-      const currentAppSettings = appSettingsContext || await getAppSettings(); // Use context or fetch
+      const currentAppSettings = appSettingsContext || await getAppSettings(); 
       if (messages.length <= 1 && currentAppSettings?.suggestedQuestions && currentAppSettings.suggestedQuestions.length > 0) {
         setCurrentSuggestedReplies(currentAppSettings.suggestedQuestions);
       } else {
@@ -63,7 +66,7 @@ export default function HomePage() {
       }
 
       setCurrentUserSession(prev => {
-        if (prev && prev.id === customerId) { // Ensure we are updating the correct session
+        if (prev && prev.id === customerId) { 
           const updatedSession = { ...prev, currentConversationId: conversationId };
           if (typeof window !== 'undefined') {
             sessionStorage.setItem('aetherChatUserSession', JSON.stringify(updatedSession));
@@ -80,7 +83,7 @@ export default function HomePage() {
     } finally {
       setIsChatLoading(false);
     }
-  }, [router, toast, appSettingsContext]); // Added appSettingsContext
+  }, [router, toast, appSettingsContext]); 
 
   const loadInitialData = useCallback(async (session: UserSession) => {
     if (session.role !== 'customer') {
@@ -89,33 +92,28 @@ export default function HomePage() {
     }
     setIsLoadingSession(true);
     try {
-      const fetchedConversations = await getUserConversations(session.id);
-      const sortedConversations = fetchedConversations.sort((a, b) => new Date(b.lastMessageTimestamp || 0).getTime() - new Date(a.lastMessageTimestamp || 0).getTime());
-      setConversations(sortedConversations);
+      // For customer, there's only one conversation. Get it.
+      let userConversations = await getUserConversations(session.id);
+      let targetConversation: Conversation | null = null;
 
-      const conversationIdFromUrl = searchParams.get('conversationId');
-      let targetConversationId = conversationIdFromUrl;
-
-      if (targetConversationId && sortedConversations.some(c => c.id === targetConversationId)) {
-        // A specific conversation is requested and exists
-      } else if (session.currentConversationId && sortedConversations.some(c => c.id === session.currentConversationId)) {
-        targetConversationId = session.currentConversationId;
-      } else if (sortedConversations.length > 0) {
-        targetConversationId = sortedConversations[0].id;
+      if (userConversations.length > 0) {
+        targetConversation = userConversations[0]; // Assume first one is the active one for customer
       } else {
-        const newConv = await createNewConversationForUser(session.id, `Cuộc trò chuyện mới`);
+        // If no conversation exists, create one
+        const newConv = await createNewConversationForUser(session.id, `Trò chuyện với ${session.name || session.phoneNumber}`);
         if (newConv) {
-          setConversations([newConv]);
-          targetConversationId = newConv.id;
+          targetConversation = newConv;
+          userConversations = [newConv]; // Update local list
         } else {
           toast({ title: "Lỗi", description: "Không thể tạo cuộc trò chuyện mới.", variant: "destructive" });
           setIsLoadingSession(false);
           return;
         }
       }
+      setConversations(userConversations); // Set conversations list (will be an array of 1 for customer)
       
-      if (targetConversationId) {
-        await loadConversation(targetConversationId, session.id);
+      if (targetConversation) {
+        await loadConversation(targetConversation.id, session.id);
       } else {
         setCurrentMessages([]);
         const currentAppSettings = appSettingsContext || await getAppSettings();
@@ -126,15 +124,13 @@ export default function HomePage() {
     } catch (error) {
       console.error("Lỗi tải dữ liệu ban đầu:", error);
       toast({ title: "Lỗi", description: "Không thể tải dữ liệu trò chuyện.", variant: "destructive" });
-      // Avoid redirecting if session is otherwise valid, just show error
     } finally {
       setIsLoadingSession(false);
     }
-  }, [loadConversation, searchParams, toast, appSettingsContext]); // Added appSettingsContext
+  }, [loadConversation, toast, appSettingsContext]);
 
-  // Effect 1: Runs ONCE to get session from storage and set initialSessionFromStorage.
   useEffect(() => {
-    setIsLoadingSession(true); // Start loading
+    setIsLoadingSession(true); 
     const storedSessionString = sessionStorage.getItem('aetherChatUserSession');
     if (storedSessionString) {
       try {
@@ -155,22 +151,15 @@ export default function HomePage() {
     }
   }, [router]);
 
-  // Effect 2: Runs when initialSessionFromStorage is set.
-  // This sets the main currentUserSession and triggers data loading for customers.
   useEffect(() => {
     if (initialSessionFromStorage) {
       setCurrentUserSession(initialSessionFromStorage);
       if (initialSessionFromStorage.role === 'customer') {
         loadInitialData(initialSessionFromStorage);
       } else {
-        // For admin/staff, session is set, no customer data to load here
         setIsLoadingSession(false);
       }
     }
-    // If initialSessionFromStorage is null after check (e.g. redirect happened),
-    // isLoadingSession will remain true until redirect completes or another state changes it.
-    // If router.replace happens in first effect, this effect might not run with initialSessionFromStorage.
-    // The isLoadingSession(true) at start of first effect and router.replace should handle UI.
   }, [initialSessionFromStorage, loadInitialData]);
 
 
@@ -184,7 +173,7 @@ export default function HomePage() {
     }
 
     setCurrentUserSession(null);
-    setInitialSessionFromStorage(null); // Also clear this
+    setInitialSessionFromStorage(null); 
     sessionStorage.removeItem('aetherChatUserSession');
     setCurrentMessages([]);
     setCurrentSuggestedReplies([]);
@@ -223,11 +212,9 @@ export default function HomePage() {
       );
       
       setCurrentMessages((prevMessages) => {
-        // Ensure userMessage (local) is replaced by server-confirmed userMessage if processUserMessage returns it
-        // For now, assuming processUserMessage doesn't return the user's own message, just the AI's.
         return [...prevMessages.filter(m => m.id !== userMessage.id), userMessage, aiMessage];
       });
-      setCurrentSuggestedReplies([]); // No more AI suggested replies after user sends a message.
+      setCurrentSuggestedReplies([]); 
 
       if (updatedAppointment) {
         toast({
@@ -299,7 +286,7 @@ export default function HomePage() {
                    .sort((a, b) => (b.isPinned ? 1 : 0) - (a.isPinned ? 1 : 0) || new Date(b.lastMessageTimestamp || 0).getTime() - new Date(a.lastMessageTimestamp || 0).getTime())
         );
         if (activeConversationId === conversationId && currentUserSession.currentConversationId === conversationId) {
-           setCurrentUserSession(prev => prev ? {...prev, currentConversationTitle: newTitle } : null); // Update title in session if active
+          //  setCurrentUserSession(prev => prev ? {...prev, currentConversationTitle: newTitle } : null); 
         }
         toast({ title: "Thành công", description: "Đã cập nhật tiêu đề cuộc trò chuyện." });
       }
@@ -317,7 +304,6 @@ export default function HomePage() {
           prevConvs.map(c => c.id === conversationId ? { ...c, isPinned: true } : c)
                    .sort((a, b) => (b.isPinned ? 1 : 0) - (a.isPinned ? 1 : 0) || new Date(b.lastMessageTimestamp || 0).getTime() - new Date(a.lastMessageTimestamp || 0).getTime())
         );
-        // Update current user session if needed
         if (updatedProfile.pinnedConversationIds?.includes(conversationId)) {
             setCurrentUserSession(prev => prev ? {...prev, pinnedConversationIds: updatedProfile.pinnedConversationIds } : null);
         }
@@ -347,9 +333,42 @@ export default function HomePage() {
     }
   };
 
+  const handleDirectBookAppointment = async (formData: AppointmentBookingFormData) => {
+    if (!currentUserSession || !activeConversationId) return;
+    setIsChatLoading(true);
+    try {
+      const result = await handleBookAppointmentFromForm(formData);
+      toast({
+        title: result.success ? "Thành công" : "Thất bại",
+        description: result.message,
+        variant: result.success ? "default" : "destructive",
+      });
+
+      let systemMessageContent = result.message;
+      if (!result.success && result.suggestedSlots && result.suggestedSlots.length > 0) {
+        systemMessageContent += "\nCác khung giờ gợi ý khác:\n" +
+          result.suggestedSlots.map(s => `- ${s.date} lúc ${s.time}`).join("\n");
+      }
+      
+      const systemMessage: Message = {
+        id: `msg_system_booking_${Date.now()}`,
+        sender: 'system',
+        content: systemMessageContent,
+        timestamp: new Date(),
+        conversationId: activeConversationId,
+      };
+      setCurrentMessages(prev => [...prev, systemMessage]);
+      if(result.success) setIsBookingModalOpen(false);
+
+    } catch (error: any) {
+      toast({ title: "Lỗi đặt lịch", description: error.message || "Không thể đặt lịch hẹn.", variant: "destructive" });
+    } finally {
+      setIsChatLoading(false);
+    }
+  };
 
   const renderContent = () => {
-    if (isLoadingSession || !initialSessionFromStorage) { // Check initialSessionFromStorage as well
+    if (isLoadingSession || !initialSessionFromStorage) { 
       return (
         <div className="flex flex-col items-center justify-center h-full flex-grow">
           <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />
@@ -361,50 +380,53 @@ export default function HomePage() {
     if (currentUserSession) {
       if (currentUserSession.role === 'admin') {
         return (
-          <Card className="w-full max-w-md text-center shadow-xl mx-auto my-auto">
-            <CardHeader>
-              <CardTitle>Truy cập Admin</CardTitle>
-              <CardDescription>Chào mừng, {currentUserSession.name || 'Admin'}.</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <p className="mb-4">Bạn đã đăng nhập với tư cách Admin.</p>
-              <Button asChild>
-                <Link href="/admin/dashboard">
-                  <LogIn className="mr-2 h-4 w-4" /> Đến Bảng điều khiển Admin
-                </Link>
-              </Button>
-            </CardContent>
-          </Card>
+          <div className="flex-grow flex items-center justify-center p-4">
+            <Card className="w-full max-w-md text-center shadow-xl">
+              <CardHeader>
+                <CardTitle>Truy cập Admin</CardTitle>
+                <CardDescription>Chào mừng, {currentUserSession.name || 'Admin'}.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <p className="mb-4">Bạn đã đăng nhập với tư cách Admin.</p>
+                <Button asChild>
+                  <Link href="/admin/dashboard">
+                    <LogIn className="mr-2 h-4 w-4" /> Đến Bảng điều khiển Admin
+                  </Link>
+                </Button>
+              </CardContent>
+            </Card>
+          </div>
         );
       }
 
       if (currentUserSession.role === 'staff') {
-        return (
-          <Card className="w-full max-w-md text-center shadow-xl mx-auto my-auto">
-            <CardHeader>
-              <CardTitle>Truy cập Nhân viên</CardTitle>
-              <CardDescription>Chào mừng, {currentUserSession.name || 'Nhân viên'}.</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <p className="mb-4">Bạn đã đăng nhập với tư cách Nhân viên.</p>
-              <Button asChild>
-                <Link href="/staff/dashboard">
-                  <LogIn className="mr-2 h-4 w-4" /> Đến Bảng điều khiển Nhân viên
-                </Link>
-              </Button>
-            </CardContent>
-          </Card>
+         return (
+          <div className="flex-grow flex items-center justify-center p-4">
+            <Card className="w-full max-w-md text-center shadow-xl">
+              <CardHeader>
+                <CardTitle>Truy cập Nhân viên</CardTitle>
+                <CardDescription>Chào mừng, {currentUserSession.name || 'Nhân viên'}.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <p className="mb-4">Bạn đã đăng nhập với tư cách Nhân viên.</p>
+                <Button asChild>
+                  <Link href="/staff/dashboard">
+                    <LogIn className="mr-2 h-4 w-4" /> Đến Bảng điều khiển Nhân viên
+                  </Link>
+                </Button>
+              </CardContent>
+            </Card>
+          </div>
         );
       }
       
-      // Customer view
       return (
         <ChatInterface
           userSession={currentUserSession}
-          conversations={conversations} // Customer now can have multiple conversations
+          conversations={conversations} 
           activeConversationId={activeConversationId}
           messages={currentMessages}
-          pinnedMessages={messages.filter(m => m.isPinned)} // Filter from active messages
+          pinnedMessages={messages.filter(m => m.isPinned)} 
           suggestedReplies={currentSuggestedReplies}
           onSendMessage={handleSendMessage}
           onSelectConversation={handleSelectConversation}
@@ -414,12 +436,11 @@ export default function HomePage() {
           onUpdateConversationTitle={handleUpdateConversationTitle}
           onPinConversation={handlePinConversation}
           onUnpinConversation={handleUnpinConversation}
-          // Pin/Unpin message for customer view is disabled for now, can be enabled if needed
+          onBookAppointmentClick={() => setIsBookingModalOpen(true)} // Pass handler to open modal
         />
       );
     }
     
-    // Fallback if session check somehow completes but currentUserSession is not set (e.g. redirect didn't happen fast enough)
     return (
         <div className="flex flex-col items-center justify-center h-full flex-grow">
           <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />
@@ -434,8 +455,16 @@ export default function HomePage() {
       <main className="flex-grow flex items-stretch w-full overflow-hidden pt-16">
         {renderContent()}
       </main>
-      {/* Footer might be conditionally rendered or removed for chat interface if it takes full height */}
-      {/* <AppFooter /> */}
+      {currentUserSession?.role === 'customer' && activeConversationId && (
+        <AppointmentBookingForm
+          isOpen={isBookingModalOpen}
+          onClose={() => setIsBookingModalOpen(false)}
+          onSubmit={handleDirectBookAppointment}
+          currentUserSession={currentUserSession}
+        />
+      )}
     </div>
   );
 }
+
+    

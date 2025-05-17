@@ -1,3 +1,4 @@
+
 export type Message = {
   id: string;
   sender: 'user' | 'ai' | 'system';
@@ -55,54 +56,59 @@ export type CustomerInteractionStatus = 'unread' | 'read' | 'replied_by_staff';
 
 // Represents a customer profile, managed by staff/admin
 export type CustomerProfile = {
-  id: string; // Unique customer ID (can be same as UserSession.id if they are a direct user)
+  id: string; 
   phoneNumber: string;
-  name?: string; // Name given by customer or set by staff
-  internalName?: string; // Name used internally by staff
-  chatHistoryIds: string[]; // IDs of messages
-  appointmentIds: string[]; // IDs of appointments
-  productIds: string[]; // IDs of products
-  noteIds: string[]; // IDs of notes
-  pinnedMessageIds?: string[]; // IDs of pinned messages
-  tags?: string[]; // e.g., "VIP", "Needs Follow-up"
-  assignedStaffId?: string; // ID of staff member assigned to this customer
-  assignedStaffName?: string; // Name of the assigned staff member
+  name?: string; 
+  internalName?: string; 
+  conversationIds: string[]; 
+  appointmentIds: string[]; 
+  productIds: string[]; 
+  noteIds: string[]; 
+  pinnedMessageIds?: string[]; 
+  tags?: string[]; 
+  assignedStaffId?: string; 
+  assignedStaffName?: string; 
   lastInteractionAt: Date;
   createdAt: Date;
   interactionStatus?: CustomerInteractionStatus;
   lastMessagePreview?: string;
   lastMessageTimestamp?: Date;
+  // Added from IANA time zone database names e.g. "America/New_York", "Asia/Ho_Chi_Minh"
+  // This helps in converting currentDateTime in schedule-appointment to the customer's local time.
+  timezone?: string; 
+  pinnedConversationIds?: string[];
+  messagePinningAllowedConversationIds?: string[];
 };
 
 
 export type UserSession = {
-  id: string; // Unique ID for the session/user
+  id: string; 
   phoneNumber: string;
   role: UserRole;
-  name?: string; // User's display name or staff/admin name
-  // Customer-specific data, only populated if role is 'customer'
+  name?: string; 
   chatHistory?: Message[];
   appointments?: AppointmentDetails[];
   products?: Product[];
-  notes?: Note[]; // Notes related to this customer if they are the user
+  notes?: Note[]; 
   tags?: string[];
+  currentConversationId?: string;
+  pinnedConversationIds?: string[];
+  messagePinningAllowedConversationIds?: string[];
 };
 
-// For staff-specific data beyond UserSession
+
 export type StaffDetails = {
-  userId: string; // links to UserSession.id
+  userId: string; 
   assignedCustomerIds?: string[];
-  // other staff specific attributes
 };
 
-// For admin-specific data beyond UserSession
+
 export type AdminDetails = {
-  userId: string; // links to UserSession.id
-  // other admin specific attributes
+  userId: string; 
 };
 
 export type KeywordMapping = {
-  id: string; // Corresponds to MongoDB _id
+  id: string; 
   keywords: string[];
   response: string;
   createdAt?: Date;
@@ -111,17 +117,17 @@ export type KeywordMapping = {
 
 export type TrainingDataStatus = 'pending_review' | 'approved' | 'rejected';
 export type TrainingData = {
-  id: string; // Corresponds to MongoDB _id
+  id: string; 
   userInput: string;
-  idealResponse?: string; // Could be AI generated then corrected
-  label: string; // e.g., "Needs Assistance", "Service Inquiry"
+  idealResponse?: string; 
+  label: string; 
   status: TrainingDataStatus;
   createdAt?: Date;
   updatedAt?: Date;
 };
 
 export type AppointmentRule = {
-  id: string; // MongoDB _id
+  id: string; 
   name: string;
   keywords: string[];
   conditions: string; 
@@ -131,7 +137,7 @@ export type AppointmentRule = {
 };
 
 export type SpecificDayRule = {
-  id: string; // Unique ID for the rule, can be ObjectId string
+  id: string; 
   date: string; // "YYYY-MM-DD"
   isOff?: boolean;
   workingHours?: string[]; // ["HH:MM", "HH:MM"]
@@ -140,18 +146,15 @@ export type SpecificDayRule = {
 };
 
 export type AppSettings = {
-  id: string; // For the single document in MongoDB, will be _id
-  // Q&A settings
+  id: string; 
   greetingMessage?: string;
-  suggestedQuestions?: string[]; // Stored as an array of strings
+  suggestedQuestions?: string[]; 
 
-  // Interface settings (from AdminSettingsPage)
   brandName?: string;
-  logoUrl?: string; // URL for an externally hosted logo
-  logoDataUri?: string; // Base64 encoded logo data URI
+  logoUrl?: string; 
+  logoDataUri?: string; 
   footerText?: string;
 
-  // SEO settings (from AdminSettingsPage)
   metaTitle?: string;
   metaDescription?: string;
   metaKeywords?: string[];
@@ -159,24 +162,23 @@ export type AppSettings = {
   robotsTxtContent?: string; 
   sitemapXmlContent?: string; 
   
-  // Scheduling Rules
   numberOfStaff?: number;
   defaultServiceDurationMinutes?: number;
-  workingHours?: string[]; // Array of "HH:MM" e.g. ["09:00", "10:00", "13:00"]
-  weeklyOffDays?: number[]; // Array of numbers [0-6], 0 for Sunday
-  oneTimeOffDates?: string[]; // Array of "YYYY-MM-DD"
-  specificDayRules?: SpecificDayRule[]; // Array of specific rules for dates
+  workingHours?: string[]; 
+  weeklyOffDays?: number[]; 
+  oneTimeOffDates?: string[]; 
+  specificDayRules?: SpecificDayRule[]; 
 
   updatedAt?: Date; 
 };
 
-// Type for appointment filters used in getAppointments action
+
 export type GetAppointmentsFilters = {
-  date?: string; // YYYY-MM-DD for single date filter
-  dates?: string[]; // Array of YYYY-MM-DD for multiple date filter
+  date?: string; 
+  dates?: string[]; 
   customerId?: string;
   staffId?: string;
-  status?: string[]; // Array of AppointmentStatus
+  status?: string[]; 
 };
 
 
@@ -186,7 +188,7 @@ export type AdminDashboardStats = {
   openIssuesCount: number;
   recentAppointments: AppointmentDetails[];
   recentCustomers: Pick<CustomerProfile, 'id' | 'name' | 'phoneNumber' | 'createdAt'>[];
-  systemStatus: 'Optimal' | 'Degraded' | 'Error'; // Example system status
+  systemStatus: 'Optimal' | 'Degraded' | 'Error'; 
 };
 
 export type StaffDashboardStats = {
@@ -195,7 +197,7 @@ export type StaffDashboardStats = {
   totalAssignedToMeCount: number;
 };
 
-// New types for Products
+
 export type ProductItem = {
   id: string;
   name: string;
@@ -208,7 +210,7 @@ export type ProductItem = {
   updatedAt: Date;
 };
 
-// New types for Reminders
+
 export type ReminderStatus = 'pending' | 'completed' | 'cancelled';
 export type ReminderPriority = 'low' | 'medium' | 'high';
 
@@ -228,10 +230,40 @@ export type Reminder = {
   updatedAt: Date;
 };
 
-// For MessageBubble component to differentiate views
+
 export type MessageViewerRole = UserRole | 'customer_view';
 
 export type MessageEditState = {
   messageId: string;
   currentContent: string;
 } | null;
+
+export type Conversation = {
+  id: string;
+  customerId: string;
+  staffId?: string;
+  title?: string;
+  participants: Array<{
+    userId: string;
+    role: UserRole;
+    name?: string;
+    phoneNumber?: string;
+  }>;
+  messageIds: string[];
+  pinnedMessageIds?: string[];
+  isPinned?: boolean; // For user-specific pinning on their list
+  createdAt: Date;
+  updatedAt: Date;
+  lastMessageTimestamp?: Date;
+  lastMessagePreview?: string;
+};
+
+export type AppointmentBookingFormData = {
+  service: string;
+  date: string; // YYYY-MM-DD
+  time: string; // HH:MM
+  customerId: string;
+  branch?: string;
+  notes?: string;
+};
+
