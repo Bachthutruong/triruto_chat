@@ -12,14 +12,14 @@ import type { Message, UserSession, Conversation, MessageViewerRole, Appointment
 import { 
   handleCustomerAccess, 
   processUserMessage, 
-  createNewConversationForUser,
+  createNewConversationForUser, // Ensure this is exported if used
   getConversationHistory, 
   getUserConversations,
   getMessagesByIds,
   updateConversationTitle,
   pinConversationForUser,
   unpinConversationForUser,
-  handleBookAppointmentFromForm // Added this
+  handleBookAppointmentFromForm 
 } from './actions'; 
 import { useToast } from '@/hooks/use-toast';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -27,25 +27,26 @@ import { Button } from '@/components/ui/button';
 import { LogIn, Loader2 } from 'lucide-react';
 import { useAppSettingsContext } from '@/contexts/AppSettingsContext';
 import { getAppSettings } from './actions'; 
-import { AppointmentBookingForm } from '@/components/chat/AppointmentBookingForm'; // Added this
+import { AppointmentBookingForm } from '@/components/chat/AppointmentBookingForm';
 
 export default function HomePage() {
   const [currentUserSession, setCurrentUserSession] = useState<UserSession | null>(null);
   const [initialSessionFromStorage, setInitialSessionFromStorage] = useState<UserSession | null>(null);
+
   const [currentMessages, setCurrentMessages] = useState<Message[]>([]);
   const [currentSuggestedReplies, setCurrentSuggestedReplies] = useState<string[]>([]);
   const [isLoadingSession, setIsLoadingSession] = useState<boolean>(true); 
   const [isChatLoading, setIsChatLoading] = useState<boolean>(false); 
+  
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
-  const [isBookingModalOpen, setIsBookingModalOpen] = useState(false); // State for booking modal
+  const [isBookingModalOpen, setIsBookingModalOpen] = useState(false);
   
   const { toast } = useToast();
   const router = useRouter();
   const searchParams = useSearchParams();
   const appSettingsContext = useAppSettingsContext(); 
   const brandName = appSettingsContext?.brandName || 'AetherChat';
-
 
   const loadConversation = useCallback(async (conversationId: string, customerId: string) => {
     if (!customerId) {
@@ -75,7 +76,7 @@ export default function HomePage() {
         }
         return prev;
       });
-      router.push(`/?conversationId=${conversationId}`, { scroll: false });
+      // router.push(`/?conversationId=${conversationId}`, { scroll: false }); // Avoid unnecessary push if already on page
 
     } catch (error) {
       console.error("Lỗi tải cuộc trò chuyện:", error);
@@ -83,7 +84,8 @@ export default function HomePage() {
     } finally {
       setIsChatLoading(false);
     }
-  }, [router, toast, appSettingsContext]); 
+  }, [toast, appSettingsContext]); // Removed router from deps for now
+
 
   const loadInitialData = useCallback(async (session: UserSession) => {
     if (session.role !== 'customer') {
@@ -92,25 +94,40 @@ export default function HomePage() {
     }
     setIsLoadingSession(true);
     try {
-      // For customer, there's only one conversation. Get it.
       let userConversations = await getUserConversations(session.id);
       let targetConversation: Conversation | null = null;
 
-      if (userConversations.length > 0) {
-        targetConversation = userConversations[0]; // Assume first one is the active one for customer
-      } else {
-        // If no conversation exists, create one
+      const conversationIdFromUrl = searchParams.get('conversationId');
+
+      if (conversationIdFromUrl) {
+        targetConversation = userConversations.find(c => c.id === conversationIdFromUrl) || null;
+      }
+
+      if (!targetConversation && userConversations.length > 0) {
+        // Prioritize pinned conversations, then most recent
+        userConversations.sort((a, b) => {
+          const aIsPinned = session.pinnedConversationIds?.includes(a.id);
+          const bIsPinned = session.pinnedConversationIds?.includes(b.id);
+          if (aIsPinned && !bIsPinned) return -1;
+          if (!aIsPinned && bIsPinned) return 1;
+          return new Date(b.lastMessageTimestamp || 0).getTime() - new Date(a.lastMessageTimestamp || 0).getTime();
+        });
+        targetConversation = userConversations[0];
+      }
+      
+      if (!targetConversation) {
         const newConv = await createNewConversationForUser(session.id, `Trò chuyện với ${session.name || session.phoneNumber}`);
         if (newConv) {
           targetConversation = newConv;
-          userConversations = [newConv]; // Update local list
+          userConversations = [newConv, ...userConversations];
         } else {
           toast({ title: "Lỗi", description: "Không thể tạo cuộc trò chuyện mới.", variant: "destructive" });
           setIsLoadingSession(false);
           return;
         }
       }
-      setConversations(userConversations); // Set conversations list (will be an array of 1 for customer)
+
+      setConversations(userConversations.map(c => ({...c, isPinned: session.pinnedConversationIds?.includes(c.id)})));
       
       if (targetConversation) {
         await loadConversation(targetConversation.id, session.id);
@@ -127,7 +144,7 @@ export default function HomePage() {
     } finally {
       setIsLoadingSession(false);
     }
-  }, [loadConversation, toast, appSettingsContext]);
+  }, [loadConversation, toast, appSettingsContext, searchParams]);
 
   useEffect(() => {
     setIsLoadingSession(true); 
@@ -153,7 +170,7 @@ export default function HomePage() {
 
   useEffect(() => {
     if (initialSessionFromStorage) {
-      setCurrentUserSession(initialSessionFromStorage);
+      setCurrentUserSession(initialSessionFromStorage); // Set this first
       if (initialSessionFromStorage.role === 'customer') {
         loadInitialData(initialSessionFromStorage);
       } else {
@@ -212,9 +229,19 @@ export default function HomePage() {
       );
       
       setCurrentMessages((prevMessages) => {
-        return [...prevMessages.filter(m => m.id !== userMessage.id), userMessage, aiMessage];
+        // Replace local user message with server-confirmed one if IDs match, or add new AI message
+        // This logic assumes processUserMessage might eventually return the saved user message too.
+        // For now, it assumes userMessage is purely local until AI replies.
+        const existingUserMsgIndex = prevMessages.findIndex(m => m.id === userMessage.id);
+        if (existingUserMsgIndex !== -1) {
+          const updatedMessages = [...prevMessages];
+          // updatedMessages[existingUserMsgIndex] = userMessage; // Or server-returned user message
+          updatedMessages.push(aiMessage);
+          return updatedMessages;
+        }
+        return [...prevMessages, aiMessage];
       });
-      setCurrentSuggestedReplies([]); 
+      setCurrentSuggestedReplies([]); // No AI suggested replies after user sends a message
 
       if (updatedAppointment) {
         toast({
@@ -255,10 +282,11 @@ export default function HomePage() {
     if (!currentUserSession || currentUserSession.role !== 'customer') return;
     setIsChatLoading(true);
     try {
-      const newConversation = await createNewConversationForUser(currentUserSession.id, `Cuộc trò chuyện mới`);
+      const newConversation = await createNewConversationForUser(currentUserSession.id, `Trò chuyện mới ${new Date().toLocaleTimeString('vi-VN')}`);
       if (newConversation) {
         setConversations(prev => [newConversation, ...prev].sort((a, b) => (b.isPinned ? 1 : 0) - (a.isPinned ? 1 : 0) || new Date(b.lastMessageTimestamp || 0).getTime() - new Date(a.lastMessageTimestamp || 0).getTime()));
         await loadConversation(newConversation.id, currentUserSession.id);
+        router.push(`/?conversationId=${newConversation.id}`, { scroll: false });
       } else {
         toast({ title: "Lỗi", description: "Không thể tạo cuộc trò chuyện mới.", variant: "destructive" });
       }
@@ -273,6 +301,7 @@ export default function HomePage() {
   const handleSelectConversation = (conversationId: string) => {
     if (conversationId !== activeConversationId && currentUserSession?.id) {
       loadConversation(conversationId, currentUserSession.id);
+      router.push(`/?conversationId=${conversationId}`, { scroll: false });
     }
   };
   
@@ -285,9 +314,6 @@ export default function HomePage() {
           prevConvs.map(c => c.id === conversationId ? updatedConversation : c)
                    .sort((a, b) => (b.isPinned ? 1 : 0) - (a.isPinned ? 1 : 0) || new Date(b.lastMessageTimestamp || 0).getTime() - new Date(a.lastMessageTimestamp || 0).getTime())
         );
-        if (activeConversationId === conversationId && currentUserSession.currentConversationId === conversationId) {
-          //  setCurrentUserSession(prev => prev ? {...prev, currentConversationTitle: newTitle } : null); 
-        }
         toast({ title: "Thành công", description: "Đã cập nhật tiêu đề cuộc trò chuyện." });
       }
     } catch (error: any) {
@@ -360,7 +386,8 @@ export default function HomePage() {
       setCurrentMessages(prev => [...prev, systemMessage]);
       if(result.success) setIsBookingModalOpen(false);
 
-    } catch (error: any) {
+    } catch (error: any)
+{
       toast({ title: "Lỗi đặt lịch", description: error.message || "Không thể đặt lịch hẹn.", variant: "destructive" });
     } finally {
       setIsChatLoading(false);
@@ -381,20 +408,20 @@ export default function HomePage() {
       if (currentUserSession.role === 'admin') {
         return (
           <div className="flex-grow flex items-center justify-center p-4">
-            <Card className="w-full max-w-md text-center shadow-xl">
-              <CardHeader>
-                <CardTitle>Truy cập Admin</CardTitle>
-                <CardDescription>Chào mừng, {currentUserSession.name || 'Admin'}.</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <p className="mb-4">Bạn đã đăng nhập với tư cách Admin.</p>
-                <Button asChild>
-                  <Link href="/admin/dashboard">
-                    <LogIn className="mr-2 h-4 w-4" /> Đến Bảng điều khiển Admin
-                  </Link>
-                </Button>
-              </CardContent>
-            </Card>
+          <Card className="w-full max-w-md text-center shadow-xl mx-auto my-auto">
+            <CardHeader>
+              <CardTitle>Truy cập Admin</CardTitle>
+              <CardDescription>Chào mừng, {currentUserSession.name || 'Admin'}.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <p className="mb-4">Bạn đã đăng nhập với tư cách Admin.</p>
+              <Button asChild>
+                <Link href="/admin/dashboard">
+                  <LogIn className="mr-2 h-4 w-4" /> Đến Bảng điều khiển Admin
+                </Link>
+              </Button>
+            </CardContent>
+          </Card>
           </div>
         );
       }
@@ -402,7 +429,7 @@ export default function HomePage() {
       if (currentUserSession.role === 'staff') {
          return (
           <div className="flex-grow flex items-center justify-center p-4">
-            <Card className="w-full max-w-md text-center shadow-xl">
+            <Card className="w-full max-w-md text-center shadow-xl mx-auto my-auto">
               <CardHeader>
                 <CardTitle>Truy cập Nhân viên</CardTitle>
                 <CardDescription>Chào mừng, {currentUserSession.name || 'Nhân viên'}.</CardDescription>
@@ -420,13 +447,14 @@ export default function HomePage() {
         );
       }
       
+      // Customer view
       return (
         <ChatInterface
           userSession={currentUserSession}
           conversations={conversations} 
           activeConversationId={activeConversationId}
           messages={currentMessages}
-          pinnedMessages={messages.filter(m => m.isPinned)} 
+          pinnedMessages={currentMessages.filter(m => m.isPinned)} 
           suggestedReplies={currentSuggestedReplies}
           onSendMessage={handleSendMessage}
           onSelectConversation={handleSelectConversation}
@@ -436,11 +464,13 @@ export default function HomePage() {
           onUpdateConversationTitle={handleUpdateConversationTitle}
           onPinConversation={handlePinConversation}
           onUnpinConversation={handleUnpinConversation}
-          onBookAppointmentClick={() => setIsBookingModalOpen(true)} // Pass handler to open modal
+          // Pin/Unpin/Edit/Delete messages for customer view might be disabled or handled differently
+          // For now, let's assume customer cannot directly do these from their view
         />
       );
     }
     
+    // Fallback if no session (should ideally be caught by initial redirect)
     return (
         <div className="flex flex-col items-center justify-center h-full flex-grow">
           <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />
@@ -452,7 +482,7 @@ export default function HomePage() {
   return (
     <div className="flex flex-col min-h-screen bg-background">
       <AppHeader userSession={currentUserSession} onLogout={handleLogout}/>
-      <main className="flex-grow flex items-stretch w-full overflow-hidden pt-16">
+      <main className="flex-grow flex items-stretch w-full overflow-hidden pt-16"> {/* pt-16 to offset fixed AppHeader */}
         {renderContent()}
       </main>
       {currentUserSession?.role === 'customer' && activeConversationId && (
