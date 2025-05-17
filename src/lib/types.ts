@@ -15,10 +15,12 @@ export type AppointmentStatus = 'booked' | 'cancelled' | 'completed' | 'pending_
 export type AppointmentDetails = {
   appointmentId: string;
   userId: string; // Corresponds to UserSession.id or Customer.id
-  service: string;
+  service: string; // Service name
+  productId?: string; // Optional: ID of the product/service if selected from list
   time: string; // e.g., "3:00 PM" or ISO time part
   date: string; // e.g., "2024-07-15" or ISO date part
-  branch?: string;
+  branch?: string; // Branch name
+  branchId?: string; // Optional: ID of the branch
   packageType?: string; // Optional: e.g., "Standard", "Premium"
   priority?: string; // Optional: e.g., "High", "Normal"
   status: AppointmentStatus;
@@ -54,61 +56,50 @@ export type Note = {
 export type UserRole = 'customer' | 'admin' | 'staff';
 export type CustomerInteractionStatus = 'unread' | 'read' | 'replied_by_staff';
 
-// Represents a customer profile, managed by staff/admin
 export type CustomerProfile = {
-  id: string; 
+  id: string;
   phoneNumber: string;
-  name?: string; 
-  internalName?: string; 
-  conversationIds: string[]; 
-  appointmentIds: string[]; 
-  productIds: string[]; 
-  noteIds: string[]; 
-  pinnedMessageIds?: string[]; 
-  tags?: string[]; 
-  assignedStaffId?: string; 
-  assignedStaffName?: string; 
+  name?: string;
+  internalName?: string;
+  conversationIds: string[];
+  appointmentIds: string[];
+  productIds: string[];
+  noteIds: string[];
+  pinnedMessageIds?: string[];
+  tags?: string[];
+  assignedStaffId?: string;
+  assignedStaffName?: string;
   lastInteractionAt: Date;
   createdAt: Date;
   interactionStatus?: CustomerInteractionStatus;
   lastMessagePreview?: string;
   lastMessageTimestamp?: Date;
-  // Added from IANA time zone database names e.g. "America/New_York", "Asia/Ho_Chi_Minh"
-  // This helps in converting currentDateTime in schedule-appointment to the customer's local time.
-  timezone?: string; 
+  timezone?: string;
   pinnedConversationIds?: string[];
   messagePinningAllowedConversationIds?: string[];
 };
 
-
 export type UserSession = {
-  id: string; 
+  id: string;
   phoneNumber: string;
   role: UserRole;
-  name?: string; 
-  chatHistory?: Message[];
-  appointments?: AppointmentDetails[];
-  products?: Product[];
-  notes?: Note[]; 
-  tags?: string[];
+  name?: string;
   currentConversationId?: string;
   pinnedConversationIds?: string[];
   messagePinningAllowedConversationIds?: string[];
 };
 
-
 export type StaffDetails = {
-  userId: string; 
+  userId: string;
   assignedCustomerIds?: string[];
 };
 
-
 export type AdminDetails = {
-  userId: string; 
+  userId: string;
 };
 
 export type KeywordMapping = {
-  id: string; 
+  id: string;
   keywords: string[];
   response: string;
   createdAt?: Date;
@@ -117,27 +108,27 @@ export type KeywordMapping = {
 
 export type TrainingDataStatus = 'pending_review' | 'approved' | 'rejected';
 export type TrainingData = {
-  id: string; 
+  id: string;
   userInput: string;
-  idealResponse?: string; 
-  label: string; 
+  idealResponse?: string;
+  label: string;
   status: TrainingDataStatus;
   createdAt?: Date;
   updatedAt?: Date;
 };
 
 export type AppointmentRule = {
-  id: string; 
+  id: string;
   name: string;
   keywords: string[];
-  conditions: string; 
+  conditions: string;
   aiPromptInstructions: string;
   createdAt?: Date;
   updatedAt?: Date;
 };
 
 export type SpecificDayRule = {
-  id: string; 
+  id: string;
   date: string; // "YYYY-MM-DD"
   isOff?: boolean;
   workingHours?: string[]; // ["HH:MM", "HH:MM"]
@@ -146,41 +137,63 @@ export type SpecificDayRule = {
 };
 
 export type AppSettings = {
-  id: string; 
+  id: string;
   greetingMessage?: string;
-  suggestedQuestions?: string[]; 
+  suggestedQuestions?: string[];
 
   brandName?: string;
-  logoUrl?: string; 
-  logoDataUri?: string; 
+  logoUrl?: string;
+  logoDataUri?: string;
   footerText?: string;
 
   metaTitle?: string;
   metaDescription?: string;
   metaKeywords?: string[];
   openGraphImageUrl?: string;
-  robotsTxtContent?: string; 
-  sitemapXmlContent?: string; 
-  
+  robotsTxtContent?: string;
+  sitemapXmlContent?: string;
+
   numberOfStaff?: number;
   defaultServiceDurationMinutes?: number;
-  workingHours?: string[]; 
-  weeklyOffDays?: number[]; 
-  oneTimeOffDates?: string[]; 
-  specificDayRules?: SpecificDayRule[]; 
+  workingHours?: string[];
+  weeklyOffDays?: number[];
+  oneTimeOffDates?: string[];
+  specificDayRules?: SpecificDayRule[];
 
-  updatedAt?: Date; 
+  updatedAt?: Date;
+};
+
+export type BranchSpecificDayRule = { // Simplified for now, can be expanded
+  id: string;
+  date: string; // "YYYY-MM-DD"
+  isOff?: boolean;
+  workingHours?: string[]; // If different from branch's main workingHours
+  numberOfStaff?: number; // If different from branch's main staff count
+};
+
+export type Branch = {
+  id: string;
+  name: string;
+  address?: string;
+  contactInfo?: string; // e.g., phone number, email for the branch
+  isActive: boolean;
+  // Optional: Branch-specific overrides. If not set, global AppSettings are used.
+  workingHours?: string[]; // Branch specific working hours ["HH:MM", "HH:MM"]
+  offDays?: number[]; // Branch specific weekly off days [0-6]
+  numberOfStaff?: number; // Branch specific staff count
+  specificDayOverrides?: BranchSpecificDayRule[]; // For holidays or special days for this branch
+  createdAt?: Date;
+  updatedAt?: Date;
 };
 
 
 export type GetAppointmentsFilters = {
-  date?: string; 
-  dates?: string[]; 
+  date?: string;
+  dates?: string[];
   customerId?: string;
   staffId?: string;
-  status?: string[]; 
+  status?: string[];
 };
-
 
 export type AdminDashboardStats = {
   activeUserCount: number;
@@ -188,7 +201,7 @@ export type AdminDashboardStats = {
   openIssuesCount: number;
   recentAppointments: AppointmentDetails[];
   recentCustomers: Pick<CustomerProfile, 'id' | 'name' | 'phoneNumber' | 'createdAt'>[];
-  systemStatus: 'Optimal' | 'Degraded' | 'Error'; 
+  systemStatus: 'Optimal' | 'Degraded' | 'Error';
 };
 
 export type StaffDashboardStats = {
@@ -196,7 +209,6 @@ export type StaffDashboardStats = {
   myAppointmentsTodayCount: number;
   totalAssignedToMeCount: number;
 };
-
 
 export type ProductItem = {
   id: string;
@@ -209,7 +221,6 @@ export type ProductItem = {
   createdAt: Date;
   updatedAt: Date;
 };
-
 
 export type ReminderStatus = 'pending' | 'completed' | 'cancelled';
 export type ReminderPriority = 'low' | 'medium' | 'high';
@@ -229,7 +240,6 @@ export type Reminder = {
   createdAt: Date;
   updatedAt: Date;
 };
-
 
 export type MessageViewerRole = UserRole | 'customer_view';
 
@@ -251,7 +261,7 @@ export type Conversation = {
   }>;
   messageIds: string[];
   pinnedMessageIds?: string[];
-  isPinned?: boolean; // For user-specific pinning on their list
+  isPinned?: boolean;
   createdAt: Date;
   updatedAt: Date;
   lastMessageTimestamp?: Date;
@@ -259,11 +269,12 @@ export type Conversation = {
 };
 
 export type AppointmentBookingFormData = {
-  service: string;
+  service: string; // This will be the product name
+  productId?: string; // The ID of the selected product
   date: string; // YYYY-MM-DD
   time: string; // HH:MM
   customerId: string;
-  branch?: string;
+  branch?: string; // Branch name
+  branchId?: string; // Branch ID
   notes?: string;
 };
-
