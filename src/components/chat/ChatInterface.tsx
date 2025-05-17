@@ -1,3 +1,4 @@
+
 // src/components/chat/ChatInterface.tsx
 'use client';
 
@@ -33,7 +34,7 @@ type ChatInterfaceProps = {
   suggestedReplies: string[];
   onSendMessage: (messageContent: string) => void;
   onSelectConversation: (conversationId: string) => void;
-  onCreateNewConversation?: () => void; // Made optional as customer view might not have this
+  onCreateNewConversation?: () => void;
   isChatLoading: boolean;
   viewerRole: MessageViewerRole;
   onUpdateConversationTitle?: (conversationId: string, newTitle: string) => void;
@@ -44,7 +45,7 @@ type ChatInterfaceProps = {
   onDeleteMessage?: (messageId: string) => void;
   onEditMessage?: (messageId: string, currentContent: string) => void;
   currentStaffSessionId?: string;
-  onBookAppointmentClick?: () => void; // Added prop
+  onBookAppointmentClick?: () => void;
 };
 
 export function ChatInterface({
@@ -67,7 +68,7 @@ export function ChatInterface({
   onDeleteMessage,
   onEditMessage,
   currentStaffSessionId,
-  onBookAppointmentClick, // Destructure prop
+  onBookAppointmentClick,
 }: ChatInterfaceProps) {
   const [isTitleModalOpen, setIsTitleModalOpen] = useState(false);
   const [editingConversationId, setEditingConversationId] = useState<string | null>(null);
@@ -100,14 +101,13 @@ export function ChatInterface({
     return <div className="flex-grow flex items-center justify-center p-4"><p>Không tìm thấy phiên làm việc.</p></div>;
   }
 
-  // For customer view, we might not show the sidebar, or show a simplified one if multiple convos are allowed.
-  const shouldShowConversationSidebar = viewerRole !== 'customer_view' && onCreateNewConversation !== undefined;
-
+  // For customer view, we hide the conversation sidebar.
+  const shouldShowConversationSidebar = viewerRole !== 'customer_view';
 
   return (
     <div className={cn(
         "flex h-full w-full bg-background text-foreground",
-        !shouldShowConversationSidebar && "flex-col" // Adjust layout if sidebar is hidden
+        !shouldShowConversationSidebar && "flex-col" 
       )}>
       {shouldShowConversationSidebar && onCreateNewConversation && (
         <div className="w-full md:w-72 lg:w-80 border-r border-border flex flex-col h-full bg-card flex-shrink-0 shadow-none">
@@ -185,7 +185,7 @@ export function ChatInterface({
             pinnedMessages={pinnedMessages}
             suggestedReplies={suggestedReplies}
             onSendMessage={onSendMessage}
-            onSuggestedReplyClick={onSendMessage} 
+            onSuggestedReplyClick={onSendMessage}
             isLoading={isChatLoading}
             viewerRole={viewerRole}
             onPinMessage={onPinMessage}
@@ -193,10 +193,10 @@ export function ChatInterface({
             onDeleteMessage={onDeleteMessage}
             onEditMessage={onEditMessage}
             currentStaffSessionId={currentStaffSessionId}
-            onBookAppointmentClick={onBookAppointmentClick} // Pass prop
+            onBookAppointmentClick={onBookAppointmentClick}
           />
         ) : (
-          !shouldShowConversationSidebar ? null : 
+          !shouldShowConversationSidebar ? null :
           <div className="flex-grow flex items-center justify-center p-4">
             <p className="text-muted-foreground">Chọn một cuộc trò chuyện để bắt đầu.</p>
           </div>
@@ -230,3 +230,4 @@ export function ChatInterface({
     </div>
   );
 }
+    

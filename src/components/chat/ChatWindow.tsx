@@ -1,3 +1,4 @@
+
 // src/components/chat/ChatWindow.tsx
 'use client';
 
@@ -23,7 +24,7 @@ type ChatWindowProps = {
   onDeleteMessage?: (messageId: string) => void;
   onEditMessage?: (messageId: string, currentContent: string) => void;
   currentStaffSessionId?: string;
-  onBookAppointmentClick?: () => void; 
+  onBookAppointmentClick?: () => void;
 };
 
 export function ChatWindow({
@@ -60,12 +61,12 @@ export function ChatWindow({
       </div>
     );
   }
-  
+
   const AILoadingIndicator = () => (
     <div className="flex items-end gap-2 my-2 justify-start">
       <Skeleton className="h-8 w-8 rounded-full bg-accent" />
       <div className="max-w-[70%] rounded-lg px-4 py-2 shadow-md bg-accent">
-        <Skeleton className="h-4 w-20" /> 
+        <Skeleton className="h-4 w-20" />
       </div>
     </div>
   );
@@ -76,11 +77,11 @@ export function ChatWindow({
         <div className="p-2 border-b bg-amber-50 max-h-36 overflow-y-auto"> {/* Reduced max-h */}
           <h4 className="text-xs font-semibold text-amber-700 mb-1 sticky top-0 bg-amber-50 py-1 z-10">Tin nhắn đã ghim:</h4>
           {pinnedMessages.filter(Boolean).map((msg) => (
-            msg && msg.id ? ( 
-              <MessageBubble 
-                key={`pinned-${msg.id}`} 
-                message={{...msg, isPinned: true}} 
-                viewerRole={viewerRole} 
+            msg && msg.id ? (
+              <MessageBubble
+                key={`pinned-${msg.id}`}
+                message={{...msg, isPinned: true}}
+                viewerRole={viewerRole}
                 onPinMessage={onPinMessage}
                 onUnpinMessage={onUnpinMessage}
                 onDeleteMessage={onDeleteMessage}
@@ -91,14 +92,14 @@ export function ChatWindow({
           ))}
         </div>
       )}
-      <ScrollArea className="flex-grow p-4 h-[calc(100vh-16rem)]" ref={scrollAreaRef}> {/* Example: fixed height relative to viewport, adjust 16rem as needed */}
+      <ScrollArea className="p-4 h-[calc(100vh-16rem)]" ref={scrollAreaRef}> {/* Fixed height */}
         <div className="space-y-2">
-          {messages.filter(Boolean).map((msg) => ( 
-             msg && msg.id ? ( 
-              <MessageBubble 
-                key={msg.id} 
-                message={msg} 
-                viewerRole={viewerRole} 
+          {messages.filter(Boolean).map((msg) => (
+             msg && msg.id ? (
+              <MessageBubble
+                key={msg.id}
+                message={msg}
+                viewerRole={viewerRole}
                 onPinMessage={onPinMessage}
                 onUnpinMessage={onUnpinMessage}
                 onDeleteMessage={onDeleteMessage}
@@ -115,11 +116,12 @@ export function ChatWindow({
         onReplyClick={onSuggestedReplyClick}
         isLoading={isLoading}
       />
-      <MessageInputForm 
-        onSubmit={onSendMessage} 
+      <MessageInputForm
+        onSubmit={onSendMessage}
         isLoading={isLoading}
         onBookAppointmentClick={onBookAppointmentClick}
       />
     </div>
   );
 }
+    
