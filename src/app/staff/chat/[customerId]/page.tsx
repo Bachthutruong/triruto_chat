@@ -1,16 +1,17 @@
+
 // src/app/staff/chat/[customerId]/page.tsx
 'use client';
 
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { useParams } from 'next/navigation';
-import NextImage from 'next/image'; // Renamed to avoid conflict with Lucide's Image
+import NextImage from 'next/image'; 
 import { Card, CardHeader, CardTitle, CardContent, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Send, Paperclip, Smile, UserCircle, Edit2, Tag, Clock, Phone, Info, X, StickyNote, PlusCircle, Trash2, UserPlus, LogOutIcon, UserCheck, Users, Pin, PinOff, Edit, Image as ImageIcon, ExternalLink, FileText, Download } from 'lucide-react';
-import type { CustomerProfile, Message, AppointmentDetails, UserSession, Note, MessageEditState } from '@/lib/types';
+import type { CustomerProfile, Message, AppointmentDetails, UserSession, Note, MessageEditState, Conversation } from '@/lib/types';
 import { 
   getCustomerDetails, 
   sendStaffMessage, 
@@ -23,12 +24,13 @@ import {
   deleteCustomerNote, 
   updateCustomerNote,
   getStaffList,
-  pinMessageToCustomerChat,
-  unpinMessageFromCustomerChat,
   getMessagesByIds,
   markCustomerInteractionAsReadByStaff,
   deleteStaffMessage,
-  editStaffMessage
+  editStaffMessage,
+  getConversationHistory, // For polling
+  pinMessageToConversation,
+  unpinMessageFromConversation
 } from '@/app/actions';
 import { Textarea } from '@/components/ui/textarea'; 
 import { useToast } from '@/hooks/use-toast';
@@ -40,6 +42,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { ChatWindow } from '@/components/chat/ChatWindow'; 
 import { Label } from '@/components/ui/label';
 import Link from 'next/link'; 
+import { Loader2 } from 'lucide-react';
 
 const MAX_FILE_SIZE_MB = 5;
 const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
@@ -62,9 +65,12 @@ export default function StaffIndividualChatPage() {
 
   const [customer, setCustomer] = useState<CustomerProfile | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
-  const [pinnedMessages, setPinnedMessages] = useState<Message[]>([]);
+  const [pinnedMessages, setPinnedMessages] = useState<Message[]>([]); // For display in ChatWindow
   const [appointments, setAppointments] = useState<AppointmentDetails[]>([]);
   const [notes, setNotes] = useState<Note[]>([]);
+  const [conversations, setConversations] = useState<Conversation[]>([]); // List of conversations for this customer
+  const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
+
   const [isLoading, setIsLoading] = useState(true);
   const [isSendingMessage, setIsSendingMessage] = useState(false);
   const [staffSession, setStaffSession] = useState<UserSession | null>(null);
@@ -80,39 +86,58 @@ export default function StaffIndividualChatPage() {
   const [selectedStaffToAssign, setSelectedStaffToAssign] = useState<string>('');
 
   const [messageEditState, setMessageEditState] = useState<MessageEditState>(null);
-  // For editing messages with attachments
   const [currentAttachmentInEdit, setCurrentAttachmentInEdit] = useState<{ dataUri: string; name: string; type: string | null } | null>(null);
   const [stagedEditFile, setStagedEditFile] = useState<{ dataUri: string; name: string; type: string } | null>(null);
-  const [editTextContent, setEditTextContent] = useState(''); // Only text part for editing
+  const [editTextContent, setEditTextContent] = useState('');
   const editFileInputRef = useRef<HTMLInputElement>(null);
 
+  const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   const fetchChatData = useCallback(async () => {
-    if (customerId) {
+    if (customerId && staffSession) { // Ensure staffSession is available
       setIsLoading(true);
       try {
-        const { customer: fetchedCustomer, messages: fetchedMessages, appointments: fetchedAppointments, notes: fetchedNotes } = await getCustomerDetails(customerId);
+        const { 
+          customer: fetchedCustomer, 
+          messages: fetchedMessages, 
+          appointments: fetchedAppointments, 
+          notes: fetchedNotes,
+          conversations: fetchedConversations 
+        } = await getCustomerDetails(customerId);
+        
         setCustomer(fetchedCustomer);
-        
-        const allMsgs = fetchedMessages || [];
-        setMessages(allMsgs);
-        
-        if (fetchedCustomer?.pinnedMessageIds && fetchedCustomer.pinnedMessageIds.length > 0) {
-          const fetchedPinnedMessages = await getMessagesByIds(fetchedCustomer.pinnedMessageIds);
-          setPinnedMessages(fetchedPinnedMessages.map(m => ({...m, isPinned: true})));
-        } else {
-          setPinnedMessages([]);
-        }
-
         setAppointments(fetchedAppointments || []);
         setNotes(fetchedNotes || []);
+        setConversations(fetchedConversations || []);
+
         if (fetchedCustomer?.internalName) {
           setInternalNameInput(fetchedCustomer.internalName);
         } else if (fetchedCustomer) {
           setInternalNameInput(''); 
         }
 
-        if (staffSession && fetchedCustomer && fetchedCustomer.interactionStatus === 'unread') {
+        // Determine active conversation and load its messages
+        const currentActiveConvId = fetchedConversations && fetchedConversations.length > 0 ? fetchedConversations[0].id : null;
+        setActiveConversationId(currentActiveConvId);
+
+        if (currentActiveConvId) {
+          setMessages(fetchedMessages || []); // messages from getCustomerDetails are for the primary/active conversation
+           // Assuming getCustomerDetails returns pinned messages for the active conversation or we fetch them separately.
+           // For now, let's filter from all messages of the active conversation.
+          const activeConvPinnedIds = fetchedConversations[0].pinnedMessageIds || [];
+          if (activeConvPinnedIds.length > 0) {
+            const fetchedPinned = await getMessagesByIds(activeConvPinnedIds);
+            setPinnedMessages(fetchedPinned.map(m => ({...m, isPinned: true})));
+          } else {
+            setPinnedMessages([]);
+          }
+        } else {
+          setMessages([]);
+          setPinnedMessages([]);
+        }
+
+
+        if (fetchedCustomer && fetchedCustomer.interactionStatus === 'unread') {
           await markCustomerInteractionAsReadByStaff(customerId, staffSession.id);
           setCustomer(prev => prev ? {...prev, interactionStatus: 'read'} : null);
         }
@@ -120,11 +145,17 @@ export default function StaffIndividualChatPage() {
       } catch (error) {
         console.error("Không thể tải chi tiết khách hàng:", error);
         toast({ title: "Lỗi", description: "Không thể tải chi tiết khách hàng.", variant: "destructive" });
+        setCustomer(null); // Reset customer on error
+        setMessages([]);
+        setPinnedMessages([]);
+        setActiveConversationId(null);
       } finally {
         setIsLoading(false);
       }
+    } else if (!staffSession && !isLoading) { // Only log if not already loading and session is missing
+        // console.log("Staff session not yet available for fetchChatData");
     }
-  }, [customerId, toast, staffSession]); 
+  }, [customerId, toast, staffSession]); // Added staffSession as dependency
 
   useEffect(() => {
     const sessionString = sessionStorage.getItem('aetherChatUserSession');
@@ -132,7 +163,7 @@ export default function StaffIndividualChatPage() {
       const session = JSON.parse(sessionString);
       setStaffSession(session);
       if (session.role === 'admin') {
-        const fetchStaff = async () => {
+        const fetchStaffList = async () => {
           try {
             const staff = await getStaffList();
             setAllStaff(staff);
@@ -140,7 +171,7 @@ export default function StaffIndividualChatPage() {
             toast({ title: "Lỗi", description: "Không thể tải danh sách nhân viên.", variant: "destructive" });
           }
         };
-        fetchStaff();
+        fetchStaffList();
       }
     }
   }, [toast]);
@@ -148,14 +179,60 @@ export default function StaffIndividualChatPage() {
 
   useEffect(() => {
     fetchChatData();
-  }, [fetchChatData]);
+  }, [fetchChatData]); // fetchChatData is memoized and depends on customerId and staffSession
+
+  // Polling for new messages
+  useEffect(() => {
+    if (pollingIntervalRef.current) {
+      clearInterval(pollingIntervalRef.current);
+    }
+
+    if (staffSession && activeConversationId && customerId) { // Ensure customerId also, to tie polling to current view
+      const pollMessages = async () => {
+        try {
+          // console.log(`Polling messages for staff view, conv ${activeConversationId}`);
+          const newMessages = await getConversationHistory(activeConversationId);
+          setMessages(prevMessages => {
+            if (JSON.stringify(newMessages) !== JSON.stringify(prevMessages)) {
+              return newMessages;
+            }
+            return prevMessages;
+          });
+          // Potentially re-fetch pinned messages if their logic is separate or complex
+          const currentConversation = conversations.find(c => c.id === activeConversationId);
+          if (currentConversation?.pinnedMessageIds && currentConversation.pinnedMessageIds.length > 0) {
+            const newPinned = await getMessagesByIds(currentConversation.pinnedMessageIds);
+            setPinnedMessages(newPinned.map(m => ({...m, isPinned: true})));
+          } else {
+            setPinnedMessages([]);
+          }
+
+        } catch (err) {
+          console.error(`Error polling messages for conv ${activeConversationId}:`, err);
+        }
+      };
+      // Initial fetch is handled by fetchChatData, so interval starts immediately
+      pollingIntervalRef.current = setInterval(pollMessages, 5000); // Poll every 5 seconds
+    }
+
+    return () => {
+      if (pollingIntervalRef.current) {
+        clearInterval(pollingIntervalRef.current);
+      }
+    };
+  }, [staffSession, activeConversationId, customerId, conversations, getConversationHistory, getMessagesByIds]);
+
 
   const handleSendMessage = async (messageContent: string) => {
-    if (!messageContent.trim() || !customer || !staffSession) return;
+    if (!messageContent.trim() || !customer || !staffSession || !activeConversationId) {
+        toast({ title: "Lỗi", description: "Không thể gửi tin nhắn. Thiếu thông tin khách hàng, phiên làm việc hoặc cuộc trò chuyện.", variant: "destructive" });
+        return;
+    }
     setIsSendingMessage(true);
     try {
-      const sentMessage = await sendStaffMessage(staffSession, customer.id, messageContent);
+      const sentMessage = await sendStaffMessage(staffSession, customer.id, activeConversationId, messageContent);
       setMessages(prev => [...prev, sentMessage]);
+      // Update customer's last interaction details locally for immediate UI feedback
       setCustomer(prev => prev ? { ...prev, interactionStatus: 'replied_by_staff', lastMessagePreview: messageContent.substring(0,100), lastMessageTimestamp: new Date() } : null);
     } catch (error: any) {
       toast({ title: "Lỗi gửi tin nhắn", description: error.message, variant: "destructive"});
@@ -184,7 +261,7 @@ export default function StaffIndividualChatPage() {
       setCurrentAttachmentInEdit(null);
       setEditTextContent(currentContent);
     }
-    setStagedEditFile(null); // Clear any previously staged file for new edit
+    setStagedEditFile(null);
   };
 
   const handleSaveEditedMessage = async () => {
@@ -210,9 +287,7 @@ export default function StaffIndividualChatPage() {
       const updatedMessage = await editStaffMessage(messageEditState.messageId, finalContent, staffSession);
       if (updatedMessage) {
         setMessages(prev => prev.map(m => m.id === updatedMessage.id ? updatedMessage : m));
-        if (pinnedMessages.find(pm => pm.id === updatedMessage.id)) {
-          setPinnedMessages(prev => prev.map(pm => pm.id === updatedMessage.id ? updatedMessage : pm));
-        }
+        setPinnedMessages(prev => prev.map(pm => pm.id === updatedMessage.id ? updatedMessage : pm));
         toast({ title: "Thành công", description: "Đã sửa tin nhắn." });
       }
       setMessageEditState(null);
@@ -238,7 +313,7 @@ export default function StaffIndividualChatPage() {
       reader.onloadend = () => {
         if (reader.result) {
           setStagedEditFile({ dataUri: reader.result as string, name: file.name, type: file.type });
-          setCurrentAttachmentInEdit(null); // New file replaces current if any
+          setCurrentAttachmentInEdit(null); 
         }
         if(editFileInputRef.current) editFileInputRef.current.value = "";
       };
@@ -246,16 +321,16 @@ export default function StaffIndividualChatPage() {
     }
   };
 
-
   const handleDeleteMessage = async (messageId: string) => {
-    if (!staffSession) return;
+    if (!staffSession || !activeConversationId) return;
     try {
       const result = await deleteStaffMessage(messageId, staffSession);
       if (result.success) {
         setMessages(prev => prev.filter(m => m.id !== messageId));
         setPinnedMessages(prev => prev.filter(pm => pm.id !== messageId));
         toast({ title: "Thành công", description: "Đã xóa tin nhắn." });
-        if (result.customerId && customer?.lastMessagePreview && messages.find(m=>m.id === messageId)?.content.startsWith(customer.lastMessagePreview)) {
+        // If the deleted message was the last preview, refetch customer details or manually update
+        if (result.conversationId === activeConversationId && customer?.lastMessagePreview && messages.find(m=>m.id === messageId)?.content.startsWith(customer.lastMessagePreview)) {
             fetchChatData(); 
         }
       }
@@ -264,21 +339,20 @@ export default function StaffIndividualChatPage() {
     }
   };
 
-
   const handlePinMessage = async (messageId: string) => {
-    if (!customer || !staffSession) return;
+    if (!customer || !staffSession || !activeConversationId) return;
     try {
-      const updatedCustomer = await pinMessageToCustomerChat(customer.id, messageId, staffSession);
-      if (updatedCustomer) {
-        setCustomer(updatedCustomer);
+      const updatedConversation = await pinMessageToConversation(activeConversationId, messageId, staffSession);
+      if (updatedConversation) {
+        setConversations(prev => prev.map(c => c.id === activeConversationId ? updatedConversation : c));
         const messageToPin = messages.find(m => m.id === messageId);
         if (messageToPin) {
           setPinnedMessages(prev => {
             const newPinned = [...prev.filter(p => p.id !== messageId), {...messageToPin, isPinned: true}];
             return newPinned.slice(-3); 
           });
-          setMessages(prev => prev.map(m => m.id === messageId ? {...m, isPinned: true} : m));
         }
+        setMessages(prev => prev.map(m => m.id === messageId ? {...m, isPinned: true} : m));
         toast({title: "Thành công", description: "Đã ghim tin nhắn."});
       }
     } catch (error: any) {
@@ -287,11 +361,11 @@ export default function StaffIndividualChatPage() {
   };
 
   const handleUnpinMessage = async (messageId: string) => {
-    if (!customer || !staffSession) return;
+    if (!customer || !staffSession || !activeConversationId) return;
     try {
-      const updatedCustomer = await unpinMessageFromCustomerChat(customer.id, messageId, staffSession);
-      if (updatedCustomer) {
-        setCustomer(updatedCustomer);
+      const updatedConversation = await unpinMessageFromConversation(activeConversationId, messageId, staffSession);
+      if (updatedConversation) {
+        setConversations(prev => prev.map(c => c.id === activeConversationId ? updatedConversation : c));
         setPinnedMessages(prev => prev.filter(m => m.id !== messageId));
         setMessages(prev => prev.map(m => m.id === messageId ? {...m, isPinned: false} : m));
         toast({title: "Thành công", description: "Đã bỏ ghim tin nhắn."});
@@ -300,7 +374,6 @@ export default function StaffIndividualChatPage() {
       toast({title: "Lỗi", description: error.message, variant: "destructive"});
     }
   };
-
 
   const handleAssignToSelf = async () => {
     if (!customer || !staffSession) return;
@@ -352,7 +425,8 @@ export default function StaffIndividualChatPage() {
   const handleAddTag = async () => {
     if (!customer || !newTagName.trim() || !staffSession) return;
     if (newTagName.toLowerCase().startsWith("admin:") && staffSession.role !== 'admin') {
-       toast({title: "Thông báo", description: "Chỉ Admin mới có thể tự mời chính mình bằng tag."});
+       toast({title: "Thông báo", description: "Chỉ Admin mới có thể mời Admin khác bằng tag."}); // Corrected logic for admin tag
+       return;
     }
 
     try {
@@ -435,12 +509,19 @@ export default function StaffIndividualChatPage() {
   };
   
   if (isLoading) {
-    return <div className="flex items-center justify-center h-full"><p>Đang tải cuộc trò chuyện...</p></div>;
+    return <div className="flex items-center justify-center h-full"><Loader2 className="h-8 w-8 animate-spin text-primary"/> <p className="ml-2">Đang tải cuộc trò chuyện...</p></div>;
   }
 
-  if (!customer || !staffSession) {
-    return <div className="flex items-center justify-center h-full"><p>Không tìm thấy khách hàng hoặc phiên làm việc.</p></div>;
+  if (!staffSession) {
+    return <div className="flex items-center justify-center h-full"><p>Không tìm thấy phiên làm việc. Vui lòng đăng nhập lại.</p></div>;
   }
+  if (!customer) {
+    return <div className="flex items-center justify-center h-full"><p>Không tìm thấy thông tin khách hàng.</p></div>;
+  }
+  if (!activeConversationId) {
+     return <div className="flex items-center justify-center h-full"><p>Không tìm thấy cuộc trò chuyện cho khách hàng này.</p></div>;
+  }
+
 
   const getStatusLabel = (status: AppointmentDetails['status']) => {
     switch (status) {
@@ -454,7 +535,7 @@ export default function StaffIndividualChatPage() {
 
   return (
     <div className="flex flex-col md:flex-row h-full gap-0 md:gap-4"> 
-      <Card className="flex-grow h-full flex flex-col">
+      <Card className="flex-grow h-full flex flex-col rounded-none md:rounded-lg border-none md:border">
         <CardHeader className="flex flex-row items-center justify-between border-b p-4">
           <div className="flex items-center gap-3">
             <Avatar>
@@ -490,7 +571,7 @@ export default function StaffIndividualChatPage() {
         <ChatWindow
           userSession={staffSession} 
           messages={messages}
-          pinnedMessages={pinnedMessages}
+          pinnedMessages={pinnedMessages} 
           suggestedReplies={[]} 
           onSendMessage={handleSendMessage}
           onSuggestedReplyClick={() => {}} 
@@ -504,7 +585,7 @@ export default function StaffIndividualChatPage() {
         />
       </Card>
 
-      <Card className="w-full md:max-w-xs lg:max-w-sm xl:max-w-md h-full flex-col hidden md:flex"> 
+      <Card className="w-full md:max-w-xs lg:max-w-sm xl:max-w-md h-full flex-col hidden md:flex rounded-none md:rounded-lg border-none md:border"> 
         <CardHeader className="border-b">
           <CardTitle className="flex items-center"><Info className="mr-2 h-5 w-5" /> Thông tin Khách hàng</CardTitle>
         </CardHeader>
@@ -714,3 +795,4 @@ export default function StaffIndividualChatPage() {
     </div>
   );
 }
+

@@ -1,6 +1,7 @@
+
 // src/app/admin/chat/layout.tsx
 'use client';
-import { useState, useEffect, type ReactNode } from 'react';
+import { useState, useEffect, type ReactNode, useCallback, useRef } from 'react';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -9,9 +10,7 @@ import { Users, Search, Filter, Loader2, AlertTriangle, Tag, CircleDot } from 'l
 import Link from 'next/link';
 import type { CustomerProfile, UserSession, CustomerInteractionStatus } from '@/lib/types';
 import { getCustomersForStaffView, getAllCustomerTags } from '@/app/actions';
-// import { format, formatDistanceToNowStrict } from 'date-fns'; // Removed direct use
-// import { vi } from 'date-fns/locale'; // Removed direct use
-import { DynamicTimeDisplay } from '@/components/layout/DynamicTimeDisplay'; // Added
+import { DynamicTimeDisplay } from '@/components/layout/DynamicTimeDisplay'; 
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
@@ -41,7 +40,7 @@ export default function AdminChatLayout({ children }: { children: ReactNode }) {
   const [activeCustomers, setActiveCustomers] = useState<CustomerProfile[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [adminSession, setAdminSession] = useState<UserSession | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(true); // For initial load
   const [error, setError] = useState<string | null>(null);
 
   const [allAvailableTags, setAllAvailableTags] = useState<string[]>([]);
@@ -49,6 +48,8 @@ export default function AdminChatLayout({ children }: { children: ReactNode }) {
   const [isTagPopoverOpen, setIsTagPopoverOpen] = useState(false);
   const params = useParams();
   const currentCustomerId = params.customerId as string | undefined;
+
+  const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     const sessionString = sessionStorage.getItem('aetherChatUserSession');
@@ -76,27 +77,49 @@ export default function AdminChatLayout({ children }: { children: ReactNode }) {
     fetchTags();
   }, []);
 
-  const fetchCustomers = async () => {
+  const fetchAndSetCustomers = useCallback(async (isInitialLoad = false) => {
     if (!adminSession) return;
-    setIsLoading(true);
-    setError(null);
+    if (isInitialLoad) {
+      setIsLoading(true);
+      setError(null);
+    }
     try {
-      const customers = await getCustomersForStaffView(undefined, 'admin', selectedTags.length > 0 ? selectedTags : undefined);
-      setActiveCustomers(customers);
+      const fetchedCustomers = await getCustomersForStaffView(undefined, 'admin', selectedTags.length > 0 ? selectedTags : undefined);
+      setActiveCustomers(prev => {
+        if (JSON.stringify(fetchedCustomers) !== JSON.stringify(prev)) {
+          return fetchedCustomers;
+        }
+        return prev;
+      });
     } catch (err) {
       console.error("Không thể tải danh sách khách hàng (Admin):", err);
-      setError("Không thể tải danh sách khách hàng. Vui lòng thử lại.");
+      if (isInitialLoad) setError("Không thể tải danh sách khách hàng. Vui lòng thử lại.");
     } finally {
-      setIsLoading(false);
+      if (isInitialLoad) setIsLoading(false);
     }
-  };
+  }, [adminSession, selectedTags]);
 
   useEffect(() => {
+    // Initial fetch
     if (adminSession) {
-      fetchCustomers();
+      fetchAndSetCustomers(true);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [adminSession, selectedTags]);
+  }, [adminSession, selectedTags, fetchAndSetCustomers]);
+
+  useEffect(() => {
+    // Polling
+    if (pollingIntervalRef.current) {
+      clearInterval(pollingIntervalRef.current);
+    }
+    if (adminSession) {
+      pollingIntervalRef.current = setInterval(() => {
+        fetchAndSetCustomers(false);
+      }, 10000); // Poll every 10 seconds
+    }
+    return () => {
+      if (pollingIntervalRef.current) clearInterval(pollingIntervalRef.current);
+    };
+  }, [adminSession, fetchAndSetCustomers]);
 
 
   const filteredCustomersBySearch = activeCustomers.filter(customer =>
@@ -107,13 +130,13 @@ export default function AdminChatLayout({ children }: { children: ReactNode }) {
   );
 
    const handleApplyTagFilter = () => {
-    fetchCustomers();
+    // fetchCustomers will be re-run by its own useEffect due to selectedTags change
     setIsTagPopoverOpen(false);
   };
 
   const handleClearTagFilter = () => {
     setSelectedTags([]);
-    // setIsTagPopoverOpen(false); // Popover will close on selection/button
+    setIsTagPopoverOpen(false);
   };
 
 
@@ -136,9 +159,9 @@ export default function AdminChatLayout({ children }: { children: ReactNode }) {
   }
 
   return (
-    <div className="flex h-full gap-0"> {/* Adjusted for full height and no gap */}
-      <Card className="w-full md:w-1/3 lg:w-1/4 h-full flex flex-col rounded-none border-r border-border"> {/* No rounded corners, border-r */}
-        <CardHeader className="border-b border-border"> {/* Border for header */}
+    <div className="flex h-full gap-0"> 
+      <Card className="w-full md:w-1/3 lg:w-1/4 h-full flex flex-col rounded-none border-r border-border"> 
+        <CardHeader className="border-b border-border"> 
           <CardTitle className="flex items-center"><Users className="mr-2 h-5 w-5" /> Danh sách Khách hàng</CardTitle>
           <CardDescription>Tất cả khách hàng trong hệ thống.</CardDescription>
            <div className="flex flex-col gap-2 pt-2">
@@ -252,3 +275,4 @@ export default function AdminChatLayout({ children }: { children: ReactNode }) {
     </div>
   );
 }
+
