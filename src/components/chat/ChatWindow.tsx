@@ -71,12 +71,12 @@ export function ChatWindow({
   );
 
   return (
-    <div className="flex-grow flex flex-col bg-background overflow-hidden h-full">
+    <div className="flex-grow flex flex-col bg-background overflow-hidden h-full border-none shadow-none">
       {pinnedMessages.length > 0 && (
-        <div className="p-2 border-b bg-amber-50 max-h-48 overflow-y-auto">
+        <div className="p-2 border-b bg-amber-50 max-h-36 overflow-y-auto"> {/* Reduced max-h */}
           <h4 className="text-xs font-semibold text-amber-700 mb-1 sticky top-0 bg-amber-50 py-1 z-10">Tin nhắn đã ghim:</h4>
-          {pinnedMessages.map((msg) => (
-            msg && msg.id ? ( // Ensure msg and msg.id are valid
+          {pinnedMessages.filter(Boolean).map((msg) => (
+            msg && msg.id ? ( 
               <MessageBubble 
                 key={`pinned-${msg.id}`} 
                 message={{...msg, isPinned: true}} 
@@ -91,10 +91,10 @@ export function ChatWindow({
           ))}
         </div>
       )}
-      <ScrollArea className="flex-grow p-4" ref={scrollAreaRef}>
+      <ScrollArea className="flex-grow p-4 h-[calc(100vh-16rem)]" ref={scrollAreaRef}> {/* Example: fixed height relative to viewport, adjust 16rem as needed */}
         <div className="space-y-2">
-          {messages.filter(Boolean).map((msg) => ( // Added .filter(Boolean)
-             msg && msg.id ? ( // Ensure msg and msg.id are valid
+          {messages.filter(Boolean).map((msg) => ( 
+             msg && msg.id ? ( 
               <MessageBubble 
                 key={msg.id} 
                 message={msg} 

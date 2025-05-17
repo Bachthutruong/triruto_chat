@@ -33,7 +33,7 @@ type ChatInterfaceProps = {
   suggestedReplies: string[];
   onSendMessage: (messageContent: string) => void;
   onSelectConversation: (conversationId: string) => void;
-  onCreateNewConversation: () => void;
+  onCreateNewConversation?: () => void; // Made optional as customer view might not have this
   isChatLoading: boolean;
   viewerRole: MessageViewerRole;
   onUpdateConversationTitle?: (conversationId: string, newTitle: string) => void;
@@ -44,6 +44,7 @@ type ChatInterfaceProps = {
   onDeleteMessage?: (messageId: string) => void;
   onEditMessage?: (messageId: string, currentContent: string) => void;
   currentStaffSessionId?: string;
+  onBookAppointmentClick?: () => void; // Added prop
 };
 
 export function ChatInterface({
@@ -66,6 +67,7 @@ export function ChatInterface({
   onDeleteMessage,
   onEditMessage,
   currentStaffSessionId,
+  onBookAppointmentClick, // Destructure prop
 }: ChatInterfaceProps) {
   const [isTitleModalOpen, setIsTitleModalOpen] = useState(false);
   const [editingConversationId, setEditingConversationId] = useState<string | null>(null);
@@ -99,8 +101,7 @@ export function ChatInterface({
   }
 
   // For customer view, we might not show the sidebar, or show a simplified one if multiple convos are allowed.
-  // The current setup implies only one conversation for customers, so sidebar is primarily for staff/admin.
-  const shouldShowConversationSidebar = viewerRole !== 'customer_view';
+  const shouldShowConversationSidebar = viewerRole !== 'customer_view' && onCreateNewConversation !== undefined;
 
 
   return (
@@ -108,8 +109,8 @@ export function ChatInterface({
         "flex h-full w-full bg-background text-foreground",
         !shouldShowConversationSidebar && "flex-col" // Adjust layout if sidebar is hidden
       )}>
-      {shouldShowConversationSidebar && (
-        <div className="w-64 md:w-72 lg:w-80 border-r border-border flex flex-col h-full bg-muted/30 flex-shrink-0">
+      {shouldShowConversationSidebar && onCreateNewConversation && (
+        <div className="w-full md:w-72 lg:w-80 border-r border-border flex flex-col h-full bg-card flex-shrink-0 shadow-none">
           <div className="p-3 border-b border-border">
             <Button
               variant="outline"
@@ -176,7 +177,7 @@ export function ChatInterface({
       )}
 
       {/* Main chat window */}
-      <div className="flex-grow flex flex-col h-full overflow-hidden">
+      <div className="flex-grow flex flex-col h-full overflow-hidden bg-background shadow-none border-none w-full">
         {(activeConversationId || viewerRole === 'customer_view') ? (
           <ChatWindow
             userSession={userSession}
@@ -184,7 +185,7 @@ export function ChatInterface({
             pinnedMessages={pinnedMessages}
             suggestedReplies={suggestedReplies}
             onSendMessage={onSendMessage}
-            onSuggestedReplyClick={onSendMessage} // Assuming suggested replies also go through onSendMessage
+            onSuggestedReplyClick={onSendMessage} 
             isLoading={isChatLoading}
             viewerRole={viewerRole}
             onPinMessage={onPinMessage}
@@ -192,10 +193,10 @@ export function ChatInterface({
             onDeleteMessage={onDeleteMessage}
             onEditMessage={onEditMessage}
             currentStaffSessionId={currentStaffSessionId}
+            onBookAppointmentClick={onBookAppointmentClick} // Pass prop
           />
         ) : (
-          // This placeholder is mainly for staff/admin view when no conversation is selected
-          !shouldShowConversationSidebar ? null : // Don't show placeholder if sidebar is hidden (e.g. customer view)
+          !shouldShowConversationSidebar ? null : 
           <div className="flex-grow flex items-center justify-center p-4">
             <p className="text-muted-foreground">Chọn một cuộc trò chuyện để bắt đầu.</p>
           </div>
