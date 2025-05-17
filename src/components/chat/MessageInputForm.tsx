@@ -1,28 +1,43 @@
+
 // src/components/chat/MessageInputForm.tsx
 'use client';
 
-import React, { useState, useRef } from 'react';
-import Image from 'next/image';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
+import NextImage from 'next/image'; // Renamed to avoid conflict
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Send, Paperclip, X, FileText, Smile } from 'lucide-react'; // Added Smile
+import { Textarea } from '@/components/ui/textarea'; // Changed Input to Textarea
+import { Send, Paperclip, X, FileText, Smile, CalendarPlus } from 'lucide-react'; 
 import { useToast } from '@/hooks/use-toast';
-import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover'; // For emoji picker
+import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover'; 
 
 type MessageInputFormProps = {
   onSubmit: (messageContent: string) => void;
   isLoading?: boolean;
+  onBookAppointmentClick?: () => void; // New prop
 };
 
-const MAX_FILE_SIZE_MB = 5; // Max file size in MB
+const MAX_FILE_SIZE_MB = 5; 
 const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
 const commonEmojis = ['😀', '😂', '😍', '😊', '👍', '🙏', '❤️', '🎉'];
 
-export function MessageInputForm({ onSubmit, isLoading }: MessageInputFormProps) {
+export function MessageInputForm({ onSubmit, isLoading, onBookAppointmentClick }: MessageInputFormProps) {
   const [message, setMessage] = useState('');
   const [stagedFile, setStagedFile] = useState<{ dataUri: string; name: string; type: string } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const { toast } = useToast();
+
+  const adjustTextareaHeight = useCallback(() => {
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto'; // Reset height
+      textareaRef.current.style.height = `${textareaRef.current.scrollHeight}px`;
+    }
+  }, []);
+
+  useEffect(() => {
+    adjustTextareaHeight();
+  }, [message, adjustTextareaHeight]);
+
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -31,7 +46,6 @@ export function MessageInputForm({ onSubmit, isLoading }: MessageInputFormProps)
     if (stagedFile) {
       const fileNameEncoded = encodeURIComponent(stagedFile.name);
       const dataUriWithFileName = `${stagedFile.dataUri}#filename=${fileNameEncoded}`;
-      // Prepend file URI, then add text message if it exists
       contentToSend = dataUriWithFileName + (contentToSend ? `\n${contentToSend}` : '');
     }
 
@@ -39,12 +53,18 @@ export function MessageInputForm({ onSubmit, isLoading }: MessageInputFormProps)
       onSubmit(contentToSend);
       setMessage('');
       setStagedFile(null);
-    } else if (stagedFile && !contentToSend) { // Case where only file is staged and message is empty
+      if (textareaRef.current) { // Reset height after sending
+        textareaRef.current.style.height = 'auto';
+      }
+    } else if (stagedFile && !contentToSend) { 
        const fileNameEncoded = encodeURIComponent(stagedFile.name);
        const dataUriWithFileName = `${stagedFile.dataUri}#filename=${fileNameEncoded}`;
        onSubmit(dataUriWithFileName);
        setMessage('');
        setStagedFile(null);
+        if (textareaRef.current) {
+            textareaRef.current.style.height = 'auto';
+        }
     }
   };
 
@@ -57,7 +77,7 @@ export function MessageInputForm({ onSubmit, isLoading }: MessageInputFormProps)
           description: `Kích thước tệp không được vượt quá ${MAX_FILE_SIZE_MB}MB.`,
           variant: "destructive",
         });
-        if(fileInputRef.current) fileInputRef.current.value = ""; // Reset file input
+        if(fileInputRef.current) fileInputRef.current.value = ""; 
         return;
       }
 
@@ -70,7 +90,7 @@ export function MessageInputForm({ onSubmit, isLoading }: MessageInputFormProps)
             type: file.type,
           });
         }
-         if(fileInputRef.current) fileInputRef.current.value = ""; // Reset file input
+         if(fileInputRef.current) fileInputRef.current.value = ""; 
       };
       reader.onerror = () => {
         toast({
@@ -94,6 +114,14 @@ export function MessageInputForm({ onSubmit, isLoading }: MessageInputFormProps)
 
   const handleEmojiClick = (emoji: string) => {
     setMessage(prev => prev + emoji);
+    textareaRef.current?.focus();
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSubmit(e as any); // Pass the event, even if casted
+    }
   };
 
   return (
@@ -102,7 +130,7 @@ export function MessageInputForm({ onSubmit, isLoading }: MessageInputFormProps)
         <div className="p-2 border-t flex items-center justify-between bg-muted/50 text-sm">
           <div className="flex items-center gap-2 overflow-hidden">
             {stagedFile.type.startsWith('image/') ? (
-              <Image 
+              <NextImage 
                 src={stagedFile.dataUri} 
                 alt={stagedFile.name} 
                 width={24} 
@@ -120,7 +148,7 @@ export function MessageInputForm({ onSubmit, isLoading }: MessageInputFormProps)
           </Button>
         </div>
       )}
-      <form onSubmit={handleSubmit} className="p-4 border-t bg-card flex items-center gap-2">
+      <form onSubmit={handleSubmit} className="p-2 border-t bg-card flex items-end gap-2"> {/* items-end for textarea grow */}
         <Button type="button" variant="ghost" size="icon" onClick={triggerFileInput} disabled={isLoading} aria-label="Đính kèm tệp">
           <Paperclip className="h-5 w-5" />
         </Button>
@@ -153,12 +181,19 @@ export function MessageInputForm({ onSubmit, isLoading }: MessageInputFormProps)
             </div>
           </PopoverContent>
         </Popover>
-        <Input
-          type="text"
+         {onBookAppointmentClick && (
+          <Button type="button" variant="ghost" size="icon" onClick={onBookAppointmentClick} disabled={isLoading} aria-label="Đặt lịch hẹn">
+            <CalendarPlus className="h-5 w-5" />
+          </Button>
+        )}
+        <Textarea
+          ref={textareaRef}
           value={message}
           onChange={(e) => setMessage(e.target.value)}
+          onKeyDown={handleKeyDown}
           placeholder="Nhập tin nhắn của bạn..."
-          className="flex-grow"
+          className="flex-grow resize-none overflow-y-hidden min-h-[40px] max-h-[120px] leading-tight py-2" // Adjust padding/height
+          rows={1}
           disabled={isLoading}
           autoComplete="off"
         />
@@ -170,3 +205,5 @@ export function MessageInputForm({ onSubmit, isLoading }: MessageInputFormProps)
     </>
   );
 }
+
+    

@@ -1,3 +1,4 @@
+
 // src/app/admin/settings/page.tsx
 'use client';
 
@@ -13,8 +14,8 @@ import { useToast } from '@/hooks/use-toast';
 import { getAppSettings, updateAppSettings } from '@/app/actions';
 import type { AppSettings, SpecificDayRule } from '@/lib/types';
 import { Checkbox } from '@/components/ui/checkbox';
-import { format, parse } from 'date-fns';
-import Image from 'next/image'; // For logo preview
+import { format, parse, isValid as isValidDateFns } from 'date-fns';
+import NextImage from 'next/image'; // Renamed to avoid conflict
 
 const defaultInitialBrandName = 'AetherChat';
 const MAX_LOGO_SIZE_MB = 1;
@@ -70,21 +71,20 @@ export default function AdminSettingsPage() {
       const fetchedSettings = await getAppSettings();
       if (fetchedSettings) {
         const fullSettings = {
-            ...initialSettingsState, // Start with defaults
-            ...fetchedSettings, // Override with fetched values
-            // Ensure arrays are always initialized
+            ...initialSettingsState, 
+            ...fetchedSettings, 
             suggestedQuestions: fetchedSettings.suggestedQuestions && fetchedSettings.suggestedQuestions.length > 0 ? fetchedSettings.suggestedQuestions : initialSettingsState.suggestedQuestions,
             metaKeywords: fetchedSettings.metaKeywords && fetchedSettings.metaKeywords.length > 0 ? fetchedSettings.metaKeywords : initialSettingsState.metaKeywords,
             workingHours: fetchedSettings.workingHours && fetchedSettings.workingHours.length > 0 ? fetchedSettings.workingHours : initialSettingsState.workingHours,
             weeklyOffDays: fetchedSettings.weeklyOffDays || [],
             oneTimeOffDates: fetchedSettings.oneTimeOffDates || [],
-            specificDayRules: (fetchedSettings.specificDayRules || []).map(rule => ({...rule, id: rule.id || new Date().getTime().toString()})), // ensure ID
+            specificDayRules: (fetchedSettings.specificDayRules || []).map(rule => ({...rule, id: rule.id || new Date().getTime().toString()})),
         };
         setSettings(fullSettings);
         if (fullSettings.logoDataUri) {
           setLogoPreview(fullSettings.logoDataUri);
         } else if (fullSettings.logoUrl) {
-          setLogoPreview(fullSettings.logoUrl); // For external URLs, preview might work if CORS allows
+          setLogoPreview(fullSettings.logoUrl);
         } else {
           setLogoPreview(null);
         }
@@ -108,7 +108,15 @@ export default function AdminSettingsPage() {
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value, type } = e.target;
     const isNumberField = type === 'number';
-    setSettings(prev => ({ ...prev, [name]: isNumberField ? (value === '' ? undefined : Number(value)) : value }));
+    
+    setSettings(prev => {
+        let processedValue: any = value;
+        if (isNumberField) {
+            const num = parseFloat(value);
+            processedValue = isNaN(num) ? undefined : num; // Store undefined if NaN or empty
+        }
+        return { ...prev, [name]: processedValue };
+    });
   };
   
   const handleSuggestedQuestionsChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -137,8 +145,10 @@ export default function AdminSettingsPage() {
   const handleAddOneTimeOffDate = () => {
     if (newOneTimeOffDate && !settings.oneTimeOffDates?.includes(newOneTimeOffDate)) {
       try {
-        // Validate date format "YYYY-MM-DD"
-        parse(newOneTimeOffDate, 'yyyy-MM-dd', new Date());
+        if (!isValidDateFns(parse(newOneTimeOffDate, 'yyyy-MM-dd', new Date()))) {
+             toast({title: "Lỗi định dạng ngày", description: "Vui lòng nhập ngày hợp lệ theo định dạng YYYY-MM-DD", variant: "destructive"});
+             return;
+        }
         setSettings(prev => ({ ...prev, oneTimeOffDates: [...(prev.oneTimeOffDates || []), newOneTimeOffDate] }));
         setNewOneTimeOffDate('');
       } catch (error) {
@@ -151,36 +161,33 @@ export default function AdminSettingsPage() {
     setSettings(prev => ({ ...prev, oneTimeOffDates: (prev.oneTimeOffDates || []).filter(d => d !== dateToRemove) }));
   };
   
-  const handleSpecificRuleChange = (index: number, field: keyof SpecificDayRule, value: any) => {
-    setSettings(prev => {
-      const rules = [...(prev.specificDayRules || [])];
-      rules[index] = { ...rules[index], [field]: value };
-      return { ...prev, specificDayRules: rules };
-    });
-  };
-  
   const handleAddSpecificRule = () => {
     if (!newSpecificRuleDate) {
         toast({title: "Thiếu thông tin", description: "Vui lòng chọn ngày cho quy tắc cụ thể.", variant: "destructive"});
         return;
     }
      try {
-        parse(newSpecificRuleDate, 'yyyy-MM-dd', new Date()); // Validate date
+        if (!isValidDateFns(parse(newSpecificRuleDate, 'yyyy-MM-dd', new Date()))) {
+            toast({title: "Lỗi định dạng ngày", description: "Ngày quy tắc cụ thể không hợp lệ. Phải là YYYY-MM-DD", variant: "destructive"});
+            return;
+        }
     } catch (error) {
         toast({title: "Lỗi định dạng ngày", description: "Ngày quy tắc cụ thể không hợp lệ. Phải là YYYY-MM-DD", variant: "destructive"});
         return;
     }
 
+    const parsedStaff = newSpecificRuleStaff !== '' ? parseFloat(newSpecificRuleStaff) : undefined;
+    const parsedDuration = newSpecificRuleDuration !== '' ? parseFloat(newSpecificRuleDuration) : undefined;
+
     const rule: SpecificDayRule = {
-      id: new Date().getTime().toString(), // Temporary unique ID for client-side
+      id: new Date().getTime().toString(), 
       date: newSpecificRuleDate,
       isOff: newSpecificRuleIsOff,
       workingHours: newSpecificRuleWorkingHours.split(',').map(h => h.trim()).filter(h => /^[0-2][0-9]:[0-5][0-9]$/.test(h)).length > 0 ? newSpecificRuleWorkingHours.split(',').map(h => h.trim()).filter(h => /^[0-2][0-9]:[0-5][0-9]$/.test(h)) : undefined,
-      numberOfStaff: newSpecificRuleStaff !== '' ? Number(newSpecificRuleStaff) : undefined,
-      serviceDurationMinutes: newSpecificRuleDuration !== '' ? Number(newSpecificRuleDuration) : undefined,
+      numberOfStaff: isNaN(parsedStaff as number) ? undefined : parsedStaff,
+      serviceDurationMinutes: isNaN(parsedDuration as number) ? undefined : parsedDuration,
     };
     setSettings(prev => ({ ...prev, specificDayRules: [...(prev.specificDayRules || []), rule] }));
-    // Reset new specific rule form
     setNewSpecificRuleDate('');
     setNewSpecificRuleIsOff(false);
     setNewSpecificRuleWorkingHours('');
@@ -209,7 +216,7 @@ export default function AdminSettingsPage() {
       const reader = new FileReader();
       reader.onloadend = () => {
         const dataUri = reader.result as string;
-        setSettings(prev => ({ ...prev, logoDataUri: dataUri, logoUrl: '' })); // Prioritize DataURI, clear URL
+        setSettings(prev => ({ ...prev, logoDataUri: dataUri, logoUrl: '' })); 
         setLogoPreview(dataUri);
       };
       reader.readAsDataURL(file);
@@ -217,10 +224,10 @@ export default function AdminSettingsPage() {
   };
 
   const handleRemoveLogo = () => {
-    setSettings(prev => ({ ...prev, logoDataUri: undefined, logoUrl: '' })); // Clear both
+    setSettings(prev => ({ ...prev, logoDataUri: undefined, logoUrl: '' })); 
     setLogoPreview(null);
     if (logoInputRef.current) {
-      logoInputRef.current.value = ""; // Reset file input
+      logoInputRef.current.value = ""; 
     }
   };
 
@@ -229,10 +236,13 @@ export default function AdminSettingsPage() {
     setIsSubmitting(true);
     try {
       const { id, updatedAt, ...settingsToSave } = settings;
-      // Filter out specific rules with empty date, just in case
       const finalSettingsToSave = {
           ...settingsToSave,
           specificDayRules: (settingsToSave.specificDayRules || []).filter(rule => rule.date && rule.date.trim() !== '')
+             .map(rule => {
+                 const { id: ruleId, ...restOfRule } = rule; // Remove client-side ID before saving
+                 return restOfRule;
+             }),
       };
       await updateAppSettings(finalSettingsToSave as Omit<AppSettings, 'id' | 'updatedAt'>);
       toast({ title: "Thành công", description: "Cài đặt đã được lưu." });
@@ -269,7 +279,7 @@ export default function AdminSettingsPage() {
             <div className="flex items-center gap-4">
               {logoPreview && (
                 <div className="relative w-20 h-20 border rounded-md overflow-hidden bg-muted">
-                  <Image src={logoPreview} alt="Xem trước logo" layout="fill" objectFit="contain" data-ai-hint="logo preview"/>
+                  <NextImage src={logoPreview} alt="Xem trước logo" layout="fill" objectFit="contain" data-ai-hint="logo preview"/>
                 </div>
               )}
               <div className="flex-grow space-y-2">
@@ -404,7 +414,7 @@ export default function AdminSettingsPage() {
             <ul className="mt-2 space-y-1">
               {(settings.oneTimeOffDates || []).map(date => (
                 <li key={date} className="flex items-center justify-between text-sm p-1 bg-muted/50 rounded">
-                  {format(parse(date, 'yyyy-MM-dd', new Date()), 'dd/MM/yyyy')}
+                  {isValidDateFns(parse(date, 'yyyy-MM-dd', new Date())) ? format(parse(date, 'yyyy-MM-dd', new Date()), 'dd/MM/yyyy') : 'Ngày không hợp lệ'}
                   <Button type="button" variant="ghost" size="icon" className="h-6 w-6" onClick={() => handleRemoveOneTimeOffDate(date)} disabled={isSubmitting}>
                     <Trash2 className="h-3 w-3 text-destructive" />
                   </Button>
@@ -434,7 +444,7 @@ export default function AdminSettingsPage() {
                 {(settings.specificDayRules || []).map((rule, index) => (
                   <Card key={rule.id || index} className="p-3 bg-muted/30">
                     <div className="flex justify-between items-start mb-2">
-                        <p className="font-semibold text-sm">Ngày: {format(parse(rule.date, 'yyyy-MM-dd', new Date()), 'dd/MM/yyyy')}</p>
+                        <p className="font-semibold text-sm">Ngày: {isValidDateFns(parse(rule.date, 'yyyy-MM-dd', new Date())) ? format(parse(rule.date, 'yyyy-MM-dd', new Date()), 'dd/MM/yyyy') : 'Ngày không hợp lệ'}</p>
                         <Button variant="ghost" size="icon" onClick={() => handleRemoveSpecificRule(rule.id!)} className="h-6 w-6">
                            <Trash2 className="h-3 w-3 text-destructive"/>
                         </Button>
@@ -472,3 +482,4 @@ export default function AdminSettingsPage() {
     </div>
   );
 }
+    
