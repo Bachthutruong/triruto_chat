@@ -1,7 +1,7 @@
 // src/components/chat/ChatWindow.tsx
 'use client';
 
-import type { Message, UserSession, MessageViewerRole, MessageEditState } from '@/lib/types';
+import type { Message, UserSession, MessageViewerRole } from '@/lib/types';
 import { MessageBubble } from './MessageBubble';
 import { MessageInputForm } from './MessageInputForm';
 import { SuggestedReplies } from './SuggestedReplies';
@@ -23,6 +23,7 @@ type ChatWindowProps = {
   onDeleteMessage?: (messageId: string) => void;
   onEditMessage?: (messageId: string, currentContent: string) => void;
   currentStaffSessionId?: string;
+  onBookAppointmentClick?: () => void; 
 };
 
 export function ChatWindow({
@@ -39,6 +40,7 @@ export function ChatWindow({
   onDeleteMessage,
   onEditMessage,
   currentStaffSessionId,
+  onBookAppointmentClick,
 }: ChatWindowProps) {
   const scrollAreaRef = useRef<HTMLDivElement>(null);
 
@@ -69,39 +71,43 @@ export function ChatWindow({
   );
 
   return (
-    <div className="flex-grow flex flex-col bg-background overflow-hidden">
+    <div className="flex-grow flex flex-col bg-background overflow-hidden h-full">
       {pinnedMessages.length > 0 && (
-        <div className="p-2 border-b bg-amber-50 max-h-48 overflow-y-auto"> {/* Added max-h and overflow */}
+        <div className="p-2 border-b bg-amber-50 max-h-48 overflow-y-auto">
           <h4 className="text-xs font-semibold text-amber-700 mb-1 sticky top-0 bg-amber-50 py-1 z-10">Tin nhắn đã ghim:</h4>
           {pinnedMessages.map((msg) => (
-            <MessageBubble 
-              key={`pinned-${msg.id}`} 
-              message={{...msg, isPinned: true}} 
-              viewerRole={viewerRole} 
-              onPinMessage={onPinMessage}
-              onUnpinMessage={onUnpinMessage}
-              onDeleteMessage={onDeleteMessage}
-              onEditMessage={onEditMessage}
-              currentStaffSessionId={currentStaffSessionId}
-            />
+            msg && msg.id ? ( // Ensure msg and msg.id are valid
+              <MessageBubble 
+                key={`pinned-${msg.id}`} 
+                message={{...msg, isPinned: true}} 
+                viewerRole={viewerRole} 
+                onPinMessage={onPinMessage}
+                onUnpinMessage={onUnpinMessage}
+                onDeleteMessage={onDeleteMessage}
+                onEditMessage={onEditMessage}
+                currentStaffSessionId={currentStaffSessionId}
+              />
+            ) : null
           ))}
         </div>
       )}
       <ScrollArea className="flex-grow p-4" ref={scrollAreaRef}>
         <div className="space-y-2">
-          {messages.map((msg) => (
-            <MessageBubble 
-              key={msg.id} 
-              message={msg} 
-              viewerRole={viewerRole} 
-              onPinMessage={onPinMessage}
-              onUnpinMessage={onUnpinMessage}
-              onDeleteMessage={onDeleteMessage}
-              onEditMessage={onEditMessage}
-              currentStaffSessionId={currentStaffSessionId}
-            />
+          {messages.filter(Boolean).map((msg) => ( // Added .filter(Boolean)
+             msg && msg.id ? ( // Ensure msg and msg.id are valid
+              <MessageBubble 
+                key={msg.id} 
+                message={msg} 
+                viewerRole={viewerRole} 
+                onPinMessage={onPinMessage}
+                onUnpinMessage={onUnpinMessage}
+                onDeleteMessage={onDeleteMessage}
+                onEditMessage={onEditMessage}
+                currentStaffSessionId={currentStaffSessionId}
+              />
+            ) : null
           ))}
-          {isLoading && messages[messages.length-1]?.sender === 'user' && <AILoadingIndicator />}
+          {isLoading && messages.length > 0 && messages[messages.length-1]?.sender === 'user' && <AILoadingIndicator />}
         </div>
       </ScrollArea>
       <SuggestedReplies
@@ -109,7 +115,11 @@ export function ChatWindow({
         onReplyClick={onSuggestedReplyClick}
         isLoading={isLoading}
       />
-      <MessageInputForm onSubmit={onSendMessage} isLoading={isLoading} />
+      <MessageInputForm 
+        onSubmit={onSendMessage} 
+        isLoading={isLoading}
+        onBookAppointmentClick={onBookAppointmentClick}
+      />
     </div>
   );
 }

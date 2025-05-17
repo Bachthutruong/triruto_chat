@@ -2,12 +2,12 @@
 import type { Message, MessageViewerRole } from '@/lib/types';
 import { cn } from '@/lib/utils';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import { User, Bot, FileText, Download, Brain, Edit, Trash2, Pin, PinOff, Image as ImageIconLucide } from 'lucide-react'; // Changed Thumbtack to Pin
+import { User, Bot, FileText, Download, Brain, Edit, Trash2, Pin, PinOff, Image as ImageIconLucide } from 'lucide-react';
 import Image from 'next/image';
 import { useAppSettingsContext } from '@/contexts/AppSettingsContext';
 import { Button } from '@/components/ui/button';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
-import React, { useState, useEffect } from 'react'; // Added useState, useEffect
+import React, { useState, useEffect } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 
 
@@ -42,11 +42,19 @@ export function MessageBubble({
 }: MessageBubbleProps) {
   const appSettings = useAppSettingsContext();
   const brandName = appSettings?.brandName || 'AetherChat';
-  const [formattedTime, setFormattedTime] = useState('...'); // Placeholder
+  const [formattedTime, setFormattedTime] = useState('...');
+
+  // Defensive check for message prop
+  if (!message || !message.id) {
+    console.warn("MessageBubble received invalid message prop:", message);
+    return null; // Or render some placeholder/error
+  }
 
   useEffect(() => {
     if (message.timestamp) {
       setFormattedTime(new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+    } else {
+      setFormattedTime('...'); // Fallback if timestamp is somehow missing
     }
   }, [message.timestamp]);
 
