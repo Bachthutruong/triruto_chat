@@ -1,4 +1,3 @@
-
 // schedule-appointment.ts
 'use server';
 
@@ -10,23 +9,23 @@
  * Schemas (ScheduleAppointmentInput, ScheduleAppointmentOutput, AppointmentDetailsSchema, AppointmentRuleSchema) are defined in '@/ai/schemas/schedule-appointment-schemas.ts'.
  */
 
-import {ai} from '@/ai/genkit';
+import { ai } from '@/ai/genkit';
 import {
-    ScheduleAppointmentInputSchema,
-    type ScheduleAppointmentInput,
-    ScheduleAppointmentOutputSchema,
-    type ScheduleAppointmentOutput,
-    AppointmentDetailsSchema, 
-    type AppointmentRule,
+  ScheduleAppointmentInputSchema,
+  type ScheduleAppointmentInput,
+  ScheduleAppointmentOutputSchema,
+  type ScheduleAppointmentOutput,
+  AppointmentDetailsSchema,
+  type AppointmentRule,
 } from '@/ai/schemas/schedule-appointment-schemas';
-import {getAppSettings, getAppointmentRules, getBranches} from '@/app/actions'; 
+import { getAppSettings, getAppointmentRules, getBranches } from '@/app/actions';
 import type { AppSettings, SpecificDayRule, Branch } from '@/lib/types';
-import AppointmentModel, { type IAppointment } from '@/models/Appointment.model'; 
+import AppointmentModel, { type IAppointment } from '@/models/Appointment.model';
 import { parseISO as dateFnsParseISO, getDay, addMinutes, isBefore, format as dateFnsFormat, isValid as isValidDate, compareAsc, addDays, isEqual } from 'date-fns';
 import mongoose from 'mongoose';
 
 
-const scheduleAppointmentPrompt = ai.definePrompt({
+export const scheduleAppointmentPrompt = ai.definePrompt({
   name: 'scheduleAppointmentPromptVietnameseEnhanced',
   input: { schema: ScheduleAppointmentInputSchema },
   output: { schema: ScheduleAppointmentOutputSchema },
@@ -65,7 +64,7 @@ Hãy sử dụng thông tin này để trả lời người dùng một cách t�
 {{#if chatHistory}}
 Lịch sử trò chuyện (mới nhất ở cuối):
 {{{chatHistory}}}
-Dựa vào lịch sử này và tin nhắn mới nhất của người dùng để hiểu ngữ cảnh.
+Dựa vào lịch sử này và tin nhắn mới nhất của người dùng để hiểu ngữ cảnh. Lưu ý: Bạn PHẢI GHI NHỚ thông tin dịch vụ, ngày và giờ mà người dùng đã cung cấp từ trước trong lịch sử này, KHÔNG được hỏi lại các thông tin họ đã cung cấp.
 {{/if}}
 
 Nội dung người dùng nhập MỚI NHẤT: {{{userInput}}}
@@ -95,17 +94,29 @@ Hãy xem xét các quy tắc này khi phân tích yêu cầu đặt lịch của
 Các dịch vụ có sẵn: Cắt tóc, Tạo kiểu, Nhuộm tóc, Làm móng tay, Làm móng chân, Chăm sóc da mặt, Massage, Gội đầu dưỡng sinh. (Thông tin này chỉ để bạn biết, không cần liệt kê lại trừ khi được hỏi).
 
 Nhiệm vụ của bạn:
-1.  **Hiểu ngữ cảnh**: Dựa trên userInput, chatHistory, appointmentRules (nếu có). Nếu userInput là "Hệ thống đã xác nhận lịch hẹn..." hoặc "Lịch yêu cầu không trống...", thì đó là chỉ dẫn từ hệ thống, bạn cần xử lý dựa trên availabilityCheckResult.
-2.  **Trích xuất chi tiết ban đầu**: Nếu userInput là từ người dùng (không phải chỉ dẫn hệ thống) và không có availabilityCheckResult (đây là lượt đầu tiên AI xử lý yêu cầu), hãy cố gắng xác định service, date (YYYY-MM-DD), time (HH:MM), branch (từ availableBranches nếu có) từ userInput và chatHistory. Luôn chuyển đổi ngày tương đối ("ngày mai", "tuần tới") thành ngày cụ thể YYYY-MM-DD dựa trên currentDateTime. Xem xét appointmentRules để ưu tiên xử lý. Nếu có nhiều chi nhánh (availableBranches) và người dùng không chỉ định, hãy hỏi họ muốn đặt ở chi nhánh nào.
-3.  **Tạo phản hồi dựa trên availabilityCheckResult (khi userInput là chỉ dẫn hệ thống)**:
+1.  **Hiểu và duy trì ngữ cảnh**: Bạn PHẢI GHI NHỚ và SỬ DỤNG tất cả thông tin liên quan từ lịch sử trò chuyện. Nếu người dùng đã đề cập "cắt tóc" hoặc bất kỳ dịch vụ nào từ trước, ĐỪNG hỏi lại về dịch vụ. Tương tự, nếu họ đã cung cấp ngày hoặc giờ, GHI NHỚ thông tin đó. Chỉ hỏi về thông tin mà họ CHƯA cung cấp.
+
+2.  **Trích xuất và tích lũy thông tin**: Nếu userInput là từ người dùng, hãy kết hợp thông tin trong tin nhắn mới với thông tin đã biết trước đó trong lịch sử trò chuyện để xây dựng chi tiết đặt lịch đầy đủ. Hãy tích lũy thông tin theo thời gian. Ví dụ, nếu người dùng trước đây đã nói "cắt tóc", và giờ họ nói "ngày mai lúc 3 giờ chiều", thì tất cả thông tin dịch vụ và thời gian đều đã được thu thập.
+
+3.  **Khi thu thập đủ thông tin**: Một khi bạn đã thu thập đầy đủ thông tin cần thiết (dịch vụ, ngày, giờ, và chi nhánh nếu cần), hãy xác nhận tất cả thông tin cùng một lúc và đặt intent: "booked". KHÔNG cần phải xác nhận từng thông tin một.
+
+4.  **Xử lý chỉ dẫn từ hệ thống**:
     *   Nếu userInput là "Hệ thống đã xác nhận lịch hẹn..." VÀ availabilityCheckResult.status là "AVAILABLE" VÀ có availabilityCheckResult.confirmedSlot: Tạo confirmationMessage xác nhận lịch hẹn đã được đặt thành công cho khung giờ đó. Đặt intent: "booked" (hoặc "rescheduled" nếu originalAppointmentIdToModify có). Đặt appointmentDetails với thông tin từ confirmedSlot.
     *   Nếu userInput là "Lịch yêu cầu không trống..." VÀ availabilityCheckResult.status là "UNAVAILABLE": Tạo confirmationMessage thông báo lịch không trống, giải thích ngắn gọn dựa trên availabilityCheckResult.reason. Nếu có availabilityCheckResult.suggestedSlots, hãy đề xuất chúng cho người dùng. Đặt intent: "pending_alternatives".
-4.  **Nếu userInput là từ người dùng và không có availabilityCheckResult**:
-    *   Nếu bạn trích xuất đủ chi tiết (dịch vụ, ngày, giờ, và chi nhánh nếu có nhiều chi nhánh): Đặt intent: "booked" (hoặc rescheduled nếu có ngữ cảnh đổi lịch), điền appointmentDetails. confirmationMessage nên hỏi xác nhận lại các chi tiết này một cách ngắn gọn (ví dụ: "Bạn muốn đặt [dịch vụ] vào [ngày] lúc [giờ] tại [chi nhánh] phải không?").
-    *   Nếu thiếu thông tin (ví dụ thiếu chi nhánh khi có nhiều lựa chọn): Đặt intent: "clarification_needed", yêu cầu người dùng cung cấp thông tin còn thiếu trong missingInformation (ví dụ: "Bạn muốn đặt lịch ở chi nhánh nào trong số các chi nhánh sau: [liệt kê chi nhánh]?").
-5.  **Xử lý hủy lịch**: Nếu người dùng muốn hủy, xác định originalAppointmentIdToModify từ userInput hoặc existingAppointments. Nếu rõ ràng, đặt intent: "cancelled" và tạo confirmationMessage xác nhận hủy. Nếu không rõ, đặt intent: "clarification_needed".
-6.  **Trả lời câu hỏi chung**: Nếu người dùng chỉ hỏi thông tin chung (ví dụ: "Spa mở cửa mấy giờ?", "Có dịch vụ X không?") và không có ý định đặt/đổi/hủy lịch rõ ràng, hãy trả lời câu hỏi đó và đặt intent: "no_action_needed".
-7.  **Lỗi/Cần hỗ trợ**: Nếu yêu cầu quá phức tạp, không liên quan, hoặc có lỗi xảy ra, đặt intent: "error" hoặc requiresAssistance: true.
+
+5.  **Giải quyết thiếu thông tin**: Nếu sau khi xem xét lịch sử trò chuyện và tin nhắn mới, vẫn còn thiếu thông tin cần thiết:
+    *   intent: "clarification_needed"
+    *   Chỉ hỏi về thông tin còn thiếu, KHÔNG hỏi lại thông tin đã biết.
+    *   Ví dụ, nếu đã biết dịch vụ là "cắt tóc" nhưng chưa biết thời gian, chỉ hỏi "Bạn muốn đặt cắt tóc vào ngày và giờ nào?"
+
+6.  **Đảm bảo ghi nhớ thông tin đã cung cấp**:
+    *   Dịch vụ: Nếu người dùng đã nói "cắt tóc", đừng bao giờ hỏi lại "bạn muốn đặt dịch vụ gì?". 
+    *   Ngày giờ: Nếu người dùng đã nói "ngày mai lúc 3h chiều", luôn nhớ rằng đó là thông tin về ngày và giờ.
+    *   Tích lũy thông tin qua nhiều tin nhắn - nếu tin nhắn đầu tiên nói về dịch vụ, tin nhắn thứ hai nói về ngày, thì cả hai thông tin đều phải được tích hợp vào yêu cầu cuối cùng.
+
+7.  **Trả lời câu hỏi chung**: Nếu người dùng chỉ hỏi thông tin chung (ví dụ: "Spa mở cửa mấy giờ?", "Có dịch vụ X không?") và không có ý định đặt/đổi/hủy lịch rõ ràng, hãy trả lời câu hỏi đó và đặt intent: "no_action_needed".
+
+8.  **Lỗi/Cần hỗ trợ**: Nếu yêu cầu quá phức tạp, không liên quan, hoặc có lỗi xảy ra, đặt intent: "error" hoặc requiresAssistance: true.
 
 Các trường phản hồi:
 - intent: "booked", "rescheduled", "cancelled", "pending_alternatives", "clarification_needed", "error", "no_action_needed".
@@ -122,17 +133,17 @@ Nếu userInput là "đặt lịch 2h chiều ngày mai", và currentDateTime l�
 });
 
 async function findNextAvailableSlots(
-  originalRequestDate: Date, 
-  originalRequestTime: string, 
+  originalRequestDate: Date,
+  originalRequestTime: string,
   appSettings: AppSettings,
   // branchId?: string, // Future: Consider branch-specific rules here
-  serviceDuration: number, 
+  serviceDuration: number,
   getAppointmentsForDate: (dateString: string, branchId?: string) => Promise<Pick<IAppointment, 'date' | 'time' | 'service' | 'branchId'>[]>,
   maxSuggestions = 3,
-  searchLimitDays = 7 
+  searchLimitDays = 7
 ): Promise<{ date: string; time: string; branch?: string }[]> { // Added branch to suggestion
   const suggestions: { date: string; time: string; branch?: string }[] = [];
-  let currentDateToSearch = new Date(originalRequestDate); 
+  let currentDateToSearch = new Date(originalRequestDate);
 
   // For now, global appSettings define staff and hours. Branch selection is for recording.
   // If branch-specific availability is needed, load branch settings here.
@@ -150,8 +161,8 @@ async function findNextAvailableSlots(
     if (specificRuleForDay) {
       if (specificRuleForDay.isOff) dayIsOff = true;
       activeWorkingHours = specificRuleForDay.workingHours && specificRuleForDay.workingHours.length > 0
-                            ? specificRuleForDay.workingHours
-                            : activeWorkingHours;
+        ? specificRuleForDay.workingHours
+        : activeWorkingHours;
       activeNumStaff = specificRuleForDay.numberOfStaff ?? activeNumStaff;
     } else {
       if (appSettings.weeklyOffDays?.includes(currentDayOfWeek)) dayIsOff = true;
@@ -159,7 +170,7 @@ async function findNextAvailableSlots(
     }
 
     if (dayIsOff || activeWorkingHours.length === 0 || activeNumStaff <= 0) {
-      continue; 
+      continue;
     }
 
     // Fetch appointments for this day (potentially filtered by branchId if rules become branch-specific)
@@ -181,11 +192,11 @@ async function findNextAvailableSlots(
         // If checking for a specific branch, filter exAppt here if exAppt.branchId != branchId
         const exApptStart = dateFnsParseISO(`${exAppt.date}T${exAppt.time}:00.000Z`);
         if (!isValidDate(exApptStart)) continue;
-        
+
         let exApptDuration = appSettings.defaultServiceDurationMinutes || 60;
         const exApptSpecificRule = appSettings.specificDayRules?.find(r => r.date === exAppt.date);
         if (exApptSpecificRule && exApptSpecificRule.serviceDurationMinutes) {
-            exApptDuration = exApptSpecificRule.serviceDurationMinutes;
+          exApptDuration = exApptSpecificRule.serviceDurationMinutes;
         }
         const exApptEnd = addMinutes(exApptStart, exApptDuration);
 
@@ -202,7 +213,7 @@ async function findNextAvailableSlots(
       }
     }
     if (suggestions.length >= maxSuggestions) {
-        return suggestions;
+      return suggestions;
     }
   }
   return suggestions;
@@ -210,17 +221,17 @@ async function findNextAvailableSlots(
 
 
 export async function checkRealAvailability(
-  targetDateObj: Date, 
-  targetTime: string, 
+  targetDateObj: Date,
+  targetTime: string,
   appSettings: AppSettings,
   // branchId?: string, // For future branch-specific capacity
   serviceDurationMinutesOverride?: number
 ): Promise<{
-    isAvailable: boolean;
-    reason?: string;
-    suggestedSlots?: { date: string; time: string; service?: string; branch?: string }[]
+  isAvailable: boolean;
+  reason?: string;
+  suggestedSlots?: { date: string; time: string; service?: string; branch?: string }[]
 }> {
-  
+
   const effectiveServiceDuration = serviceDurationMinutesOverride || appSettings.defaultServiceDurationMinutes || 60;
 
   const targetDateString = dateFnsFormat(targetDateObj, 'yyyy-MM-dd');
@@ -236,68 +247,68 @@ export async function checkRealAvailability(
   if (specificRuleForDay) {
     if (specificRuleForDay.isOff) isDayOff = true;
     currentWorkingHours = specificRuleForDay.workingHours && specificRuleForDay.workingHours.length > 0
-                            ? specificRuleForDay.workingHours
-                            : currentWorkingHours;
+      ? specificRuleForDay.workingHours
+      : currentWorkingHours;
     currentNumStaff = specificRuleForDay.numberOfStaff ?? currentNumStaff;
   } else {
     if (appSettings.weeklyOffDays?.includes(targetDayOfWeek)) isDayOff = true;
-    if (appSettings.oneTimeOffDates?.includes(targetDateString)) isDayOff = true; 
+    if (appSettings.oneTimeOffDates?.includes(targetDateString)) isDayOff = true;
   }
 
   if (isDayOff) {
     const suggestedAlternativeSlots = await findNextAvailableSlots(
-        addDays(targetDateObj, 1), 
-        "00:00", 
-        appSettings,
-        // branchId,
-        effectiveServiceDuration,
-        async (dateStr: string /*, bId?: string */) => AppointmentModel.find({ date: dateStr, status: { $in: ['booked', 'pending_confirmation', 'rescheduled'] } /*, ...(bId && { branchId: bId }) */ }, 'date time service branchId').lean()
+      addDays(targetDateObj, 1),
+      "00:00",
+      appSettings,
+      // branchId,
+      effectiveServiceDuration,
+      async (dateStr: string /*, bId?: string */) => AppointmentModel.find({ date: dateStr, status: { $in: ['booked', 'pending_confirmation', 'rescheduled'] } /*, ...(bId && { branchId: bId }) */ }, 'date time service branchId').lean()
     );
     return {
-        isAvailable: false,
-        reason: `Ngày ${targetDateString} là ngày nghỉ.`,
-        suggestedSlots: suggestedAlternativeSlots.map(s => ({ date: s.date, time: s.time, branch: s.branch }))
+      isAvailable: false,
+      reason: `Ngày ${targetDateString} là ngày nghỉ.`,
+      suggestedSlots: suggestedAlternativeSlots.map(s => ({ date: s.date, time: s.time, branch: s.branch }))
     };
   }
 
   if (currentWorkingHours.length === 0 || currentNumStaff <= 0) {
-     const suggestedAlternativeSlots = await findNextAvailableSlots(
-        addDays(targetDateObj, 1), 
-        "00:00",
-        appSettings,
-        // branchId,
-        effectiveServiceDuration,
-        async (dateStr: string /*, bId?: string */) => AppointmentModel.find({ date: dateStr, status: { $in: ['booked', 'pending_confirmation', 'rescheduled'] } /*, ...(bId && { branchId: bId }) */ }, 'date time service branchId').lean()
+    const suggestedAlternativeSlots = await findNextAvailableSlots(
+      addDays(targetDateObj, 1),
+      "00:00",
+      appSettings,
+      // branchId,
+      effectiveServiceDuration,
+      async (dateStr: string /*, bId?: string */) => AppointmentModel.find({ date: dateStr, status: { $in: ['booked', 'pending_confirmation', 'rescheduled'] } /*, ...(bId && { branchId: bId }) */ }, 'date time service branchId').lean()
     );
     return {
-        isAvailable: false,
-        reason: `Không có giờ làm việc hoặc nhân viên được cấu hình cho ngày ${targetDateString}.`,
-        suggestedSlots: suggestedAlternativeSlots.map(s => ({ date: s.date, time: s.time, branch: s.branch }))
+      isAvailable: false,
+      reason: `Không có giờ làm việc hoặc nhân viên được cấu hình cho ngày ${targetDateString}.`,
+      suggestedSlots: suggestedAlternativeSlots.map(s => ({ date: s.date, time: s.time, branch: s.branch }))
     };
   }
 
   const requestedStartDateTime = dateFnsParseISO(`${targetDateString}T${targetTime}:00.000Z`);
   if (!isValidDate(requestedStartDateTime)) {
-      return { isAvailable: false, reason: `Ngày giờ yêu cầu không hợp lệ: ${targetDateString} ${targetTime}` };
+    return { isAvailable: false, reason: `Ngày giờ yêu cầu không hợp lệ: ${targetDateString} ${targetTime}` };
   }
 
   if (!currentWorkingHours.includes(targetTime)) {
-     const suggestedAlternativeSlots = await findNextAvailableSlots(
-        targetDateObj, 
-        targetTime, 
-        appSettings,
-        // branchId,
-        effectiveServiceDuration,
-        async (dateStr: string /*, bId?: string */) => AppointmentModel.find({ date: dateStr, status: { $in: ['booked', 'pending_confirmation', 'rescheduled'] } /*, ...(bId && { branchId: bId }) */ }, 'date time service branchId').lean()
+    const suggestedAlternativeSlots = await findNextAvailableSlots(
+      targetDateObj,
+      targetTime,
+      appSettings,
+      // branchId,
+      effectiveServiceDuration,
+      async (dateStr: string /*, bId?: string */) => AppointmentModel.find({ date: dateStr, status: { $in: ['booked', 'pending_confirmation', 'rescheduled'] } /*, ...(bId && { branchId: bId }) */ }, 'date time service branchId').lean()
     );
-     return {
-        isAvailable: false,
-        reason: `Thời gian ${targetTime} không phải là giờ bắt đầu dịch vụ hợp lệ trong ngày ${targetDateString}. Các giờ có thể đặt: ${currentWorkingHours.join(', ')}.`,
-        suggestedSlots: suggestedAlternativeSlots.map(s => ({ date: s.date, time: s.time, branch: s.branch }))
+    return {
+      isAvailable: false,
+      reason: `Thời gian ${targetTime} không phải là giờ bắt đầu dịch vụ hợp lệ trong ngày ${targetDateString}. Các giờ có thể đặt: ${currentWorkingHours.join(', ')}.`,
+      suggestedSlots: suggestedAlternativeSlots.map(s => ({ date: s.date, time: s.time, branch: s.branch }))
     };
   }
 
-  const appointmentStartDateTime = requestedStartDateTime; 
+  const appointmentStartDateTime = requestedStartDateTime;
   const appointmentEndDateTime = addMinutes(appointmentStartDateTime, effectiveServiceDuration);
 
   const existingAppointmentsOnDate = await AppointmentModel.find({
@@ -314,7 +325,7 @@ export async function checkRealAvailability(
     let exApptDuration = appSettings.defaultServiceDurationMinutes || 60;
     const exApptSpecificRule = appSettings.specificDayRules?.find(r => r.date === exAppt.date);
     if (exApptSpecificRule && exApptSpecificRule.serviceDurationMinutes) {
-        exApptDuration = exApptSpecificRule.serviceDurationMinutes;
+      exApptDuration = exApptSpecificRule.serviceDurationMinutes;
     }
 
     const exApptEnd = addMinutes(exApptStart, exApptDuration);
@@ -326,17 +337,17 @@ export async function checkRealAvailability(
 
   if (overlappingCount >= currentNumStaff) {
     const suggestedAlternativeSlots = await findNextAvailableSlots(
-        targetDateObj,
-        targetTime, 
-        appSettings,
-        // branchId,
-        effectiveServiceDuration,
-        async (dateStr: string /*, bId?: string */) => AppointmentModel.find({ date: dateStr, status: { $in: ['booked', 'pending_confirmation', 'rescheduled'] } /*, ...(bId && { branchId: bId }) */ }, 'date time service branchId').lean()
+      targetDateObj,
+      targetTime,
+      appSettings,
+      // branchId,
+      effectiveServiceDuration,
+      async (dateStr: string /*, bId?: string */) => AppointmentModel.find({ date: dateStr, status: { $in: ['booked', 'pending_confirmation', 'rescheduled'] } /*, ...(bId && { branchId: bId }) */ }, 'date time service branchId').lean()
     );
     return {
-        isAvailable: false,
-        reason: `Xin lỗi, đã đủ ${currentNumStaff} nhân viên bận vào lúc ${targetTime} ngày ${targetDateString}.`,
-        suggestedSlots: suggestedAlternativeSlots.map(s => ({ date: s.date, time: s.time, branch: s.branch }))
+      isAvailable: false,
+      reason: `Xin lỗi, đã đủ ${currentNumStaff} nhân viên bận vào lúc ${targetTime} ngày ${targetDateString}.`,
+      suggestedSlots: suggestedAlternativeSlots.map(s => ({ date: s.date, time: s.time, branch: s.branch }))
     };
   }
 
@@ -359,40 +370,40 @@ const scheduleAppointmentFlow = ai.defineFlow(
   async (input) => {
     let currentDateTime = input.currentDateTime;
     if (!input.currentDateTime) {
-        console.warn("CurrentDateTime is missing, using server's current time.");
-        currentDateTime = new Date().toISOString();
+      console.warn("CurrentDateTime is missing, using server's current time.");
+      currentDateTime = new Date().toISOString();
     }
-    
+
     const appSettings = await getAppSettings();
     if (!appSettings) {
-        return {
-            intent: 'error',
-            confirmationMessage: "Không thể tải cài đặt hệ thống để kiểm tra lịch. Vui lòng thử lại sau.",
-            requiresAssistance: true,
-        };
+      return {
+        intent: 'error',
+        confirmationMessage: "Không thể tải cài đặt hệ thống để kiểm tra lịch. Vui lòng thử lại sau.",
+        requiresAssistance: true,
+      };
     }
 
 
     const appointmentRulesFromDB = await getAppointmentRules();
     const appointmentRulesForAI: AppointmentRule[] = appointmentRulesFromDB.map(rule => ({
-        id: rule.id,
-        name: rule.name,
-        keywords: rule.keywords,
-        conditions: rule.conditions,
-        aiPromptInstructions: rule.aiPromptInstructions,
-        createdAt: rule.createdAt?.toISOString(),
-        updatedAt: rule.updatedAt?.toISOString(),
+      id: rule.id,
+      name: rule.name,
+      keywords: rule.keywords,
+      conditions: rule.conditions,
+      aiPromptInstructions: rule.aiPromptInstructions,
+      createdAt: rule.createdAt?.toISOString(),
+      updatedAt: rule.updatedAt?.toISOString(),
     }));
-    
+
     const activeBranches = await getBranches(true);
     const branchNamesForAI = activeBranches.map(b => b.name);
 
     let promptInputForNLU: ScheduleAppointmentInput = {
-        ...input, 
-        currentDateTime,
-        appointmentRules: appointmentRulesForAI.length > 0 ? appointmentRulesForAI : undefined,
-        availableBranches: branchNamesForAI.length > 0 ? branchNamesForAI : undefined,
-        availabilityCheckResult: undefined, 
+      ...input,
+      currentDateTime,
+      appointmentRules: appointmentRulesForAI.length > 0 ? appointmentRulesForAI : undefined,
+      availableBranches: branchNamesForAI.length > 0 ? branchNamesForAI : undefined,
+      availabilityCheckResult: undefined,
     };
     const { output: nluOutput } = await scheduleAppointmentPrompt(promptInputForNLU);
 
@@ -405,37 +416,37 @@ const scheduleAppointmentFlow = ai.defineFlow(
     }
 
     if ((nluOutput.intent === 'booked' || nluOutput.intent === 'rescheduled') &&
-        nluOutput.appointmentDetails?.date && nluOutput.appointmentDetails?.time &&
-        /^\d{4}-\d{2}-\d{2}$/.test(nluOutput.appointmentDetails.date) &&
-        /^[0-2][0-9]:[0-5][0-9]$/.test(nluOutput.appointmentDetails.time)
+      nluOutput.appointmentDetails?.date && nluOutput.appointmentDetails?.time &&
+      /^\d{4}-\d{2}-\d{2}$/.test(nluOutput.appointmentDetails.date) &&
+      /^[0-2][0-9]:[0-5][0-9]$/.test(nluOutput.appointmentDetails.time)
     ) {
-      const targetDate = dateFnsParseISO(nluOutput.appointmentDetails.date); 
-      const targetTime = nluOutput.appointmentDetails.time; 
+      const targetDate = dateFnsParseISO(nluOutput.appointmentDetails.date);
+      const targetTime = nluOutput.appointmentDetails.time;
       // const targetBranchName = nluOutput.appointmentDetails.branch; // Get branch name from NLU
       // const targetBranchId = activeBranches.find(b => b.name === targetBranchName)?.id;
 
 
       if (!isValidDate(targetDate)) {
         return {
-            intent: 'clarification_needed',
-            confirmationMessage: "Ngày bạn cung cấp không hợp lệ. Vui lòng kiểm tra lại (YYYY-MM-DD).",
-            missingInformation: "ngày hợp lệ",
+          intent: 'clarification_needed',
+          confirmationMessage: "Ngày bạn cung cấp không hợp lệ. Vui lòng kiểm tra lại (YYYY-MM-DD).",
+          missingInformation: "ngày hợp lệ",
         };
       }
-      
+
       // Pass targetBranchId to checkRealAvailability if branch-specific capacity is implemented
       const availability = await checkRealAvailability(targetDate, targetTime, appSettings, /* targetBranchId, */ undefined);
 
       if (availability.isAvailable) {
         const promptInputForFinalConfirmation: ScheduleAppointmentInput = {
-          ...input, 
-          userInput: "Hệ thống đã xác nhận lịch hẹn. Hãy tạo tin nhắn xác nhận cuối cùng cho người dùng.", 
+          ...input,
+          userInput: "Hệ thống đã xác nhận lịch hẹn. Hãy tạo tin nhắn xác nhận cuối cùng cho người dùng.",
           currentDateTime,
           appointmentRules: appointmentRulesForAI.length > 0 ? appointmentRulesForAI : undefined,
           availableBranches: branchNamesForAI.length > 0 ? branchNamesForAI : undefined,
           availabilityCheckResult: {
             status: "AVAILABLE",
-            confirmedSlot: { 
+            confirmedSlot: {
               date: nluOutput.appointmentDetails.date,
               time: nluOutput.appointmentDetails.time,
               service: nluOutput.appointmentDetails.service,
@@ -444,16 +455,16 @@ const scheduleAppointmentFlow = ai.defineFlow(
             isStatusUnavailable: false,
           },
         };
-        const {output: finalConfirmationOutput} = await scheduleAppointmentPrompt(promptInputForFinalConfirmation);
+        const { output: finalConfirmationOutput } = await scheduleAppointmentPrompt(promptInputForFinalConfirmation);
 
         if (!finalConfirmationOutput) {
-             return { intent: 'error', confirmationMessage: "Lỗi tạo tin nhắn xác nhận lịch hẹn.", requiresAssistance: true };
+          return { intent: 'error', confirmationMessage: "Lỗi tạo tin nhắn xác nhận lịch hẹn.", requiresAssistance: true };
         }
         return {
-          ...finalConfirmationOutput, 
-          appointmentDetails: { 
+          ...finalConfirmationOutput,
+          appointmentDetails: {
             ...nluOutput.appointmentDetails,
-            status: 'booked', 
+            status: 'booked',
             // branchId: targetBranchId // Add branchId to the final details
           },
           originalAppointmentIdToModify: nluOutput.originalAppointmentIdToModify,
@@ -461,8 +472,8 @@ const scheduleAppointmentFlow = ai.defineFlow(
 
       } else {
         const promptInputForAlternatives: ScheduleAppointmentInput = {
-          ...input, 
-          userInput: "Lịch yêu cầu không trống. Hãy thông báo cho người dùng và đề xuất các khung giờ sau từ suggestedSlots.", 
+          ...input,
+          userInput: "Lịch yêu cầu không trống. Hãy thông báo cho người dùng và đề xuất các khung giờ sau từ suggestedSlots.",
           currentDateTime,
           appointmentRules: appointmentRulesForAI.length > 0 ? appointmentRulesForAI : undefined,
           availableBranches: branchNamesForAI.length > 0 ? branchNamesForAI : undefined,
@@ -473,60 +484,60 @@ const scheduleAppointmentFlow = ai.defineFlow(
             isStatusUnavailable: true,
           }
         };
-         const {output: alternativeOutput} = await scheduleAppointmentPrompt(promptInputForAlternatives);
-         if (!alternativeOutput) {
-             return { intent: 'error', confirmationMessage: "Lỗi khi gợi ý lịch hẹn thay thế.", requiresAssistance: true };
-         }
+        const { output: alternativeOutput } = await scheduleAppointmentPrompt(promptInputForAlternatives);
+        if (!alternativeOutput) {
+          return { intent: 'error', confirmationMessage: "Lỗi khi gợi ý lịch hẹn thay thế.", requiresAssistance: true };
+        }
         return {
-            ...alternativeOutput,
-            suggestedSlots: availability.suggestedSlots || alternativeOutput.suggestedSlots || [],
+          ...alternativeOutput,
+          suggestedSlots: availability.suggestedSlots || alternativeOutput.suggestedSlots || [],
         };
       }
     } else if (nluOutput.intent === 'cancelled' || nluOutput.intent === 'clarification_needed' || nluOutput.intent === 'no_action_needed' || nluOutput.intent === 'error') {
-         if (nluOutput.intent === 'cancelled' && !nluOutput.originalAppointmentIdToModify && (input.existingAppointments?.length ?? 0) > 0) {
-            if ((input.existingAppointments?.length ?? 0) > 1) {
-                return {
-                    intent: 'clarification_needed',
-                    confirmationMessage: "Bạn có nhiều lịch hẹn. Bạn muốn hủy lịch hẹn nào cụ thể? (Vui lòng cung cấp ID hoặc mô tả chi tiết).",
-                    missingInformation: "lịch hẹn cụ thể cần hủy",
-                };
-            } else if (input.existingAppointments?.length === 1) {
-                 nluOutput.originalAppointmentIdToModify = input.existingAppointments[0].appointmentId;
-            }
-        }
-        if (nluOutput.intent === 'pending_alternatives' && nluOutput.suggestedSlots) {
-            for (const slot of nluOutput.suggestedSlots) {
-                if (!/^\d{4}-\d{2}-\d{2}$/.test(slot.date) || !/^[0-2][0-9]:[0-5][0-9]$/.test(slot.time)) {
-                    try {
-                        const parsedTime = Date.parse(`1970/01/01 ${slot.time}`); 
-                        if (!isNaN(parsedTime)) {
-                            slot.time = dateFnsFormat(new Date(parsedTime), "HH:mm"); 
-                        } else {
-                             console.warn("AI suggested invalid time format in initial NLU, requesting clarification:", slot);
-                             return {
-                                intent: 'clarification_needed',
-                                confirmationMessage: "Định dạng giờ gợi ý không hợp lệ. Bạn có thể cung cấp lại giờ mong muốn (HH:MM)?",
-                                missingInformation: "giờ hợp lệ (HH:MM)",
-                             };
-                        }
-                    } catch (e) {
-                        console.warn("AI suggested invalid time format in initial NLU, requesting clarification:", slot);
-                        return {
-                            intent: 'clarification_needed',
-                            confirmationMessage: "Định dạng giờ gợi ý không hợp lệ. Bạn có thể cung cấp lại giờ mong muốn (HH:MM)?",
-                            missingInformation: "giờ hợp lệ (HH:MM)",
-                        };
-                    }
-                }
-            }
-        }
-        return nluOutput; 
-    } else {
-         return {
+      if (nluOutput.intent === 'cancelled' && !nluOutput.originalAppointmentIdToModify && (input.existingAppointments?.length ?? 0) > 0) {
+        if ((input.existingAppointments?.length ?? 0) > 1) {
+          return {
             intent: 'clarification_needed',
-            confirmationMessage: "Tôi chưa hiểu rõ yêu cầu đặt lịch của bạn. Bạn muốn đặt dịch vụ nào, vào ngày giờ nào?",
-            missingInformation: "dịch vụ, ngày, giờ",
-         };
+            confirmationMessage: "Bạn có nhiều lịch hẹn. Bạn muốn hủy lịch hẹn nào cụ thể? (Vui lòng cung cấp ID hoặc mô tả chi tiết).",
+            missingInformation: "lịch hẹn cụ thể cần hủy",
+          };
+        } else if (input.existingAppointments?.length === 1) {
+          nluOutput.originalAppointmentIdToModify = input.existingAppointments[0].appointmentId;
+        }
+      }
+      if (nluOutput.intent === 'pending_alternatives' && nluOutput.suggestedSlots) {
+        for (const slot of nluOutput.suggestedSlots) {
+          if (!/^\d{4}-\d{2}-\d{2}$/.test(slot.date) || !/^[0-2][0-9]:[0-5][0-9]$/.test(slot.time)) {
+            try {
+              const parsedTime = Date.parse(`1970/01/01 ${slot.time}`);
+              if (!isNaN(parsedTime)) {
+                slot.time = dateFnsFormat(new Date(parsedTime), "HH:mm");
+              } else {
+                console.warn("AI suggested invalid time format in initial NLU, requesting clarification:", slot);
+                return {
+                  intent: 'clarification_needed',
+                  confirmationMessage: "Định dạng giờ gợi ý không hợp lệ. Bạn có thể cung cấp lại giờ mong muốn (HH:MM)?",
+                  missingInformation: "giờ hợp lệ (HH:MM)",
+                };
+              }
+            } catch (e) {
+              console.warn("AI suggested invalid time format in initial NLU, requesting clarification:", slot);
+              return {
+                intent: 'clarification_needed',
+                confirmationMessage: "Định dạng giờ gợi ý không hợp lệ. Bạn có thể cung cấp lại giờ mong muốn (HH:MM)?",
+                missingInformation: "giờ hợp lệ (HH:MM)",
+              };
+            }
+          }
+        }
+      }
+      return nluOutput;
+    } else {
+      return {
+        intent: 'clarification_needed',
+        confirmationMessage: "Tôi chưa hiểu rõ yêu cầu đặt lịch của bạn. Bạn muốn đặt dịch vụ nào, vào ngày giờ nào?",
+        missingInformation: "dịch vụ, ngày, giờ",
+      };
     }
   }
 );
