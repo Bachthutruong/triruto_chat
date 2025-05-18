@@ -6,9 +6,9 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import NextImage from 'next/image'; // Renamed to avoid conflict
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea'; // Changed Input to Textarea
-import { Send, Paperclip, X, FileText, Smile, CalendarPlus } from 'lucide-react'; 
+import { Send, Paperclip, X, FileText, Smile, CalendarPlus } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover'; 
+import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 
 type MessageInputFormProps = {
   onSubmit: (messageContent: string) => void;
@@ -16,7 +16,7 @@ type MessageInputFormProps = {
   onBookAppointmentClick?: () => void; // New prop
 };
 
-const MAX_FILE_SIZE_MB = 5; 
+const MAX_FILE_SIZE_MB = 5;
 const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
 const commonEmojis = ['😀', '😂', '😍', '😊', '👍', '🙏', '❤️', '🎉'];
 
@@ -56,15 +56,15 @@ export function MessageInputForm({ onSubmit, isLoading, onBookAppointmentClick }
       if (textareaRef.current) { // Reset height after sending
         textareaRef.current.style.height = 'auto';
       }
-    } else if (stagedFile && !contentToSend) { 
-       const fileNameEncoded = encodeURIComponent(stagedFile.name);
-       const dataUriWithFileName = `${stagedFile.dataUri}#filename=${fileNameEncoded}`;
-       onSubmit(dataUriWithFileName);
-       setMessage('');
-       setStagedFile(null);
-        if (textareaRef.current) {
-            textareaRef.current.style.height = 'auto';
-        }
+    } else if (stagedFile && !contentToSend) {
+      const fileNameEncoded = encodeURIComponent(stagedFile.name);
+      const dataUriWithFileName = `${stagedFile.dataUri}#filename=${fileNameEncoded}`;
+      onSubmit(dataUriWithFileName);
+      setMessage('');
+      setStagedFile(null);
+      if (textareaRef.current) {
+        textareaRef.current.style.height = 'auto';
+      }
     }
   };
 
@@ -77,7 +77,7 @@ export function MessageInputForm({ onSubmit, isLoading, onBookAppointmentClick }
           description: `Kích thước tệp không được vượt quá ${MAX_FILE_SIZE_MB}MB.`,
           variant: "destructive",
         });
-        if(fileInputRef.current) fileInputRef.current.value = ""; 
+        if (fileInputRef.current) fileInputRef.current.value = "";
         return;
       }
 
@@ -90,7 +90,7 @@ export function MessageInputForm({ onSubmit, isLoading, onBookAppointmentClick }
             type: file.type,
           });
         }
-         if(fileInputRef.current) fileInputRef.current.value = ""; 
+        if (fileInputRef.current) fileInputRef.current.value = "";
       };
       reader.onerror = () => {
         toast({
@@ -98,7 +98,7 @@ export function MessageInputForm({ onSubmit, isLoading, onBookAppointmentClick }
           description: "Không thể đọc tệp đã chọn. Vui lòng thử lại.",
           variant: "destructive",
         });
-         if(fileInputRef.current) fileInputRef.current.value = "";
+        if (fileInputRef.current) fileInputRef.current.value = "";
       };
       reader.readAsDataURL(file);
     }
@@ -130,12 +130,12 @@ export function MessageInputForm({ onSubmit, isLoading, onBookAppointmentClick }
         <div className="p-2 border-t flex items-center justify-between bg-muted/50 text-sm">
           <div className="flex items-center gap-2 overflow-hidden">
             {stagedFile.type.startsWith('image/') ? (
-              <NextImage 
-                src={stagedFile.dataUri} 
-                alt={stagedFile.name} 
-                width={24} 
-                height={24} 
-                className="rounded object-cover flex-shrink-0" 
+              <NextImage
+                src={stagedFile.dataUri}
+                alt={stagedFile.name}
+                width={24}
+                height={24}
+                className="rounded object-cover flex-shrink-0"
                 data-ai-hint="file preview"
               />
             ) : (
@@ -181,7 +181,7 @@ export function MessageInputForm({ onSubmit, isLoading, onBookAppointmentClick }
             </div>
           </PopoverContent>
         </Popover>
-         {onBookAppointmentClick && (
+        {onBookAppointmentClick && (
           <Button type="button" variant="ghost" size="icon" onClick={onBookAppointmentClick} disabled={isLoading} aria-label="Đặt lịch hẹn">
             <CalendarPlus className="h-5 w-5" />
           </Button>
@@ -206,4 +206,3 @@ export function MessageInputForm({ onSubmit, isLoading, onBookAppointmentClick }
   );
 }
 
-    
