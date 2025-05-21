@@ -5,6 +5,7 @@ import './globals.css';
 import { Toaster } from "@/components/ui/toaster";
 import { Analytics } from '@vercel/analytics/react';
 import { AppSettingsProvider } from '@/contexts/AppSettingsContext';
+import { SocketProvider } from '@/contexts/SocketContext'; // Import SocketProvider
 import { getAppSettings } from './actions';
 
 const interFont = Inter({
@@ -46,9 +47,11 @@ export default async function RootLayout({
   return (
     <html lang="vi">
       <body className={`${interFont.variable} ${robotoMonoFont.variable} font-sans antialiased`}>
-        <AppSettingsProvider settings={appSettings}>
-          {children}
-        </AppSettingsProvider>
+        <SocketProvider> {/* SocketProvider should wrap AppSettingsProvider and children */}
+          <AppSettingsProvider settings={appSettings}>
+            {children}
+          </AppSettingsProvider>
+        </SocketProvider>
         <Toaster />
         <Analytics />
       </body>
