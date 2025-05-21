@@ -10,8 +10,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Send, Paperclip, Smile, UserCircle, Edit2, Tag, Clock, Phone, Info, X, StickyNote, PlusCircle, Trash2, UserPlus, LogOutIcon, UserCheck, Users, Pin, PinOff, Edit, Image as ImageIcon, ExternalLink, FileText, Download } from 'lucide-react';
-import type { CustomerProfile, Message, AppointmentDetails, UserSession, Note, MessageEditState, Conversation } from '@/lib/types';
+import { Send, Paperclip, Smile, UserCircle, Edit2, Tag, Clock, Phone, Info, X, StickyNote, PlusCircle, Trash2, UserPlus, LogOutIcon, UserCheck, Users, Pin, PinOff, Edit, Image as ImageIcon, ExternalLink, FileText, Download, Zap } from 'lucide-react';
+import type { CustomerProfile, Message, AppointmentDetails, UserSession, Note, MessageEditState, Conversation, QuickReplyType } from '@/lib/types';
 import { 
   getCustomerDetails, 
   sendStaffMessage, 
@@ -24,13 +24,14 @@ import {
   deleteCustomerNote, 
   updateCustomerNote,
   getStaffList,
+  pinMessageToConversation,
+  unpinMessageFromConversation,
   getMessagesByIds,
   markCustomerInteractionAsReadByStaff,
   deleteStaffMessage,
   editStaffMessage,
-  getConversationHistory, // For polling
-  pinMessageToConversation,
-  unpinMessageFromConversation
+  getConversationHistory, 
+  getQuickReplies // Added
 } from '@/app/actions';
 import { Textarea } from '@/components/ui/textarea'; 
 import { useToast } from '@/hooks/use-toast';
@@ -43,6 +44,7 @@ import { ChatWindow } from '@/components/chat/ChatWindow';
 import { Label } from '@/components/ui/label';
 import Link from 'next/link'; 
 import { Loader2 } from 'lucide-react';
+import { useSocket } from '@/contexts/SocketContext'; // Added for Socket.IO
 
 const MAX_FILE_SIZE_MB = 5;
 const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
@@ -62,13 +64,14 @@ export default function StaffIndividualChatPage() {
   const params = useParams();
   const customerId = params.customerId as string;
   const { toast } = useToast();
+  const socket = useSocket(); // Added for Socket.IO
 
   const [customer, setCustomer] = useState<CustomerProfile | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
-  const [pinnedMessages, setPinnedMessages] = useState<Message[]>([]); // For display in ChatWindow
+  const [pinnedMessages, setPinnedMessages] = useState<Message[]>([]); 
   const [appointments, setAppointments] = useState<AppointmentDetails[]>([]);
   const [notes, setNotes] = useState<Note[]>([]);
-  const [conversations, setConversations] = useState<Conversation[]>([]); // List of conversations for this customer
+  const [conversations, setConversations] = useState<Conversation[]>([]); 
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
 
   const [isLoading, setIsLoading] = useState(true);
@@ -90,25 +93,35 @@ export default function StaffIndividualChatPage() {
   const [stagedEditFile, setStagedEditFile] = useState<{ dataUri: string; name: string; type: string } | null>(null);
   const [editTextContent, setEditTextContent] = useState('');
   const editFileInputRef = useRef<HTMLInputElement>(null);
+  
+  const [quickReplies, setQuickReplies] = useState<QuickReplyType[]>([]); // For quick replies
+  const [typingUsers, setTypingUsers] = useState<Record<string, string>>({}); // For typing indicators
+  const usersTypingMapRef = useRef<Record<string, string>>({});
+  const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   const fetchChatData = useCallback(async () => {
-    if (customerId && staffSession) { // Ensure staffSession is available
+    if (customerId && staffSession) { 
       setIsLoading(true);
       try {
+        const [details, fetchedQuickReplies] = await Promise.all([
+          getCustomerDetails(customerId),
+          getQuickReplies()
+        ]);
+        
         const { 
           customer: fetchedCustomer, 
           messages: fetchedMessages, 
           appointments: fetchedAppointments, 
           notes: fetchedNotes,
           conversations: fetchedConversations 
-        } = await getCustomerDetails(customerId);
+        } = details;
         
         setCustomer(fetchedCustomer);
         setAppointments(fetchedAppointments || []);
         setNotes(fetchedNotes || []);
         setConversations(fetchedConversations || []);
+        setQuickReplies(fetchedQuickReplies || []);
 
         if (fetchedCustomer?.internalName) {
           setInternalNameInput(fetchedCustomer.internalName);
@@ -116,14 +129,11 @@ export default function StaffIndividualChatPage() {
           setInternalNameInput(''); 
         }
 
-        // Determine active conversation and load its messages
         const currentActiveConvId = fetchedConversations && fetchedConversations.length > 0 ? fetchedConversations[0].id : null;
         setActiveConversationId(currentActiveConvId);
 
         if (currentActiveConvId) {
-          setMessages(fetchedMessages || []); // messages from getCustomerDetails are for the primary/active conversation
-           // Assuming getCustomerDetails returns pinned messages for the active conversation or we fetch them separately.
-           // For now, let's filter from all messages of the active conversation.
+          setMessages(fetchedMessages || []); 
           const activeConvPinnedIds = fetchedConversations[0].pinnedMessageIds || [];
           if (activeConvPinnedIds.length > 0) {
             const fetchedPinned = await getMessagesByIds(activeConvPinnedIds);
@@ -136,7 +146,6 @@ export default function StaffIndividualChatPage() {
           setPinnedMessages([]);
         }
 
-
         if (fetchedCustomer && fetchedCustomer.interactionStatus === 'unread') {
           await markCustomerInteractionAsReadByStaff(customerId, staffSession.id);
           setCustomer(prev => prev ? {...prev, interactionStatus: 'read'} : null);
@@ -145,17 +154,15 @@ export default function StaffIndividualChatPage() {
       } catch (error) {
         console.error("Không thể tải chi tiết khách hàng:", error);
         toast({ title: "Lỗi", description: "Không thể tải chi tiết khách hàng.", variant: "destructive" });
-        setCustomer(null); // Reset customer on error
+        setCustomer(null); 
         setMessages([]);
         setPinnedMessages([]);
         setActiveConversationId(null);
       } finally {
         setIsLoading(false);
       }
-    } else if (!staffSession && !isLoading) { // Only log if not already loading and session is missing
-        // console.log("Staff session not yet available for fetchChatData");
     }
-  }, [customerId, toast, staffSession]); // Added staffSession as dependency
+  }, [customerId, toast, staffSession]); 
 
   useEffect(() => {
     const sessionString = sessionStorage.getItem('aetherChatUserSession');
@@ -179,48 +186,63 @@ export default function StaffIndividualChatPage() {
 
   useEffect(() => {
     fetchChatData();
-  }, [fetchChatData]); // fetchChatData is memoized and depends on customerId and staffSession
+  }, [fetchChatData]); 
 
-  // Polling for new messages
+  // Socket.IO Effects
   useEffect(() => {
-    if (pollingIntervalRef.current) {
-      clearInterval(pollingIntervalRef.current);
-    }
+    if (!socket || !activeConversationId || !staffSession) return;
 
-    if (staffSession && activeConversationId && customerId) { // Ensure customerId also, to tie polling to current view
-      const pollMessages = async () => {
-        try {
-          // console.log(`Polling messages for staff view, conv ${activeConversationId}`);
-          const newMessages = await getConversationHistory(activeConversationId);
-          setMessages(prevMessages => {
-            if (JSON.stringify(newMessages) !== JSON.stringify(prevMessages)) {
-              return newMessages;
+    console.log(`Staff/Admin joining room: ${activeConversationId}`);
+    socket.emit('joinRoom', activeConversationId);
+
+    const handleNewMessage = (newMessage: Message) => {
+      console.log('Staff/Admin received new message:', newMessage);
+      if (newMessage.conversationId === activeConversationId && newMessage.userId !== staffSession.id) {
+        setMessages(prev => [...prev, newMessage]);
+         // Update pinned messages if the new message is pinned or unpins another
+        if (newMessage.isPinned) {
+            setPinnedMessages(prevPinned => [...prevPinned.filter(pm => pm.id !== newMessage.id), newMessage].slice(-3));
+        } else {
+            // If a message was unpinned, we need to refetch or re-filter
+            const currentConv = conversations.find(c => c.id === activeConversationId);
+            if (currentConv?.pinnedMessageIds) {
+                getMessagesByIds(currentConv.pinnedMessageIds).then(newlyPinned => {
+                    setPinnedMessages(newlyPinned.map(m => ({...m, isPinned: true})));
+                });
+            } else {
+                setPinnedMessages([]);
             }
-            return prevMessages;
-          });
-          // Potentially re-fetch pinned messages if their logic is separate or complex
-          const currentConversation = conversations.find(c => c.id === activeConversationId);
-          if (currentConversation?.pinnedMessageIds && currentConversation.pinnedMessageIds.length > 0) {
-            const newPinned = await getMessagesByIds(currentConversation.pinnedMessageIds);
-            setPinnedMessages(newPinned.map(m => ({...m, isPinned: true})));
-          } else {
-            setPinnedMessages([]);
-          }
-
-        } catch (err) {
-          console.error(`Error polling messages for conv ${activeConversationId}:`, err);
         }
-      };
-      // Initial fetch is handled by fetchChatData, so interval starts immediately
-      pollingIntervalRef.current = setInterval(pollMessages, 5000); // Poll every 5 seconds
-    }
-
-    return () => {
-      if (pollingIntervalRef.current) {
-        clearInterval(pollingIntervalRef.current);
       }
     };
-  }, [staffSession, activeConversationId, customerId, conversations, getConversationHistory, getMessagesByIds]);
+    
+    const handleUserTyping = ({ userId, userName, conversationId: incomingConvId }: { userId: string, userName: string, conversationId: string }) => {
+      if (incomingConvId === activeConversationId && userId !== socket.id) {
+        usersTypingMapRef.current[userId] = userName;
+        setTypingUsers({ ...usersTypingMapRef.current });
+      }
+    };
+
+    const handleUserStopTyping = ({ userId, conversationId: incomingConvId }: { userId: string, conversationId: string }) => {
+      if (incomingConvId === activeConversationId && userId !== socket.id) {
+        delete usersTypingMapRef.current[userId];
+        setTypingUsers({ ...usersTypingMapRef.current });
+      }
+    };
+
+
+    socket.on('newMessage', handleNewMessage);
+    socket.on('userTyping', handleUserTyping);
+    socket.on('userStopTyping', handleUserStopTyping);
+
+    return () => {
+      console.log(`Staff/Admin leaving room: ${activeConversationId}`);
+      socket.emit('leaveRoom', activeConversationId);
+      socket.off('newMessage', handleNewMessage);
+      socket.off('userTyping', handleUserTyping);
+      socket.off('userStopTyping', handleUserStopTyping);
+    };
+  }, [socket, activeConversationId, staffSession, conversations]);
 
 
   const handleSendMessage = async (messageContent: string) => {
@@ -232,12 +254,29 @@ export default function StaffIndividualChatPage() {
     try {
       const sentMessage = await sendStaffMessage(staffSession, customer.id, activeConversationId, messageContent);
       setMessages(prev => [...prev, sentMessage]);
-      // Update customer's last interaction details locally for immediate UI feedback
       setCustomer(prev => prev ? { ...prev, interactionStatus: 'replied_by_staff', lastMessagePreview: messageContent.substring(0,100), lastMessageTimestamp: new Date() } : null);
+      
+      if (socket) {
+        socket.emit('sendMessage', { message: sentMessage, conversationId: activeConversationId });
+        socket.emit('stopTyping', { conversationId: activeConversationId, userId: socket.id });
+      }
     } catch (error: any) {
       toast({ title: "Lỗi gửi tin nhắn", description: error.message, variant: "destructive"});
     } finally {
       setIsSendingMessage(false);
+    }
+  };
+
+  const handleTyping = (isTyping: boolean) => {
+    if (!socket || !activeConversationId || !staffSession) return;
+    if (isTyping) {
+      socket.emit('typing', { conversationId: activeConversationId, userName: staffSession.name || 'Nhân viên' });
+      if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+    } else {
+      if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+      typingTimeoutRef.current = setTimeout(() => {
+        socket.emit('stopTyping', { conversationId: activeConversationId, userId: socket.id });
+      }, 1500); // Delay before emitting stopTyping
     }
   };
 
@@ -265,7 +304,7 @@ export default function StaffIndividualChatPage() {
   };
 
   const handleSaveEditedMessage = async () => {
-    if (!messageEditState || !staffSession) return;
+    if (!messageEditState || !staffSession || !activeConversationId) return;
     setIsSendingMessage(true); 
     
     let finalContent = editTextContent.trim();
@@ -288,6 +327,9 @@ export default function StaffIndividualChatPage() {
       if (updatedMessage) {
         setMessages(prev => prev.map(m => m.id === updatedMessage.id ? updatedMessage : m));
         setPinnedMessages(prev => prev.map(pm => pm.id === updatedMessage.id ? updatedMessage : pm));
+        if (socket) {
+          socket.emit('sendMessage', { message: updatedMessage, conversationId: activeConversationId, isEdit: true });
+        }
         toast({ title: "Thành công", description: "Đã sửa tin nhắn." });
       }
       setMessageEditState(null);
@@ -328,8 +370,10 @@ export default function StaffIndividualChatPage() {
       if (result.success) {
         setMessages(prev => prev.filter(m => m.id !== messageId));
         setPinnedMessages(prev => prev.filter(pm => pm.id !== messageId));
+        if (socket) {
+          socket.emit('deleteMessage', { messageId, conversationId: activeConversationId });
+        }
         toast({ title: "Thành công", description: "Đã xóa tin nhắn." });
-        // If the deleted message was the last preview, refetch customer details or manually update
         if (result.conversationId === activeConversationId && customer?.lastMessagePreview && messages.find(m=>m.id === messageId)?.content.startsWith(customer.lastMessagePreview)) {
             fetchChatData(); 
         }
@@ -353,6 +397,9 @@ export default function StaffIndividualChatPage() {
           });
         }
         setMessages(prev => prev.map(m => m.id === messageId ? {...m, isPinned: true} : m));
+        if (socket) {
+           socket.emit('pinMessage', { messageId, conversationId: activeConversationId, isPinned: true });
+        }
         toast({title: "Thành công", description: "Đã ghim tin nhắn."});
       }
     } catch (error: any) {
@@ -368,6 +415,9 @@ export default function StaffIndividualChatPage() {
         setConversations(prev => prev.map(c => c.id === activeConversationId ? updatedConversation : c));
         setPinnedMessages(prev => prev.filter(m => m.id !== messageId));
         setMessages(prev => prev.map(m => m.id === messageId ? {...m, isPinned: false} : m));
+        if (socket) {
+           socket.emit('unpinMessage', { messageId, conversationId: activeConversationId, isPinned: false });
+        }
         toast({title: "Thành công", description: "Đã bỏ ghim tin nhắn."});
       }
     } catch (error: any) {
@@ -425,7 +475,7 @@ export default function StaffIndividualChatPage() {
   const handleAddTag = async () => {
     if (!customer || !newTagName.trim() || !staffSession) return;
     if (newTagName.toLowerCase().startsWith("admin:") && staffSession.role !== 'admin') {
-       toast({title: "Thông báo", description: "Chỉ Admin mới có thể mời Admin khác bằng tag."}); // Corrected logic for admin tag
+       toast({title: "Thông báo", description: "Chỉ Admin mới có thể mời Admin khác bằng tag."}); 
        return;
     }
 
@@ -516,10 +566,10 @@ export default function StaffIndividualChatPage() {
     return <div className="flex items-center justify-center h-full"><p>Không tìm thấy phiên làm việc. Vui lòng đăng nhập lại.</p></div>;
   }
   if (!customer) {
-    return <div className="flex items-center justify-center h-full"><p>Không tìm thấy thông tin khách hàng.</p></div>;
+    return <div className="flex flex-col items-center justify-center h-full"><Loader2 className="h-8 w-8 animate-spin text-primary mb-2" /><p>Đang tải thông tin khách hàng...</p><p className="text-xs text-muted-foreground">Nếu lỗi tiếp diễn, vui lòng chọn lại khách hàng từ danh sách.</p></div>;
   }
   if (!activeConversationId) {
-     return <div className="flex items-center justify-center h-full"><p>Không tìm thấy cuộc trò chuyện cho khách hàng này.</p></div>;
+     return <div className="flex flex-col items-center justify-center h-full"><Loader2 className="h-8 w-8 animate-spin text-primary mb-2" /><p>Đang tải cuộc trò chuyện cho khách hàng này...</p></div>;
   }
 
 
@@ -539,7 +589,7 @@ export default function StaffIndividualChatPage() {
         <CardHeader className="flex flex-row items-center justify-between border-b p-4">
           <div className="flex items-center gap-3">
             <Avatar>
-              <AvatarImage src={`https://picsum.photos/seed/${customer.id}/40/40`} data-ai-hint="profile avatar"/>
+              <AvatarImage src={`https://placehold.co/40x40.png`} data-ai-hint="profile avatar"/>
               <AvatarFallback>{(customer.name || customer.phoneNumber).charAt(0)}</AvatarFallback>
             </Avatar>
             <div>
@@ -582,6 +632,9 @@ export default function StaffIndividualChatPage() {
           onDeleteMessage={handleDeleteMessage}
           onEditMessage={handleEditMessage}
           currentStaffSessionId={staffSession.id}
+          quickReplies={quickReplies} // Pass quick replies
+          typingUsers={typingUsers} // Pass typing users
+          onTyping={handleTyping} // Pass typing handler
         />
       </Card>
 
@@ -795,4 +848,3 @@ export default function StaffIndividualChatPage() {
     </div>
   );
 }
-

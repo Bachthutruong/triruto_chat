@@ -128,7 +128,7 @@ export type AppointmentRule = {
 };
 
 export type SpecificDayRule = {
-  id: string;
+  id?: string; // Optional for client-side temporary ID before saving
   date: string; // "YYYY-MM-DD"
   isOff?: boolean;
   workingHours?: string[]; // ["HH:MM", "HH:MM"]
@@ -163,8 +163,8 @@ export type AppSettings = {
   updatedAt?: Date;
 };
 
-export type BranchSpecificDayRule = { // Simplified for now, can be expanded
-  id: string;
+export type BranchSpecificDayRule = {
+  id?: string; // Optional for client-side temporary ID
   date: string; // "YYYY-MM-DD"
   isOff?: boolean;
   workingHours?: string[]; // If different from branch's main workingHours
@@ -277,4 +277,12 @@ export type AppointmentBookingFormData = {
   branch?: string; // Branch name
   branchId?: string; // Branch ID
   notes?: string;
+};
+
+export type QuickReplyType = {
+  id: string;
+  title: string;
+  content: string;
+  createdAt: Date;
+  updatedAt: Date;
 };

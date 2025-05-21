@@ -1,7 +1,8 @@
+
 // src/app/actions.ts
 'use server';
 
-import type { Message, UserSession, AppointmentDetails, Product, Note, CustomerProfile, UserRole, KeywordMapping, TrainingData, TrainingDataStatus, AppSettings, GetAppointmentsFilters, AdminDashboardStats, StaffDashboardStats, ProductItem, Reminder, ReminderStatus, ReminderPriority, SpecificDayRule, CustomerInteractionStatus, Conversation, AppointmentBookingFormData, Branch, BranchSpecificDayRule } from '@/lib/types';
+import type { Message, UserSession, AppointmentDetails, Product, Note, CustomerProfile, UserRole, KeywordMapping, TrainingData, TrainingDataStatus, AppSettings, GetAppointmentsFilters, AdminDashboardStats, StaffDashboardStats, ProductItem, Reminder, ReminderStatus, ReminderPriority, SpecificDayRule, CustomerInteractionStatus, Conversation, AppointmentBookingFormData, Branch, BranchSpecificDayRule, QuickReplyType } from '@/lib/types';
 import type { AppointmentRule as LibAppointmentRuleType, Conversation as LibConversationType } from '@/lib/types'; // Aliased for clarity
 import { answerUserQuestion } from '@/ai/flows/answer-user-question';
 import { generateSuggestedReplies } from '@/ai/flows/generate-suggested-replies';
@@ -44,8 +45,7 @@ import ProductModel from '@/models/Product.model';
 import ReminderModel from '@/models/Reminder.model';
 import ConversationModel from '@/models/Conversation.model';
 import BranchModel from '@/models/Branch.model'; // Import BranchModel
-import type { IConversation } from '@/models/Conversation.model';
-
+import QuickReplyModel from '@/models/QuickReply.model'; // Import QuickReplyModel
 
 import type { IUser } from '@/models/User.model';
 import type { ICustomer } from '@/models/Customer.model';
@@ -59,6 +59,8 @@ import type { INote } from '@/models/Note.model';
 import type { IProduct } from '@/models/Product.model';
 import type { IReminder } from '@/models/Reminder.model';
 import type { IBranch } from '@/models/Branch.model'; // Import IBranch
+import type { IQuickReply } from '@/models/QuickReply.model'; // Import IQuickReply
+
 
 // Add this interface for type safety
 interface IMessageWithConversation extends IMessage {
@@ -305,8 +307,8 @@ export async function updateAppSettings(settings: Partial<Omit<AppSettings, 'id'
   const processedSettings = { ...settings };
   if (processedSettings.specificDayRules) {
     processedSettings.specificDayRules = processedSettings.specificDayRules.map(rule => {
-      const { id, ...restOfRule } = rule;
-      return restOfRule as any;
+      const { id, ...restOfRule } = rule; // Remove client-side ID
+      return restOfRule as any; // Cast to ensure Mongoose can process it without ID
     });
   }
 
@@ -378,14 +380,15 @@ export async function handleCustomerAccess(phoneNumber: string): Promise<{
     });
     await customer.save();
   } else {
-    if (!customer.conversationIds) customer.conversationIds = [];
-    if (!customer.appointmentIds) customer.appointmentIds = [];
-    if (!customer.productIds) customer.productIds = [];
-    if (!customer.noteIds) customer.noteIds = [];
-    if (!customer.pinnedMessageIds) customer.pinnedMessageIds = [];
-    if (!customer.messagePinningAllowedConversationIds) customer.messagePinningAllowedConversationIds = [];
-    if (!customer.pinnedConversationIds) customer.pinnedConversationIds = [];
-    if (!customer.tags) customer.tags = [];
+    // Initialize arrays if they are undefined
+    customer.conversationIds = customer.conversationIds || [];
+    customer.appointmentIds = customer.appointmentIds || [];
+    customer.productIds = customer.productIds || [];
+    customer.noteIds = customer.noteIds || [];
+    customer.pinnedMessageIds = customer.pinnedMessageIds || [];
+    customer.messagePinningAllowedConversationIds = customer.messagePinningAllowedConversationIds || [];
+    customer.pinnedConversationIds = customer.pinnedConversationIds || [];
+    customer.tags = customer.tags || [];
   }
 
   // For customers, always use/create ONE primary conversation.
@@ -422,7 +425,11 @@ export async function handleCustomerAccess(phoneNumber: string): Promise<{
   const customizableGreetingPart = appSettings?.greetingMessage || 'Tôi là trợ lý AI của bạn. Tôi có thể giúp gì cho bạn hôm nay? Bạn có thể hỏi về dịch vụ hoặc đặt lịch hẹn.';
   const finalGreetingMessage = `Chào mừng bạn đến với ${brandName}! ${customizableGreetingPart}`;
 
-  const configuredSuggestedQuestions = (initialMessages.length === 0 && appSettings?.suggestedQuestions) ? appSettings.suggestedQuestions : [];
+  let configuredSuggestedQuestions: string[] = [];
+  if (initialMessages.length <= 1 && appSettings?.suggestedQuestions && appSettings.suggestedQuestions.length > 0) {
+      configuredSuggestedQuestions = appSettings.suggestedQuestions;
+  }
+
 
   const welcomeMessageContent = initialMessages.length === 0
     ? finalGreetingMessage
@@ -516,16 +523,16 @@ export async function getConversationHistory(conversationId: string): Promise<Me
 }
 
 export async function getUserConversations(userId: string): Promise<Conversation[]> {
-  await dbConnect();
-  const customer = await CustomerModel.findById(userId).populate({
-    path: 'conversationIds',
-    model: ConversationModel,
-    options: { sort: { lastMessageTimestamp: -1 } }
-  });
-  if (!customer || !customer.conversationIds || customer.conversationIds.length === 0) {
-    return [];
-  }
-  return (customer.conversationIds as unknown as IConversation[]).map(transformConversationDoc).filter(Boolean) as Conversation[];
+    await dbConnect();
+    const customer = await CustomerModel.findById(userId).populate({
+        path: 'conversationIds',
+        model: ConversationModel, // Explicitly specify the model to populate
+        options: { sort: { lastMessageTimestamp: -1 } }
+    });
+    if (!customer || !customer.conversationIds || customer.conversationIds.length === 0) {
+        return [];
+    }
+    return (customer.conversationIds as unknown as IConversation[]).map(transformConversationDoc).filter(Boolean) as Conversation[];
 }
 
 export async function processUserMessage(
@@ -533,7 +540,7 @@ export async function processUserMessage(
   currentUserSession: UserSession,
   currentConversationId: string,
   currentChatHistory: Message[]
-): Promise<{ aiMessage: Message; newSuggestedReplies: string[]; updatedAppointment?: AppointmentDetails }> {
+): Promise<{ userMessage: Message, aiMessage: Message; newSuggestedReplies: string[]; updatedAppointment?: AppointmentDetails }> {
   await dbConnect();
 
   const customerId = currentUserSession.id;
@@ -716,7 +723,7 @@ export async function processUserMessage(
       const promptInputForClarification: ScheduleAppointmentInput = {
         ...{ userInput: textForAI, phoneNumber: currentUserSession.phoneNumber, userId: customerId, currentDateTime: new Date().toISOString() },
         userInput: `Ngày ${scheduleOutputFromAI.appointmentDetails.date} không hợp lệ. Yêu cầu người dùng cung cấp lại ngày.`,
-        availabilityCheckResult: { status: "NEEDS_CLARIFICATION", reason: "Ngày không hợp lệ." }
+        availabilityCheckResult: { status: "NEEDS_CLARIFICATION", reason: "Ngày không hợp lệ.", isStatusUnavailable: true }
       };
       const { output: clarificationOutput } = await scheduleAppointmentPrompt(promptInputForClarification);
       aiResponseContent = clarificationOutput?.confirmationMessage || "Ngày bạn cung cấp không hợp lệ. Vui lòng kiểm tra lại (YYYY-MM-DD).";
@@ -868,6 +875,7 @@ export async function processUserMessage(
           chatHistory: formattedHistory,
           mediaDataUri: mediaDataUriForAI,
           relevantTrainingData: relevantTrainingData.length > 0 ? relevantTrainingData : undefined,
+          products: productsForAI.length > 0 ? productsForAI : undefined,
         });
         aiResponseContent = answerResult.answer;
       } catch (error) {
@@ -884,7 +892,7 @@ export async function processUserMessage(
     const promptInputForClarification: ScheduleAppointmentInput = {
       ...{ userInput: textForAI, phoneNumber: currentUserSession.phoneNumber, userId: customerId, currentDateTime: new Date().toISOString() },
       userInput: `Người dùng nhập: "${textForAI}". Yêu cầu này chưa rõ ràng. Hãy hỏi thêm thông tin để đặt lịch.`,
-      availabilityCheckResult: { status: "NEEDS_CLARIFICATION", reason: "Yêu cầu chưa rõ ràng." }
+      availabilityCheckResult: { status: "NEEDS_CLARIFICATION", reason: "Yêu cầu chưa rõ ràng.", isStatusUnavailable: true }
     };
     const { output: clarificationOutput } = await scheduleAppointmentPrompt(promptInputForClarification);
     aiResponseContent = clarificationOutput?.confirmationMessage || "Tôi chưa hiểu rõ yêu cầu đặt lịch của bạn. Bạn muốn đặt dịch vụ nào, vào ngày giờ nào?";
@@ -915,14 +923,14 @@ export async function processUserMessage(
   });
 
 
-  const newSuggestedReplies: string[] = [];
+  const newSuggestedReplies: string[] = []; // No more auto-suggested replies after initial contact
 
   const updatedAppointmentClient = processedAppointmentDB ? transformAppointmentDocToDetails(processedAppointmentDB) : undefined;
   if (updatedAppointmentClient) {
     console.log("[ACTIONS] Returning updated/created appointment to client:", JSON.stringify(updatedAppointmentClient, null, 2));
   }
 
-  return { aiMessage: finalAiMessage, newSuggestedReplies, updatedAppointment: updatedAppointmentClient };
+  return { userMessage: userMessage, aiMessage: finalAiMessage, newSuggestedReplies, updatedAppointment: updatedAppointmentClient };
 }
 
 export async function handleBookAppointmentFromForm(formData: AppointmentBookingFormData): Promise<{
@@ -1063,14 +1071,14 @@ export async function markCustomerInteractionAsReadByStaff(customerId: string, s
 
 
 export async function getCustomerDetails(customerId: string): Promise<{ customer: CustomerProfile | null, messages: Message[], appointments: AppointmentDetails[], notes: Note[], conversations: Conversation[] }> {
-  await dbConnect();
-  const customerDoc = await CustomerModel.findById(customerId)
-    .populate<{ assignedStaffId: IUser }>('assignedStaffId', 'name')
-    .populate({
-      path: 'conversationIds',
-      model: ConversationModel,
-      options: { sort: { lastMessageTimestamp: -1 } }
-    });
+    await dbConnect();
+    const customerDoc = await CustomerModel.findById(customerId)
+      .populate<{ assignedStaffId: IUser }>('assignedStaffId', 'name')
+      .populate({
+          path: 'conversationIds',
+          model: ConversationModel, // Explicitly specify the model to populate
+          options: { sort: { lastMessageTimestamp: -1 } }
+      });
 
   if (!customerDoc) {
     return { customer: null, messages: [], appointments: [], notes: [], conversations: [] };
@@ -1360,13 +1368,13 @@ export async function sendStaffMessage(
 
 
   const staffMessageData: Partial<IMessage> = {
-    sender: 'ai',
+    sender: 'ai', // 'ai' indicates a message from the system/staff side in customer view
     content: messageContent,
     timestamp: new Date(),
     name: staffSession.name || (staffSession.role === 'admin' ? 'Admin' : 'Nhân viên'),
     customerId: (customer as any)._id,
     userId: new mongoose.Types.ObjectId(staffSession.id) as any,
-    // conversationId: conversation._id, // REMOVE this line, not valid for IMessage
+    // conversationId: conversation._id, // This should be implicitly linked, not directly on IMessage
   };
   const savedStaffMessageDoc = await new MessageModel(staffMessageData).save();
 
@@ -1406,22 +1414,33 @@ export async function editStaffMessage(
   message.updatedAt = new Date();
   await message.save();
 
-  if ((message as any).conversationId) {
-    const conversation = await ConversationModel.findById((message as any).conversationId);
-    //@ts-ignore
-    if (conversation && conversation.messageIds.includes(message._id) && conversation.messageIds[conversation.messageIds.length - 1]?.equals(message._id)) {
-      await ConversationModel.findByIdAndUpdate(conversation._id, {
-        lastMessagePreview: newContent.substring(0, 100),
-        lastMessageTimestamp: message.updatedAt,
-      });
-    }
+  // Find the conversation this message belongs to by looking for it in customer conversations
+  // This is less direct than if message had a conversationId, but necessary with current schema
+  const customer = await CustomerModel.findById(message.customerId).populate('conversationIds');
+  if (customer && customer.conversationIds) {
+      for (const conv of customer.conversationIds as unknown as IConversation[]) {
+          if (conv.messageIds.map(id => id.toString()).includes(message._id.toString())) {
+              if(conv.lastMessageTimestamp && conv.lastMessageTimestamp.getTime() === message.timestamp.getTime()){
+                 await ConversationModel.findByIdAndUpdate(conv._id, {
+                    lastMessagePreview: newContent.substring(0, 100),
+                    lastMessageTimestamp: message.updatedAt,
+                });
+              }
+              break;
+          }
+      }
   }
-  const customer = await CustomerModel.findById(message.customerId);
-  if (customer && customer.lastMessageTimestamp && message.updatedAt && customer.lastMessageTimestamp.getTime() === message.timestamp.getTime() && customer.conversationIds.some(convId => convId.toString() === (message as any).conversationId?.toString())) {
-    await CustomerModel.findByIdAndUpdate(customer._id, {
-      lastMessagePreview: newContent.substring(0, 100),
-      lastMessageTimestamp: message.updatedAt,
-    });
+  
+  if (customer && customer.lastMessageTimestamp && message.updatedAt && customer.lastMessageTimestamp.getTime() === message.timestamp.getTime()) {
+    // Check if this is the last message for the customer overall
+    const customerConversations = await ConversationModel.find({ customerId: customer._id });
+    const activeConv = customerConversations.find(c => c.messageIds.map(id=>id.toString()).includes(message._id.toString()));
+    if (activeConv && activeConv.messageIds[activeConv.messageIds.length-1].toString() === message._id.toString()){
+        await CustomerModel.findByIdAndUpdate(customer._id, {
+            lastMessagePreview: newContent.substring(0, 100),
+            lastMessageTimestamp: message.updatedAt,
+        });
+    }
   }
 
 
@@ -1443,30 +1462,41 @@ export async function deleteStaffMessage(
   }
 
   const customerIdString = message.customerId?.toString();
-  const conversationIdString = (message as any).conversationId?.toString();
+  let conversationIdString: string | undefined = undefined;
+
+  // Find the conversation containing this message
+  if (customerIdString) {
+      const customerConversations = await ConversationModel.find({ customerId: new mongoose.Types.ObjectId(customerIdString) as any });
+      for (const conv of customerConversations) {
+          if (conv.messageIds.map(id => id.toString()).includes(messageId)) {
+              conversationIdString = conv._id.toString();
+              await ConversationModel.findByIdAndUpdate(
+                  conversationIdString,
+                  { $pull: { messageIds: new mongoose.Types.ObjectId(messageId) as any } },
+                  { new: true }
+              );
+              // Update last message preview for the conversation
+              const updatedConv = await ConversationModel.findById(conversationIdString);
+              if (updatedConv && updatedConv.messageIds.length > 0) {
+                  const lastMessageInConv = await MessageModel.findById(updatedConv.messageIds[updatedConv.messageIds.length - 1]).sort({ timestamp: -1 });
+                  await ConversationModel.findByIdAndUpdate(conversationIdString, {
+                      lastMessagePreview: lastMessageInConv ? lastMessageInConv.content.substring(0, 100) : '',
+                      lastMessageTimestamp: lastMessageInConv ? lastMessageInConv.timestamp : updatedConv.createdAt,
+                  });
+              } else if (updatedConv) {
+                  await ConversationModel.findByIdAndUpdate(conversationIdString, {
+                      lastMessagePreview: '',
+                      lastMessageTimestamp: updatedConv.createdAt,
+                  });
+              }
+              break; 
+          }
+      }
+  }
 
   await MessageModel.findByIdAndDelete(messageId);
 
-  if (conversationIdString) {
-    const conversation = await ConversationModel.findByIdAndUpdate(
-      conversationIdString,
-      { $pull: { messageIds: new mongoose.Types.ObjectId(messageId) as any } },
-      { new: true }
-    );
-    if (conversation && conversation.messageIds.length > 0) {
-      const lastMessageInConv = await MessageModel.findById(conversation.messageIds[conversation.messageIds.length - 1]).sort({ timestamp: -1 });
-      await ConversationModel.findByIdAndUpdate(conversationIdString, {
-        lastMessagePreview: lastMessageInConv ? lastMessageInConv.content.substring(0, 100) : '',
-        lastMessageTimestamp: lastMessageInConv ? lastMessageInConv.timestamp : conversation.createdAt,
-      });
-    } else if (conversation) {
-      await ConversationModel.findByIdAndUpdate(conversationIdString, {
-        lastMessagePreview: '',
-        lastMessageTimestamp: conversation.createdAt,
-      });
-    }
-  }
-
+  // Update customer's last message preview if this was the overall last message
   if (customerIdString) {
     const customer = await CustomerModel.findById(customerIdString);
     if (customer) {
@@ -2142,10 +2172,12 @@ export async function pinMessageToConversation(conversationId: string, messageId
   if (!conversation) throw new Error("Không tìm thấy cuộc trò chuyện.");
 
   const message = await MessageModel.findById(messageId);
-  //@ts-ignore
-  if (!message || message.conversationId?.toString() !== conversationId) {
+  // Need to check if message is part of this conversation.
+  // Assuming ConversationModel.messageIds correctly stores an array of ObjectIds for messages.
+  if (!message || !conversation.messageIds.map(id => id.toString()).includes(message._id.toString())) {
     throw new Error("Không tìm thấy tin nhắn hoặc tin nhắn không thuộc về cuộc trò chuyện này.");
   }
+
 
   const isParticipant = conversation.participants.some(p => p.userId.toString() === staffSession.id);
   if (!isParticipant && staffSession.role !== 'admin') {
@@ -2379,6 +2411,42 @@ export async function deleteBranch(id: string): Promise<{ success: boolean }> {
   await dbConnect();
   // Add check here if branch is associated with appointments before deleting
   const result = await BranchModel.findByIdAndDelete(id);
+  return { success: !!result };
+}
+
+// --- Quick Reply Actions ---
+function transformQuickReplyDoc(doc: IQuickReply): QuickReplyType {
+  return {
+    id: (doc._id as Types.ObjectId).toString(),
+    title: doc.title,
+    content: doc.content,
+    createdAt: new Date(doc.createdAt as Date),
+    updatedAt: new Date(doc.updatedAt as Date),
+  };
+}
+
+export async function getQuickReplies(): Promise<QuickReplyType[]> {
+  await dbConnect();
+  const quickReplies = await QuickReplyModel.find({}).sort({ title: 1 });
+  return quickReplies.map(transformQuickReplyDoc);
+}
+
+export async function createQuickReply(data: { title: string; content: string }): Promise<QuickReplyType> {
+  await dbConnect();
+  const newQuickReply = new QuickReplyModel(data);
+  const savedQuickReply = await newQuickReply.save();
+  return transformQuickReplyDoc(savedQuickReply);
+}
+
+export async function updateQuickReply(id: string, data: Partial<{ title: string; content: string }>): Promise<QuickReplyType | null> {
+  await dbConnect();
+  const updatedQuickReply = await QuickReplyModel.findByIdAndUpdate(id, { $set: data }, { new: true });
+  return updatedQuickReply ? transformQuickReplyDoc(updatedQuickReply) : null;
+}
+
+export async function deleteQuickReply(id: string): Promise<{ success: boolean }> {
+  await dbConnect();
+  const result = await QuickReplyModel.findByIdAndDelete(id);
   return { success: !!result };
 }
 

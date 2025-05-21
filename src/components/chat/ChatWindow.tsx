@@ -2,7 +2,7 @@
 // src/components/chat/ChatWindow.tsx
 'use client';
 
-import type { Message, UserSession, MessageViewerRole } from '@/lib/types';
+import type { Message, UserSession, MessageViewerRole, QuickReplyType } from '@/lib/types'; // Added QuickReplyType
 import { MessageBubble } from './MessageBubble';
 import { MessageInputForm } from './MessageInputForm';
 import { SuggestedReplies } from './SuggestedReplies';
@@ -25,7 +25,23 @@ type ChatWindowProps = {
   onEditMessage?: (messageId: string, currentContent: string) => void;
   currentStaffSessionId?: string;
   onBookAppointmentClick?: () => void;
+  quickReplies?: QuickReplyType[]; // Added
+  typingUsers?: Record<string, string>; // Added
+  onTyping?: (isTyping: boolean) => void; // Added
 };
+
+const TypingIndicator = ({ users }: { users: Record<string, string> }) => {
+  const userNames = Object.values(users);
+  if (userNames.length === 0) return null;
+  const displayNames = userNames.slice(0, 2).join(', ');
+  const andMore = userNames.length > 2 ? ` và ${userNames.length - 2} người khác` : '';
+  return (
+    <div className="px-4 py-1 text-xs text-muted-foreground italic">
+      {displayNames}{andMore} đang gõ...
+    </div>
+  );
+};
+
 
 export function ChatWindow({
   userSession,
@@ -42,6 +58,9 @@ export function ChatWindow({
   onEditMessage,
   currentStaffSessionId,
   onBookAppointmentClick,
+  quickReplies, // Destructure
+  typingUsers = {}, // Destructure with default
+  onTyping, // Destructure
 }: ChatWindowProps) {
   const scrollAreaRef = useRef<HTMLDivElement>(null);
 
@@ -52,7 +71,7 @@ export function ChatWindow({
         viewport.scrollTop = viewport.scrollHeight;
       }
     }
-  }, [messages]);
+  }, [messages, typingUsers]); // Added typingUsers to re-scroll when indicator appears/disappears
 
   if (!userSession) {
     return (
@@ -74,7 +93,7 @@ export function ChatWindow({
   return (
     <div className="flex-grow flex flex-col bg-background overflow-hidden h-full border-none shadow-none">
       {pinnedMessages.length > 0 && (
-        <div className="p-2 border-b bg-amber-50 max-h-36 overflow-y-auto"> {/* Reduced max-h */}
+        <div className="p-2 border-b bg-amber-50 max-h-36 overflow-y-auto"> 
           <h4 className="text-xs font-semibold text-amber-700 mb-1 sticky top-0 bg-amber-50 py-1 z-10">Tin nhắn đã ghim:</h4>
           {pinnedMessages.filter(Boolean).map((msg) => (
             msg && msg.id ? (
@@ -92,7 +111,7 @@ export function ChatWindow({
           ))}
         </div>
       )}
-      <ScrollArea className="p-4 h-[calc(100vh-16rem)]" ref={scrollAreaRef}> {/* Fixed height */}
+      <ScrollArea className="p-4 h-[calc(100vh-16rem)]" ref={scrollAreaRef}> 
         <div className="space-y-2">
           {messages.filter(Boolean).map((msg) => (
              msg && msg.id ? (
@@ -111,6 +130,7 @@ export function ChatWindow({
           {isLoading && messages.length > 0 && messages[messages.length-1]?.sender === 'user' && <AILoadingIndicator />}
         </div>
       </ScrollArea>
+      {Object.keys(typingUsers).length > 0 && <TypingIndicator users={typingUsers} />}
       <SuggestedReplies
         replies={suggestedReplies}
         onReplyClick={onSuggestedReplyClick}
@@ -120,6 +140,8 @@ export function ChatWindow({
         onSubmit={onSendMessage}
         isLoading={isLoading}
         onBookAppointmentClick={onBookAppointmentClick}
+        quickReplies={quickReplies} // Pass quick replies
+        onTyping={onTyping} // Pass typing handler
       />
     </div>
   );

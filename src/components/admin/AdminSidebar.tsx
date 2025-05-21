@@ -16,7 +16,8 @@ import {
     User,          
     Package,       
     BellRing,
-    MapPin // Added for Branches
+    MapPin, // Added for Branches
+    Zap // Icon for Quick Replies
 } from 'lucide-react'; 
 import { Logo } from '@/components/icons/Logo';
 import { useAppSettingsContext } from '@/contexts/AppSettingsContext';
@@ -34,10 +35,11 @@ const adminNavItems = [
   { href: '/admin/chat', label: 'Live Chats', icon: MessageSquare },
   { href: '/admin/customers', label: 'Khách hàng', icon: User },
   { href: '/admin/products', label: 'Sản phẩm/Dịch vụ', icon: Package },
-  { href: '/admin/branches', label: 'Quản lý Chi nhánh', icon: MapPin }, // New Branch Link
+  { href: '/admin/branches', label: 'Quản lý Chi nhánh', icon: MapPin }, 
   { href: '/admin/reminders', label: 'Nhắc nhở Chăm sóc', icon: BellRing },
   { href: '/admin/appointments/view', label: 'Xem Lịch hẹn', icon: Eye },
   { href: '/admin/appointments/rules', label: 'Quy tắc Đặt lịch', icon: CalendarCog },
+  { href: '/admin/quick-replies', label: 'Câu trả lời nhanh', icon: Zap }, // New Quick Replies Link
   { href: '/admin/users', label: 'Quản lý Người dùng', icon: Users }, 
   { href: '/admin/qna', label: 'Hỏi & Đáp / Từ khóa', icon: MessageSquareText },
   { href: '/admin/settings', label: 'Cài đặt Chung', icon: Settings },
