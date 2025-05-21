@@ -1,4 +1,3 @@
-
 // src/components/chat/ChatInterface.tsx
 'use client';
 
@@ -106,104 +105,103 @@ export function ChatInterface({
 
   return (
     <div className={cn(
-        "flex h-full w-full bg-background text-foreground",
-        !shouldShowConversationSidebar && "flex-col" 
-      )}>
-      {shouldShowConversationSidebar && onCreateNewConversation && (
-        <div className="w-full md:w-72 lg:w-80 border-r border-border flex flex-col h-full bg-card flex-shrink-0 shadow-none">
-          <div className="p-3 border-b border-border">
-            <Button
-              variant="outline"
-              className="w-full justify-start"
-              onClick={onCreateNewConversation}
-              disabled={isChatLoading}
-            >
-              <PlusCircle className="mr-2 h-4 w-4" />
-              Cuộc trò chuyện mới
-            </Button>
-          </div>
-          <ScrollArea className="flex-grow">
-            {sortedConversations.length === 0 && !isChatLoading && (
-              <p className="p-4 text-sm text-muted-foreground text-center">Không có cuộc trò chuyện nào.</p>
-            )}
-            {isChatLoading && sortedConversations.length === 0 && (
-                 <p className="p-4 text-sm text-muted-foreground text-center">Đang tải...</p>
-            )}
-            <ul>
-              {sortedConversations.map((conv) => (
-                <li key={conv.id} className={cn(activeConversationId === conv.id && "bg-accent text-accent-foreground")}>
-                  <button
-                    className="w-full text-left p-3 hover:bg-accent/50 transition-colors duration-150 flex flex-col gap-0.5"
-                    onClick={() => onSelectConversation(conv.id)}
-                    disabled={isChatLoading}
-                  >
-                    <div className="flex justify-between items-center w-full">
-                      <span className="text-sm font-medium truncate flex-grow pr-2" title={conv.title || `Cuộc trò chuyện ${conv.id.slice(-4)}`}>
-                        {conv.isPinned && <Pin className="h-3 w-3 inline-block mr-1 text-amber-500" />}
-                        {conv.title || `Cuộc trò chuyện ${conv.id.slice(-4)}`}
-                      </span>
-                      <div className="flex-shrink-0 space-x-1">
-                        {onUpdateConversationTitle && (
-                          <Button variant="ghost" size="icon" className="h-5 w-5 p-0" onClick={(e) => { e.stopPropagation(); handleOpenTitleModal(conv);}} title="Sửa tiêu đề">
-                            <Edit3 className="h-3 w-3" />
-                          </Button>
-                        )}
-                        {conv.isPinned && onUnpinConversation && (
-                            <Button variant="ghost" size="icon" className="h-5 w-5 p-0" onClick={(e) => { e.stopPropagation(); onUnpinConversation(conv.id);}} title="Bỏ ghim">
-                                <PinOff className="h-3 w-3 text-amber-600" />
+      "flex h-full w-full bg-background text-foreground",
+      !shouldShowConversationSidebar && "flex-col"
+    )}>
+      <div className="w-full max-w-[1000px] mx-auto h-[calc(100%-2rem)] my-4 flex border border-border rounded-lg shadow-lg">
+        {shouldShowConversationSidebar && onCreateNewConversation && (
+          <div className="w-full md:w-72 lg:w-80 border-r border-border flex flex-col h-full bg-card flex-shrink-0 shadow-none rounded-l-lg">
+            <div className="p-3 border-b border-border">
+              <Button
+                variant="outline"
+                className="w-full justify-start"
+                onClick={onCreateNewConversation}
+                disabled={isChatLoading}
+              >
+                <PlusCircle className="mr-2 h-4 w-4" />
+                Cuộc trò chuyện mới
+              </Button>
+            </div>
+            <ScrollArea className="flex-grow">
+              {sortedConversations.length === 0 && !isChatLoading && (
+                <p className="p-4 text-sm text-muted-foreground text-center">Không có cuộc trò chuyện nào.</p>
+              )}
+              {isChatLoading && sortedConversations.length === 0 && (
+                <p className="p-4 text-sm text-muted-foreground text-center">Đang tải...</p>
+              )}
+              <ul>
+                {sortedConversations.map((conv) => (
+                  <li key={conv.id} className={cn(activeConversationId === conv.id && "bg-accent text-accent-foreground")}>
+                    <button
+                      className="w-full text-left p-3 hover:bg-accent/50 transition-colors duration-150 flex flex-col gap-0.5"
+                      onClick={() => onSelectConversation(conv.id)}
+                      disabled={isChatLoading}
+                    >
+                      <div className="flex justify-between items-center w-full">
+                        <span className="text-sm font-medium truncate flex-grow pr-2" title={conv.title || `Cuộc trò chuyện ${conv.id.slice(-4)}`}>
+                          {conv.isPinned && <Pin className="h-3 w-3 inline-block mr-1 text-amber-500" />}
+                          {conv.title || `Cuộc trò chuyện ${conv.id.slice(-4)}`}
+                        </span>
+                        <div className="flex items-center gap-1">
+                          {onUpdateConversationTitle && (
+                            <Button variant="ghost" size="icon" className="h-5 w-5 p-0" onClick={(e) => { e.stopPropagation(); handleOpenTitleModal(conv); }} title="Sửa tiêu đề">
+                              <Edit3 className="h-3 w-3" />
                             </Button>
-                        )}
-                        {!conv.isPinned && onPinConversation && (
-                            <Button variant="ghost" size="icon" className="h-5 w-5 p-0" onClick={(e) => { e.stopPropagation(); onPinConversation(conv.id);}} title="Ghim">
-                                <Pin className="h-3 w-3" />
+                          )}
+                          {conv.isPinned && onUnpinConversation && (
+                            <Button variant="ghost" size="icon" className="h-5 w-5 p-0" onClick={(e) => { e.stopPropagation(); onUnpinConversation(conv.id); }} title="Bỏ ghim">
+                              <PinOff className="h-3 w-3 text-amber-600" />
                             </Button>
-                        )}
+                          )}
+                          {!conv.isPinned && onPinConversation && (
+                            <Button variant="ghost" size="icon" className="h-5 w-5 p-0" onClick={(e) => { e.stopPropagation(); onPinConversation(conv.id); }} title="Ghim">
+                              <Pin className="h-3 w-3" />
+                            </Button>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                    {conv.lastMessagePreview && (
-                      <p className="text-xs text-muted-foreground truncate">
-                        {conv.lastMessagePreview}
+                      {conv.lastMessagePreview && (
+                        <p className="text-xs text-muted-foreground truncate">
+                          {conv.lastMessagePreview}
+                        </p>
+                      )}
+                      <p className="text-xs text-muted-foreground/70">
+                        {conv.lastMessageTimestamp ? formatDistanceToNowStrict(new Date(conv.lastMessageTimestamp), { addSuffix: true, locale: vi }) : 'Chưa có tin nhắn'}
                       </p>
-                    )}
-                    <p className="text-xs text-muted-foreground/70">
-                      {conv.lastMessageTimestamp ? formatDistanceToNowStrict(new Date(conv.lastMessageTimestamp), { addSuffix: true, locale: vi }) : 'Chưa có tin nhắn'}
-                    </p>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </ScrollArea>
-        </div>
-      )}
-
-      {/* Main chat window */}
-      <div className="flex-grow flex flex-col h-full overflow-hidden bg-background shadow-none border-none w-full">
-        {(activeConversationId || viewerRole === 'customer_view') ? (
-          <ChatWindow
-            userSession={userSession}
-            messages={messages}
-            pinnedMessages={pinnedMessages}
-            suggestedReplies={suggestedReplies}
-            onSendMessage={onSendMessage}
-            onSuggestedReplyClick={onSendMessage}
-            isLoading={isChatLoading}
-            viewerRole={viewerRole}
-            onPinMessage={onPinMessage}
-            onUnpinMessage={onUnpinMessage}
-            onDeleteMessage={onDeleteMessage}
-            onEditMessage={onEditMessage}
-            currentStaffSessionId={currentStaffSessionId}
-            onBookAppointmentClick={onBookAppointmentClick}
-          />
-        ) : (
-          !shouldShowConversationSidebar ? null :
-          <div className="flex-grow flex items-center justify-center p-4">
-            <p className="text-muted-foreground">Chọn một cuộc trò chuyện để bắt đầu.</p>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </ScrollArea>
           </div>
         )}
+        <div className="flex-grow h-full rounded-r-lg">
+          {(activeConversationId || viewerRole === 'customer_view') ? (
+            <ChatWindow
+              userSession={userSession}
+              messages={messages}
+              pinnedMessages={pinnedMessages}
+              suggestedReplies={suggestedReplies}
+              onSendMessage={onSendMessage}
+              onSuggestedReplyClick={onSendMessage}
+              isLoading={isChatLoading}
+              viewerRole={viewerRole}
+              onPinMessage={onPinMessage}
+              onUnpinMessage={onUnpinMessage}
+              onDeleteMessage={onDeleteMessage}
+              onEditMessage={onEditMessage}
+              currentStaffSessionId={currentStaffSessionId}
+              onBookAppointmentClick={onBookAppointmentClick}
+            />
+          ) : (
+            !shouldShowConversationSidebar ? null :
+              <div className="flex-grow flex items-center justify-center p-4">
+                <p className="text-muted-foreground">Chọn một cuộc trò chuyện để bắt đầu.</p>
+              </div>
+          )}
+        </div>
       </div>
-
-       <Dialog open={isTitleModalOpen} onOpenChange={setIsTitleModalOpen}>
+      <Dialog open={isTitleModalOpen} onOpenChange={setIsTitleModalOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Sửa Tiêu đề Cuộc trò chuyện</DialogTitle>
@@ -230,4 +228,3 @@ export function ChatInterface({
     </div>
   );
 }
-    

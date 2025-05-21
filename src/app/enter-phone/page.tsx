@@ -14,6 +14,8 @@ import { Phone, LogIn, MessageSquare } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { handleCustomerAccess } from '@/app/actions';
 import { useAppSettingsContext } from '@/contexts/AppSettingsContext';
+import { Logo } from '@/components/icons/Logo';
+import Image from 'next/image';
 
 export default function EnterPhonePage() {
   const [phoneNumber, setPhoneNumber] = useState('');
@@ -52,15 +54,27 @@ export default function EnterPhonePage() {
       setIsLoading(false);
     }
   };
+  const logoDataUri = appSettings?.logoDataUri;
+  const logoUrl = appSettings?.logoUrl;
+
+  const renderLogo = () => {
+    if (logoDataUri) {
+      return <Image src={logoDataUri} alt={`${brandName} Logo`} width={32} height={32} className="rounded-md h-8 w-8 md:h-10 md:w-10 object-contain" data-ai-hint="logo brand" />;
+    }
+    if (logoUrl) {
+      return <Image src={logoUrl} alt={`${brandName} Logo`} width={32} height={32} className="rounded-md h-8 w-8 md:h-10 md:w-10 object-contain" data-ai-hint="logo brand" />;
+    }
+    return <Logo className="h-8 w-8 md:h-10 md:w-10" />;
+  };
 
   return (
     <div className="flex flex-col min-h-screen bg-muted/40">
-      <AppHeader userSession={null} onLogout={() => {}} />
+      <AppHeader userSession={null} onLogout={() => { }} />
       <main className="flex-grow container mx-auto py-12 px-4 flex flex-col items-center justify-center">
         <Card className="w-full max-w-md shadow-xl">
           <CardHeader className="text-center">
-            <div className="mx-auto bg-primary/10 p-3 rounded-full w-fit mb-3">
-                <Phone className="h-8 w-8 text-primary" />
+            <div className="mx-auto border shadow-sm p-3 rounded-full w-fit mb-3">
+              {renderLogo()}
             </div>
             <CardTitle className="text-2xl">Chào mừng đến {brandName}!</CardTitle>
             <CardDescription>
