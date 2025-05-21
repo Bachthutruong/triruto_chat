@@ -1,7 +1,7 @@
 
 // src/app/staff/chat/layout.tsx
 'use client';
-import { useState, useEffect, type ReactNode, useCallback } from 'react';
+import { useState, useEffect, type ReactNode, useCallback, useRef } from 'react'; // Added useRef
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -97,7 +97,7 @@ export default function StaffChatLayout({ children }: { children: ReactNode }) {
     } finally {
       if (isInitialLoad) setIsLoading(false);
     }
-  }, [staffSession, selectedTags]); // Removed getCustomersForStaffView, setActiveCustomers
+  }, [staffSession, selectedTags]);
 
   useEffect(() => {
     // Initial fetch
