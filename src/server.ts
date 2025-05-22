@@ -5,10 +5,10 @@ import { parse } from 'url';
 import next from 'next';
 import { Server as SocketIOServer, Socket } from 'socket.io';
 import dotenv from 'dotenv';
+// Import necessary actions if server needs to call them directly
+import { pinMessageToConversation, unpinMessageFromConversation } from './app/actions'; // Assuming these are safe to call from server
 import type { UserSession } from './lib/types';
-// Import necessary actions if server needs to call them directly (usually not needed for just broadcasting)
-// For example, if you needed to validate a token or fetch user details on connection:
-// import { getUserDetailsAction } from './app/actions';
+
 
 dotenv.config();
 
@@ -16,6 +16,7 @@ const dev = process.env.NODE_ENV !== 'production';
 const hostname = process.env.HOSTNAME || 'localhost';
 const port = parseInt(process.env.PORT || '9002', 10);
 
+console.log("Socket.IO Server: Initializing Next.js app...");
 const app = next({ dev, hostname, port });
 const handle = app.getRequestHandler();
 
@@ -35,25 +36,25 @@ app.prepare().then(() => {
   });
   console.log("Socket.IO Server: > HTTP server created.");
 
-  console.log("Socket.IO Server: Attempting to initialize Socket.IO server...");
+  console.log("Socket.IO Server: Attempting to initialize Socket.IO server with explicit path '/socket.io/'...");
   const io = new SocketIOServer(httpServer, {
-    path: '/socket.io/', // Ensure this path is consistent with the client
+    path: '/socket.io/', // Explicitly set path
     cors: {
-      origin: "*", // For development, allow all. For production, restrict this.
+      origin: "*", // For development. Restrict in production.
       methods: ["GET", "POST"],
       credentials: true
     },
-    transports: ['websocket', 'polling'] // Default transports
+    transports: ['websocket', 'polling']
   });
   console.log("Socket.IO Server: > Socket.IO server initialized successfully on path: /socket.io/");
 
   io.on('connection', (socket: Socket) => {
-    console.log(`Socket.IO Server: > New client connected, ID: ${socket.id}`);
+    console.log(`Socket.IO Server: > Client connected: ${socket.id}. Total clients: ${io.engine.clientsCount}`);
 
     socket.on('joinRoom', (conversationId: string) => {
       if (conversationId) {
         socket.join(conversationId);
-        console.log(`Socket.IO Server: > Client ${socket.id} joined room ${conversationId}`);
+        console.log(`Socket.IO Server: > Client ${socket.id} joined room '${conversationId}'`);
       } else {
         console.warn(`Socket.IO Server: > Client ${socket.id} tried to join a room with an undefined/null conversationId.`);
       }
@@ -62,15 +63,14 @@ app.prepare().then(() => {
     socket.on('leaveRoom', (conversationId: string) => {
       if (conversationId) {
         socket.leave(conversationId);
-        console.log(`Socket.IO Server: > Client ${socket.id} left room ${conversationId}`);
+        console.log(`Socket.IO Server: > Client ${socket.id} left room '${conversationId}'`);
       }
     });
 
     socket.on('sendMessage', ({ message, conversationId }) => {
       if (conversationId && message) {
-        // Broadcast to all other clients in the room
-        socket.to(conversationId).emit('newMessage', message);
-        console.log(`Socket.IO Server: > Message sent in room ${conversationId} by ${socket.id}: ${message?.content?.substring(0, 30)}...`);
+        socket.to(conversationId).emit('newMessage', message); // Broadcast to others in the room
+        console.log(`Socket.IO Server: > Message from ${socket.id} in room '${conversationId}' broadcasted: ${message?.content?.substring(0, 30)}...`);
       }
     });
     
@@ -80,62 +80,86 @@ app.prepare().then(() => {
       }
     });
 
-    socket.on('stopTyping', ({ conversationId }) => { // userId is implicit from socket.id on server
+    socket.on('stopTyping', ({ conversationId }) => {
       if (conversationId) {
         socket.to(conversationId).emit('userStopTyping', { userId: socket.id, conversationId });
       }
     });
     
     socket.on('pinMessageRequested', async ({ conversationId, messageId, staffSessionJsonString }) => {
-      // Placeholder for action call - ensure your actions are callable from here if needed
-      // Or, this logic could be handled entirely client-side if preferred for pin/unpin
-      // For server-authoritative pinning, you'd call an action here.
-      // For this example, we assume the action is called client-side and server just broadcasts update.
-      // If pinMessageToConversation and unpinMessageFromConversation were here:
-      // try {
-      //   const staffSession: UserSession = JSON.parse(staffSessionJsonString);
-      //   const updatedConversation = await pinMessageToConversation(conversationId, messageId, staffSession);
-      //   if (updatedConversation) {
-      //     io.to(conversationId).emit('pinnedMessagesUpdated', { 
-      //       conversationId, 
-      //       pinnedMessageIds: updatedConversation.pinnedMessageIds || [] 
-      //     });
-      //   }
-      // } catch (error) { /* handle error */ }
-      console.log(`Socket.IO Server: Pin request for message ${messageId} in room ${conversationId} (server-side action placeholder)`);
-       // This event should ideally be emitted AFTER the DB update is confirmed
-      // For now, if actions.ts emits it, this server-side part might not be strictly needed for broadcasting 'pinnedMessagesUpdated'
-      // But if actions.ts *doesn't* emit, then the server *must* after calling the action.
+      console.log(`Socket.IO Server: Received pinMessageRequested for convId: ${conversationId}, msgId: ${messageId}`);
+      try {
+        const staffSession: UserSession = JSON.parse(staffSessionJsonString);
+        if (!staffSession || (staffSession.role !== 'admin' && staffSession.role !== 'staff')) {
+            console.warn(`Socket.IO Server: Unauthorized pin request from ${socket.id}`);
+            socket.emit('pinActionError', { messageId, error: 'Unauthorized' });
+            return;
+        }
+        const updatedConversation = await pinMessageToConversation(conversationId, messageId, staffSession);
+        if (updatedConversation) {
+          io.to(conversationId).emit('pinnedMessagesUpdated', { 
+            conversationId, 
+            pinnedMessageIds: updatedConversation.pinnedMessageIds || [] 
+          });
+          console.log(`Socket.IO Server: Emitted pinnedMessagesUpdated for convId: ${conversationId}`);
+        }
+      } catch (error: any) {
+        console.error(`Socket.IO Server: Error processing pinMessageRequested for convId ${conversationId}:`, error.message);
+        socket.emit('pinActionError', { messageId, error: error.message || 'Failed to pin message' });
+      }
     });
 
     socket.on('unpinMessageRequested', async ({ conversationId, messageId, staffSessionJsonString }) => {
-      console.log(`Socket.IO Server: Unpin request for message ${messageId} in room ${conversationId} (server-side action placeholder)`);
-      // Similar to pinMessageRequested, action call would be here for server-authoritative.
+      console.log(`Socket.IO Server: Received unpinMessageRequested for convId: ${conversationId}, msgId: ${messageId}`);
+      try {
+        const staffSession: UserSession = JSON.parse(staffSessionJsonString);
+         if (!staffSession || (staffSession.role !== 'admin' && staffSession.role !== 'staff')) {
+            console.warn(`Socket.IO Server: Unauthorized unpin request from ${socket.id}`);
+            socket.emit('unpinActionError', { messageId, error: 'Unauthorized' });
+            return;
+        }
+        const updatedConversation = await unpinMessageFromConversation(conversationId, messageId, staffSession);
+        if (updatedConversation) {
+          io.to(conversationId).emit('pinnedMessagesUpdated', { 
+            conversationId, 
+            pinnedMessageIds: updatedConversation.pinnedMessageIds || [] 
+          });
+           console.log(`Socket.IO Server: Emitted pinnedMessagesUpdated for convId: ${conversationId} after unpin`);
+        }
+      } catch (error: any) {
+        console.error(`Socket.IO Server: Error processing unpinMessageRequested for convId ${conversationId}:`, error.message);
+        socket.emit('unpinActionError', { messageId, error: error.message || 'Failed to unpin message' });
+      }
     });
     
     socket.on('editMessage', ({ message, conversationId }) => {
       if (conversationId && message) {
         socket.to(conversationId).emit('messageEdited', { message });
-        console.log(`Socket.IO Server: > Message ${message.id} edit broadcast in room ${conversationId}`);
+        console.log(`Socket.IO Server: > Message ${message.id} edit broadcast in room '${conversationId}'`);
       }
     });
 
     socket.on('deleteMessage', ({ messageId, conversationId }) => {
       if (conversationId && messageId) {
         socket.to(conversationId).emit('messageDeleted', { messageId });
-        console.log(`Socket.IO Server: > Message ${messageId} deletion broadcast in room ${conversationId}`);
+        console.log(`Socket.IO Server: > Message ${messageId} deletion broadcast in room '${conversationId}'`);
       }
     });
 
     socket.on('disconnect', (reason: string) => {
-      console.log(`Socket.IO Server: > Client ${socket.id} disconnected. Reason: ${reason}`);
+      console.log(`Socket.IO Server: > Client ${socket.id} disconnected. Reason: ${reason}. Total clients: ${io.engine.clientsCount}`);
     });
 
     socket.on('error', (err: Error) => {
       console.error(`Socket.IO Server: > Socket error for ${socket.id}:`, err);
     });
+
+    socket.on('connect_error', (err: Error) => {
+      console.error(`Socket.IO Server: > Connection error for attempting socket ${socket.id}:`, err.message, err.cause);
+    });
   });
 
+  console.log(`Socket.IO Server: Attempting to start HTTP server on http://${hostname}:${port}...`);
   httpServer
     .once('error', (err) => {
       console.error('Socket.IO Server: > HTTP Server Error:', err);
