@@ -2,8 +2,8 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { useRouter } from 'next/navigation'; // Import useRouter
-import Link from 'next/link'; // Import Link
+import { usePathname } from 'next/navigation'; // Changed from useRouter
+import Link from 'next/link';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
@@ -27,26 +27,14 @@ import {
 import { getAllProducts, deleteProduct } from '@/app/actions';
 import type { ProductItem } from '@/lib/types';
 
-// This page is used by both /admin/products and /staff/products
-// The layout (AdminLayout or StaffLayout) will determine the sidebar and overall access.
-// CRUD ops will be permissioned by actions.
-
 export default function ProductsManagementPage() {
   const [products, setProducts] = useState<ProductItem[]>([]);
   const [filteredProducts, setFilteredProducts] = useState<ProductItem[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const { toast } = useToast();
-  const router = useRouter();
-  const [isAdminRoute, setIsAdminRoute] = useState(false);
-
-  useEffect(() => {
-    // Check if router is ready and then get pathname
-    if (router && router.pathname) {
-      setIsAdminRoute(router.pathname.startsWith('/admin'));
-    }
-  }, [router]);
-
+  const pathname = usePathname(); // Use usePathname directly
+  const isAdminRoute = pathname.startsWith('/admin'); // Determine if it's an admin route
 
   const fetchProducts = useCallback(async () => {
     try {
@@ -154,7 +142,7 @@ export default function ProductsManagementPage() {
           <CardTitle className="text-base sm:text-lg">Tất cả Sản phẩm/Dịch vụ</CardTitle>
           <CardDescription className="text-xs sm:text-sm">
             Danh sách tất cả sản phẩm và dịch vụ trong hệ thống.
-          </CardDescription>
+          </Description>
         </CardHeader>
         <CardContent>
           {isLoading ? (
