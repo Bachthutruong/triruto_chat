@@ -147,12 +147,11 @@ export default function StaffProductsPage() {
       setImageUrl(product.imageUrl || '');
       setIsActive(product.isActive);
       setIsSchedulable(product.isSchedulable ?? true); 
-      // Ensure specificDayRules have temporary client-side IDs if they don't have one from DB
       const initialSchedulingRules = product.schedulingRules || {};
       if (initialSchedulingRules.specificDayRules) {
         initialSchedulingRules.specificDayRules = initialSchedulingRules.specificDayRules.map(rule => ({
           ...rule,
-          id: rule.id || `client-${Date.now()}-${Math.random()}` // Assign temporary ID if missing
+          id: rule.id || `client-${Date.now()}-${Math.random()}` 
         }));
       }
       setProductSchedulingRules(initialSchedulingRules);
@@ -202,7 +201,7 @@ export default function StaffProductsPage() {
       return;
     }
     const newRule: SpecificDayRule = { 
-      id: `client-${Date.now()}-${Math.random()}`, // Client-side temporary ID
+      id: `client-${Date.now()}-${Math.random()}`, 
       date: tempProductSpecRuleDate,
       isOff: tempProductSpecRuleIsOff,
       workingHours: tempProductSpecRuleHours.split(',').map(h => h.trim()).filter(h => /^[0-2][0-9]:[0-5][0-9]$/.test(h)).length > 0 ? tempProductSpecRuleHours.split(',').map(h => h.trim()).filter(h => /^[0-2][0-9]:[0-5][0-9]$/.test(h)) : undefined,
@@ -239,7 +238,7 @@ export default function StaffProductsPage() {
             workingHours: (productSchedulingRules.workingHours && Array.isArray(productSchedulingRules.workingHours) && productSchedulingRules.workingHours.length > 0) ? productSchedulingRules.workingHours : undefined,
             weeklyOffDays: (productSchedulingRules.weeklyOffDays && Array.isArray(productSchedulingRules.weeklyOffDays) && productSchedulingRules.weeklyOffDays.length > 0) ? productSchedulingRules.weeklyOffDays : undefined,
             oneTimeOffDates: (productSchedulingRules.oneTimeOffDates && Array.isArray(productSchedulingRules.oneTimeOffDates) && productSchedulingRules.oneTimeOffDates.length > 0) ? productSchedulingRules.oneTimeOffDates : undefined,
-            specificDayRules: (productSchedulingRules.specificDayRules || []).map(r => { const { id, ...rest } = r; return rest; }), // Remove client-side temp ID
+            specificDayRules: (productSchedulingRules.specificDayRules || []).map(r => { const { id, ...rest } = r; return rest; }),
         } : undefined,
       };
       
@@ -280,7 +279,7 @@ export default function StaffProductsPage() {
 
       resetForm();
       setIsModalOpen(false);
-      fetchProducts(); // Re-fetch products to update the list
+      fetchProducts(); 
     } catch (error: any) {
       toast({
         title: 'Lỗi',
@@ -446,8 +445,8 @@ export default function StaffProductsPage() {
       </Card>
 
       <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
-        <DialogContent className="sm:max-w-3xl"> 
-          <DialogHeader>
+        <DialogContent className="sm:max-w-3xl flex flex-col max-h-[90vh]"> {/* Apply flex and max-height */}
+          <DialogHeader className="shrink-0"> {/* Header should not grow */}
             <DialogTitle>{currentProduct ? 'Chỉnh sửa Sản phẩm/Dịch vụ' : 'Thêm Sản phẩm/Dịch vụ Mới'}</DialogTitle>
             <DialogDescription>
               {currentProduct
@@ -455,8 +454,8 @@ export default function StaffProductsPage() {
                 : 'Điền thông tin để tạo mới.'}
             </DialogDescription>
           </DialogHeader>
-          <form onSubmit={handleSubmit}>
-            <ScrollArea className="max-h-[75vh] p-1 pr-3">
+          <form onSubmit={handleSubmit} className="flex-grow flex flex-col overflow-hidden"> {/* Form takes remaining space and manages overflow for its children */}
+            <ScrollArea className="flex-grow p-1 pr-3"> {/* ScrollArea now expands within the form */}
               <div className="space-y-4 ">
                 
                 <Card>
@@ -544,7 +543,7 @@ export default function StaffProductsPage() {
                                     <Input value={tempProductSpecRuleHours} onChange={e => setTempProductSpecRuleHours(e.target.value)} placeholder="Giờ làm việc (HH:MM,)" className="h-8 text-xs"/>
                                     <Input type="number" value={tempProductSpecRuleStaff} onChange={e => setTempProductSpecRuleStaff(e.target.value)} placeholder="Số NV" className="h-8 text-xs"/>
                                     <Input type="number" value={tempProductSpecRuleDuration} onChange={e => setTempProductSpecRuleDuration(e.target.value)} placeholder="TG DV (phút)" className="h-8 text-xs"/>
-                                    <div className="flex items-center space-x-2"><Checkbox id="tempProdSpecRuleIsOff" checked={tempProductSpecRuleIsOff} onCheckedChange={(checked) => setTempProductSpecRuleIsOff(!!checked)} /><Label htmlFor="tempProdSpecRuleIsOff" className="text-xs">Ngày nghỉ</Label></div>
+                                    <div className="flex items-center space-x-2"><Checkbox id="tempProdSpecRuleIsOffDialog" checked={tempProductSpecRuleIsOff} onCheckedChange={(checked) => setTempProductSpecRuleIsOff(!!checked)} /><Label htmlFor="tempProdSpecRuleIsOffDialog" className="text-xs">Ngày nghỉ</Label></div>
                                     <Button type="button" onClick={handleAddProductSpecificDayRule} size="xs" className="h-8 text-xs"><PlusCircle className="mr-1 h-3 w-3"/>Thêm</Button>
                                 </div>
                                 <div className="space-y-1 max-h-40 overflow-y-auto">
@@ -567,7 +566,7 @@ export default function StaffProductsPage() {
                 </Card>
               </div>
             </ScrollArea>
-            <DialogFooter className="pt-4 border-t mt-4">
+            <DialogFooter className="pt-4 border-t shrink-0"> {/* Footer should not grow */}
               <DialogClose asChild>
                 <Button type="button" variant="outline" disabled={isSubmitting}>
                   Hủy
@@ -590,3 +589,4 @@ export default function StaffProductsPage() {
     </div>
   );
 }
+
