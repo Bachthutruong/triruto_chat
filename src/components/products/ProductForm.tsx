@@ -41,6 +41,7 @@ export function ProductForm({ initialProductData, onSubmit, onCancel, isSubmitti
   const [isActive, setIsActive] = useState(true);
   const [isSchedulable, setIsSchedulable] = useState(true);
   const [productSchedulingRules, setProductSchedulingRules] = useState<Partial<ProductSchedulingRules>>({});
+  const [prodWorkingHoursInput, setProdWorkingHoursInput] = useState(''); // State for raw input string
 
   const [tempProductSpecRuleDate, setTempProductSpecRuleDate] = useState('');
   const [tempProductSpecRuleIsOff, setTempProductSpecRuleIsOff] = useState(false);
@@ -66,11 +67,13 @@ export function ProductForm({ initialProductData, onSubmit, onCancel, isSubmitti
         }));
       }
       setProductSchedulingRules(initialRules);
+      setProdWorkingHoursInput(initialRules.workingHours?.join(', ') || '');
     } else {
       // Defaults for new product
       setIsActive(true);
       setIsSchedulable(true);
       setProductSchedulingRules({});
+      setProdWorkingHoursInput('');
     }
   }, [initialProductData]);
 
@@ -135,6 +138,11 @@ export function ProductForm({ initialProductData, onSubmit, onCancel, isSubmitti
         toast({ title: "Thiếu thông tin", description: "Tên, Danh mục và Giá là bắt buộc.", variant: "destructive" });
         return;
     }
+    
+    const parsedProdWorkingHours = prodWorkingHoursInput
+        .split(',')
+        .map(h => h.trim())
+        .filter(h => /^[0-2][0-9]:[0-5][0-9]$/.test(h));
 
     const productData: Omit<ProductItem, 'id' | 'createdAt' | 'updatedAt'> = {
       name,
@@ -147,7 +155,7 @@ export function ProductForm({ initialProductData, onSubmit, onCancel, isSubmitti
       schedulingRules: isSchedulable ? {
         numberOfStaff: productSchedulingRules.numberOfStaff !== undefined && !isNaN(parseFloat(productSchedulingRules.numberOfStaff as any)) ? parseFloat(productSchedulingRules.numberOfStaff as any) : undefined,
         serviceDurationMinutes: productSchedulingRules.serviceDurationMinutes !== undefined && !isNaN(parseFloat(productSchedulingRules.serviceDurationMinutes as any)) ? parseFloat(productSchedulingRules.serviceDurationMinutes as any) : undefined,
-        workingHours: (productSchedulingRules.workingHours && Array.isArray(productSchedulingRules.workingHours) && productSchedulingRules.workingHours.length > 0) ? productSchedulingRules.workingHours : undefined,
+        workingHours: parsedProdWorkingHours.length > 0 ? parsedProdWorkingHours : undefined,
         weeklyOffDays: (productSchedulingRules.weeklyOffDays && Array.isArray(productSchedulingRules.weeklyOffDays) && productSchedulingRules.weeklyOffDays.length > 0) ? productSchedulingRules.weeklyOffDays : undefined,
         oneTimeOffDates: (productSchedulingRules.oneTimeOffDates && Array.isArray(productSchedulingRules.oneTimeOffDates) && productSchedulingRules.oneTimeOffDates.length > 0) ? productSchedulingRules.oneTimeOffDates : undefined,
         specificDayRules: (productSchedulingRules.specificDayRules || []).map(r => { const { id, ...rest } = r; return rest; }),
@@ -158,9 +166,7 @@ export function ProductForm({ initialProductData, onSubmit, onCancel, isSubmitti
       if (productData.schedulingRules.specificDayRules?.length === 0) {
         delete productData.schedulingRules.specificDayRules;
       }
-      if (productData.schedulingRules.workingHours?.length === 0) {
-        delete productData.schedulingRules.workingHours;
-      }
+      // workingHours is already handled by parsedProdWorkingHours
       if (productData.schedulingRules.weeklyOffDays?.length === 0) {
         delete productData.schedulingRules.weeklyOffDays;
       }
@@ -221,7 +227,12 @@ export function ProductForm({ initialProductData, onSubmit, onCancel, isSubmitti
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="prodWorkingHours"><ClockIcon className="inline mr-1 h-4 w-4" />Giờ nhận khách riêng (HH:MM, HH:MM)</Label>
-                <Input id="prodWorkingHours" value={(productSchedulingRules.workingHours || []).join(', ')} onChange={e => handleSchedulingRuleChange('workingHours', e.target.value.split(',').map(h => h.trim()).filter(h => /^[0-2][0-9]:[0-5][0-9]$/.test(h)))} placeholder="VD: 08:00,14:00 (Mặc định chung)" disabled={isSubmitting}/>
+                <Input 
+                    id="prodWorkingHours" 
+                    value={prodWorkingHoursInput} 
+                    onChange={e => setProdWorkingHoursInput(e.target.value)} 
+                    placeholder="VD: 08:00,14:00 (Mặc định chung)" 
+                    disabled={isSubmitting}/>
               </div>
               <div className="space-y-1.5">
                 <Label><CalendarDays className="inline mr-1 h-4 w-4" />Ngày nghỉ hàng tuần riêng</Label>
