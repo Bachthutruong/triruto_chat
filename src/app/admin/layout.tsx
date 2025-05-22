@@ -18,17 +18,22 @@ export default function Layout({ children }: { children: ReactNode }) {
     if (sessionString) {
       try {
         const parsedSession: UserSession = JSON.parse(sessionString);
-        if (parsedSession && parsedSession.role === 'admin') {
+        // Allow both admin and staff to access routes under /admin
+        // This is a broad permission. For more fine-grained control,
+        // consider moving shared functionalities to a different path segment
+        // or implementing a more detailed role/permission system.
+        if (parsedSession && (parsedSession.role === 'admin' || parsedSession.role === 'staff')) {
           setSession(parsedSession);
         } else {
-          router.replace('/login?error=unauthorized_admin');
+          // If not admin or staff, redirect to login.
+          router.replace('/login?error=unauthorized_admin_area');
         }
       } catch (e) {
         console.error("Error parsing session for admin layout:", e);
         router.replace('/login?error=session_error');
       }
     } else {
-      router.replace('/login?error=no_session_admin');
+      router.replace('/login?error=no_session_admin_area');
     }
     setIsLoading(false);
   }, [router]);
