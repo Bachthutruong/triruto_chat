@@ -1,3 +1,4 @@
+
 import mongoose, { Schema, Document, Model } from 'mongoose';
 
 export interface IProduct extends Document {
@@ -9,6 +10,7 @@ export interface IProduct extends Document {
   isActive: boolean;
   createdAt: Date;
   updatedAt: Date;
+  // Removed isSchedulable and schedulingRules
 }
 
 const ProductSchema = new Schema<IProduct>(
@@ -19,11 +21,11 @@ const ProductSchema = new Schema<IProduct>(
     category: { type: String, required: true },
     imageUrl: { type: String },
     isActive: { type: Boolean, default: true },
+    // Removed isSchedulable and schedulingRules from schema definition
   },
   { timestamps: true }
 );
 
-// Create or return existing model
 const ProductModel: Model<IProduct> = mongoose.models.Product as Model<IProduct> || mongoose.model<IProduct>('Product', ProductSchema);
 
 export default ProductModel; 

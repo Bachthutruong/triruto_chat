@@ -230,6 +230,7 @@ export type ProductItem = {
   isActive: boolean;
   createdAt: Date;
   updatedAt: Date;
+  // Removed isSchedulable and schedulingRules
 };
 
 export type ReminderStatus = 'pending' | 'completed' | 'cancelled';
@@ -296,5 +297,3 @@ export type QuickReplyType = {
   createdAt: Date;
   updatedAt: Date;
 };
-
-```

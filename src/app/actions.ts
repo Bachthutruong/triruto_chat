@@ -13,7 +13,6 @@ import mongoose, { Types, Document } from 'mongoose';
 import dotenv from 'dotenv';
 import { startOfDay, endOfDay, subDays, formatISO, parse, isValid, parseISO as dateFnsParseISO, setHours, setMinutes, setSeconds, setMilliseconds, getDay, addMinutes, isBefore, isEqual, format as dateFnsFormat, getHours, getMinutes } from 'date-fns';
 import { validatePhoneNumber } from '@/lib/validator';
-import bcrypt from 'bcryptjs';
 
 
 // Ensure dotenv is configured correctly
@@ -491,21 +490,22 @@ export async function handleCustomerAccess(phoneNumber: string): Promise<{
     } else if (appSettings.greetingMessage && appSettings.greetingMessage.trim() !== "") {
       determinedGreeting = appSettings.greetingMessage.trim();
     }
-    // If all specific greetings are empty, determinedGreeting remains appSettings.greetingMessage (or ultimate default)
   }
   const initialSystemMessageContent = determinedGreeting;
   
   let finalInitialMessages: Message[] = [];
   
-  const systemGreetingMessage: Message = {
-      id: `msg_system_greeting_${Date.now()}`,
-      sender: 'ai',
-      content: initialSystemMessageContent,
-      timestamp: new Date(),
-      name: appSettings?.brandName || 'AI Assistant',
-      conversationId: (activeConversation._id as Types.ObjectId).toString(),
-  };
-  finalInitialMessages.push(systemGreetingMessage);
+  if (initialSystemMessageContent.trim() !== "") {
+    const systemGreetingMessage: Message = {
+        id: `msg_system_greeting_${Date.now()}`,
+        sender: 'ai',
+        content: initialSystemMessageContent,
+        timestamp: new Date(),
+        name: appSettings?.brandName || 'AI Assistant',
+        conversationId: (activeConversation._id as Types.ObjectId).toString(),
+    };
+    finalInitialMessages.push(systemGreetingMessage);
+  }
   
   if (activeConversation.messageIds && activeConversation.messageIds.length > 0) {
      const firstMessageId = activeConversation.messageIds[0];
@@ -519,7 +519,8 @@ export async function handleCustomerAccess(phoneNumber: string): Promise<{
   }
 
   let configuredSuggestedQuestions: string[] = [];
-  if (appSettings?.suggestedQuestions && appSettings.suggestedQuestions.length > 0) {
+  // Only show suggested questions if it's truly a new chat session (greeting + no other messages)
+  if (finalInitialMessages.length <= 1 && appSettings?.suggestedQuestions && appSettings.suggestedQuestions.length > 0) {
     configuredSuggestedQuestions = appSettings.suggestedQuestions;
   }
 
@@ -755,7 +756,7 @@ export async function processUserMessage(
       processedAppointmentDB = null;
     } else {
       const targetBranchId = activeBranches.find(b => b.name === scheduleOutputFromAI?.appointmentDetails?.branch)?.id;
-      const availability = await checkRealAvailability(targetDate, targetTime, appSettings, targetBranchId, undefined);
+      const availability = await checkRealAvailability(targetDate, targetTime, appSettings, undefined, undefined); // Using global settings
 
       if (availability.isAvailable) {
         const promptInputForFinalConfirmation: ScheduleAppointmentInput = {
@@ -973,8 +974,14 @@ export async function handleBookAppointmentFromForm(formData: AppointmentBooking
     if (!isValid(targetDate)) {
       return { success: false, message: "Ngày không hợp lệ." };
     }
-    const targetBranchId = formData.branchId ? formData.branchId : undefined;
-    const availability = await checkRealAvailability(targetDate, formData.time, appSettings, targetBranchId);
+    
+    const availability = await checkRealAvailability(
+      targetDate, 
+      formData.time, 
+      appSettings,
+      undefined, // serviceName - use global for direct booking
+      undefined  // serviceDuration - use global for direct booking
+    );
 
     if (availability.isAvailable) {
       const newAppointmentData: Partial<IAppointment> = {
@@ -984,7 +991,7 @@ export async function handleBookAppointmentFromForm(formData: AppointmentBooking
         date: formData.date,
         time: formData.time,
         branch: formData.branch,
-        branchId: targetBranchId ? new mongoose.Types.ObjectId(targetBranchId) as any : undefined,
+        branchId: formData.branchId ? new mongoose.Types.ObjectId(formData.branchId) as any : undefined,
         notes: formData.notes,
         status: 'booked',
       };
@@ -1126,8 +1133,6 @@ export async function getCustomerDetails(customerId: string): Promise<{ customer
 
   let messagesForActiveConversation: Message[] = [];
   if (transformedConversations.length > 0 && customerDoc.conversationIds && customerDoc.conversationIds[0]) {
-    // The first conversation (most recent) is assumed to be the active one loaded.
-    // Its messages should already be populated by the nested populate above.
     const activeConvDoc = customerDoc.conversationIds[0] as unknown as IConversation;
     if (activeConvDoc && activeConvDoc.messageIds) {
       messagesForActiveConversation = (activeConvDoc.messageIds as unknown as IMessage[]).map(transformMessageDocToMessage);
@@ -1962,6 +1967,7 @@ function transformProductDocToProduct(doc: any): ProductItem {
     isActive: doc.isActive,
     createdAt: new Date(doc.createdAt as Date),
     updatedAt: new Date(doc.updatedAt as Date),
+    // Removed isSchedulable and schedulingRules
   };
 }
 
@@ -2015,9 +2021,12 @@ export async function updateProduct(
   data: Partial<Omit<ProductItem, 'id' | 'createdAt' | 'updatedAt'>>
 ): Promise<ProductItem | null> {
   await dbConnect();
+  // Ensure no schedulingRules or isSchedulable is passed in data
+  const { ...restOfData } = data; 
+
   const updatedProduct = await ProductModel.findByIdAndUpdate(
     productId,
-    { $set: data },
+    { $set: restOfData },
     { new: true }
   );
   return updatedProduct ? transformProductDocToProduct(updatedProduct) : null;

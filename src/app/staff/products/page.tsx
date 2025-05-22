@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -18,7 +19,6 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
   DialogClose,
 } from '@/components/ui/dialog';
 import {
@@ -34,6 +34,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { getAllProducts, createProduct, updateProduct, deleteProduct } from '@/app/actions';
 import type { ProductItem } from '@/lib/types';
+// Removed imports related to service-specific scheduling (Accordion, Checkbox, etc.)
 
 export default function StaffProductsPage() {
   const [products, setProducts] = useState<ProductItem[]>([]);
@@ -52,6 +53,8 @@ export default function StaffProductsPage() {
   const [category, setCategory] = useState('');
   const [imageUrl, setImageUrl] = useState('');
   const [isActive, setIsActive] = useState(true);
+
+  // Removed states for service-specific scheduling rules
 
   useEffect(() => {
     const fetchProducts = async () => {
@@ -100,6 +103,7 @@ export default function StaffProductsPage() {
     setCategory('');
     setImageUrl('');
     setIsActive(true);
+    // Reset states for service-specific scheduling rules
   };
 
   const handleOpenModal = (product: ProductItem | null = null) => {
@@ -112,6 +116,7 @@ export default function StaffProductsPage() {
       setCategory(product.category);
       setImageUrl(product.imageUrl || '');
       setIsActive(product.isActive);
+      // Set states for service-specific scheduling rules from product
     }
     setIsModalOpen(true);
   };
@@ -128,10 +133,10 @@ export default function StaffProductsPage() {
         category,
         imageUrl: imageUrl || undefined,
         isActive,
+        // Removed isSchedulable and schedulingRules from productData
       };
 
       if (currentProduct) {
-        // Update existing product
         const updatedProduct = await updateProduct(currentProduct.id, productData);
         if (updatedProduct) {
           setProducts((prevProducts) =>
@@ -140,7 +145,6 @@ export default function StaffProductsPage() {
           toast({ title: 'Thành công', description: 'Sản phẩm đã được cập nhật.' });
         }
       } else {
-        // Create new product
         const newProduct = await createProduct(productData);
         setProducts((prevProducts) => [newProduct, ...prevProducts]);
         toast({ title: 'Thành công', description: 'Sản phẩm mới đã được tạo.' });
@@ -302,7 +306,7 @@ export default function StaffProductsPage() {
       </Card>
 
       <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
-        <DialogContent className="sm:max-w-[550px]">
+        <DialogContent className="sm:max-w-2xl"> {/* Increased width for more fields */}
           <DialogHeader>
             <DialogTitle>{currentProduct ? 'Chỉnh sửa Sản phẩm' : 'Thêm Sản phẩm Mới'}</DialogTitle>
             <DialogDescription>
@@ -312,56 +316,31 @@ export default function StaffProductsPage() {
             </DialogDescription>
           </DialogHeader>
           <form onSubmit={handleSubmit}>
-            <div className="grid gap-4 py-4">
+            <div className="space-y-4 max-h-[70vh] overflow-y-auto p-1">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="name">Tên sản phẩm</Label>
-                  <Input
-                    id="name"
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    required
-                    disabled={isSubmitting}
-                  />
+                  <Label htmlFor="name">Tên sản phẩm <span className="text-destructive">*</span></Label>
+                  <Input id="name" value={name} onChange={(e) => setName(e.target.value)} required disabled={isSubmitting} />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="category">Danh mục</Label>
-                  <Input
-                    id="category"
-                    value={category}
-                    onChange={(e) => setCategory(e.target.value)}
-                    required
-                    disabled={isSubmitting}
-                  />
+                  <Label htmlFor="category">Danh mục <span className="text-destructive">*</span></Label>
+                  <Input id="category" value={category} onChange={(e) => setCategory(e.target.value)} required disabled={isSubmitting} />
                 </div>
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="description">Mô tả</Label>
-                <Input
-                  id="description"
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  required
-                  disabled={isSubmitting}
-                />
+                <Label htmlFor="description">Mô tả <span className="text-destructive">*</span></Label>
+                <Input id="description" value={description} onChange={(e) => setDescription(e.target.value)} required disabled={isSubmitting} />
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="price">Giá (VND)</Label>
-                  <Input
-                    id="price"
-                    type="number"
-                    value={price}
-                    onChange={(e) => setPrice(e.target.value)}
-                    required
-                    disabled={isSubmitting}
-                  />
+                  <Label htmlFor="price">Giá (VND) <span className="text-destructive">*</span></Label>
+                  <Input id="price" type="number" value={price} onChange={(e) => setPrice(e.target.value)} required disabled={isSubmitting} />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="status">Trạng thái</Label>
-                  <div className="flex items-center space-x-2 pt-2">
+                  <Label htmlFor="status" className="block mb-2">Trạng thái</Label>
+                  <div className="flex items-center space-x-2">
                     <input
                       type="checkbox"
                       id="isActive"
@@ -379,16 +358,13 @@ export default function StaffProductsPage() {
 
               <div className="space-y-2">
                 <Label htmlFor="imageUrl">URL Hình ảnh (tùy chọn)</Label>
-                <Input
-                  id="imageUrl"
-                  value={imageUrl}
-                  onChange={(e) => setImageUrl(e.target.value)}
-                  disabled={isSubmitting}
-                  placeholder="https://example.com/image.jpg"
-                />
+                <Input id="imageUrl" value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} disabled={isSubmitting} placeholder="https://example.com/image.jpg" />
               </div>
+              
+              {/* Scheduling rules section removed */}
+
             </div>
-            <DialogFooter>
+            <DialogFooter className="pt-4 border-t mt-4">
               <DialogClose asChild>
                 <Button type="button" variant="outline" disabled={isSubmitting}>
                   Hủy

@@ -49,6 +49,7 @@ export const ScheduleAppointmentInputSchema = z.object({
   chatHistory: z.string().optional().describe('Lịch sử trò chuyện gần đây của người dùng, để cung cấp ngữ cảnh.'),
   appointmentRules: z.array(AppointmentRuleSchema).optional().describe('Các quy tắc đặt lịch có sẵn để AI xem xét khi xử lý yêu cầu.'),
   availableBranches: z.array(z.string()).optional().describe('Danh sách tên các chi nhánh đang hoạt động để AI gợi ý.'),
+  // serviceSpecificDurationMinutes: z.number().optional().describe('Thời gian của dịch vụ cụ thể (nếu có).'), // Removed
   availabilityCheckResult: z.object({
     status: z.enum(["AVAILABLE", "UNAVAILABLE", "NEEDS_CLARIFICATION"]),
     reason: z.string().optional(),

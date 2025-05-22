@@ -1,3 +1,4 @@
+
 // src/components/chat/AppointmentBookingForm.tsx
 'use client';
 
@@ -9,11 +10,29 @@ import { Textarea } from '@/components/ui/textarea';
 import { Calendar } from '@/components/ui/calendar';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose } from '@/components/ui/dialog';
-import type { AppointmentBookingFormData, UserSession, ProductItem, Branch } from '@/lib/types';
+import type { AppointmentBookingFormData, UserSession, ProductItem, Branch, AppSettings } from '@/lib/types';
 import { format, addMinutes, startOfHour, setHours, setMinutes } from 'date-fns';
 import { vi } from 'date-fns/locale';
 import { useToast } from '@/hooks/use-toast';
 import { getCustomerListForSelect, getAllProducts, getBranches, getAppSettings } from '@/app/actions';
+import { useAppSettingsContext } from '@/contexts/AppSettingsContext';
+
+
+const generateDefaultTimeSlots = (appSettings: AppSettings | null): string[] => {
+  if (appSettings?.workingHours && appSettings.workingHours.length > 0) {
+    return appSettings.workingHours;
+  }
+  // Fallback to default time slots if no working hours configured
+  const slots = [];
+  let date = startOfHour(new Date());
+  date = setHours(date, 0); // Start from 00:00
+  date = setMinutes(date, 0);
+  for (let i = 0; i < 24 * 4; i++) { // Generate slots for 24 hours, every 15 minutes
+    slots.push(format(date, 'HH:mm'));
+    date = addMinutes(date, 15); // Assuming 15 minute intervals if not specified
+  }
+  return slots;
+};
 
 interface AppointmentBookingFormProps {
   isOpen: boolean;
@@ -22,22 +41,6 @@ interface AppointmentBookingFormProps {
   currentUserSession: UserSession | null;
 }
 
-const generateTimeSlots = async () => {
-  const appSettings = await getAppSettings();
-  if (!appSettings?.workingHours || appSettings.workingHours.length === 0) {
-    // Fallback to default time slots if no working hours configured
-    const slots = [];
-    let date = startOfHour(new Date());
-    date = setHours(date, 0);
-    date = setMinutes(date, 0);
-    for (let i = 0; i < 24 * 4; i++) {
-      slots.push(format(date, 'HH:mm'));
-      date = addMinutes(date, 15);
-    }
-    return slots;
-  }
-  return appSettings.workingHours;
-};
 
 export function AppointmentBookingForm({ isOpen, onClose, onSubmit, currentUserSession }: AppointmentBookingFormProps) {
   const [selectedProductId, setSelectedProductId] = useState<string>('');
@@ -47,6 +50,7 @@ export function AppointmentBookingForm({ isOpen, onClose, onSubmit, currentUserS
   const [notes, setNotes] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { toast } = useToast();
+  const appSettingsFromContext = useAppSettingsContext();
 
   const [customerList, setCustomerList] = useState<{ id: string, name: string, phoneNumber: string }[]>([]);
   const [selectedCustomerId, setSelectedCustomerId] = useState<string | undefined>(currentUserSession?.role === 'customer' ? currentUserSession.id : undefined);
@@ -58,16 +62,23 @@ export function AppointmentBookingForm({ isOpen, onClose, onSubmit, currentUserS
     if (isOpen) {
       const fetchData = async () => {
         try {
-          const [fetchedProducts, fetchedBranches, fetchedCustomers, fetchedTimeSlots] = await Promise.all([
+          // Fetch app settings first to determine time slots
+          const currentAppSettings = appSettingsFromContext || await getAppSettings();
+          const fetchedTimeSlots = generateDefaultTimeSlots(currentAppSettings);
+          setTimeSlots(fetchedTimeSlots);
+          if (fetchedTimeSlots.length > 0 && !time) { // Set default time if not already set
+            setTime(fetchedTimeSlots[0]);
+          }
+          
+          const [fetchedProducts, fetchedBranches, fetchedCustomers] = await Promise.all([
             getAllProducts(),
-            getBranches(true), // Fetch only active branches
+            getBranches(true), 
             (currentUserSession?.role === 'admin' || currentUserSession?.role === 'staff') ? getCustomerListForSelect() : Promise.resolve([]),
-            generateTimeSlots()
           ]);
-          setProducts(fetchedProducts.filter(p => p.isActive));
+          setProducts(fetchedProducts.filter(p => p.isActive)); // Filter for active products
           setBranches(fetchedBranches);
           setCustomerList(fetchedCustomers);
-          setTimeSlots(fetchedTimeSlots);
+          
           if (currentUserSession?.role === 'customer') {
             setSelectedCustomerId(currentUserSession.id);
           }
@@ -77,7 +88,7 @@ export function AppointmentBookingForm({ isOpen, onClose, onSubmit, currentUserS
       };
       fetchData();
     }
-  }, [currentUserSession, isOpen, toast]);
+  }, [currentUserSession, isOpen, toast, appSettingsFromContext, time]); // Added time to deps if we want to reset default time based on slots
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -135,16 +146,16 @@ export function AppointmentBookingForm({ isOpen, onClose, onSubmit, currentUserS
             </Select>
           </div>
 
-          {/* Date and Time selection */}
+          
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="date" className="text-sm font-medium">Ngày <span className="text-destructive">*</span></Label>
-              <div className="border rounded-md p-3">
+              <div className="border rounded-md p-0"> {/* Adjusted padding */}
                 <Calendar
                   mode="single"
                   selected={selectedDate}
                   onSelect={setSelectedDate}
-                  className="mx-auto"
+                  className="mx-auto" // Ensures calendar is centered
                   disabled={(date) => date < new Date(new Date().setDate(new Date().getDate() - 1)) || isSubmitting}
                   locale={vi}
                 />
@@ -153,33 +164,15 @@ export function AppointmentBookingForm({ isOpen, onClose, onSubmit, currentUserS
 
             <div className="space-y-2">
               <Label htmlFor="time" className="text-sm font-medium">Giờ <span className="text-destructive">*</span></Label>
-              <div className="border rounded-md h-full flex flex-col">
-                <Select value={time} onValueChange={setTime} disabled={isSubmitting}>
-                  <SelectTrigger id="time" className="w-full border-0 h-10">
-                    <SelectValue placeholder="Chọn giờ" />
-                  </SelectTrigger>
-                  <SelectContent className="max-h-60">
-                    {timeSlots.map(slot => <SelectItem key={slot} value={slot}>{slot}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-                <div className="flex-1 p-3 overflow-y-auto">
-                  <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
-                    {timeSlots.map(slot => (
-                      <Button
-                        key={slot}
-                        type="button"
-                        variant={time === slot ? "default" : "outline"}
-                        size="sm"
-                        onClick={() => setTime(slot)}
-                        disabled={isSubmitting}
-                        className="text-xs"
-                      >
-                        {slot}
-                      </Button>
-                    ))}
-                  </div>
-                </div>
-              </div>
+              <Select value={time} onValueChange={setTime} disabled={isSubmitting || timeSlots.length === 0}>
+                <SelectTrigger id="time" className="w-full">
+                  <SelectValue placeholder={timeSlots.length === 0 ? "Không có khung giờ" : "Chọn giờ"} />
+                </SelectTrigger>
+                <SelectContent className="max-h-60">
+                  {timeSlots.length === 0 && <SelectItem value="" disabled>Không có khung giờ cấu hình</SelectItem>}
+                  {timeSlots.map(slot => <SelectItem key={slot} value={slot}>{slot}</SelectItem>)}
+                </SelectContent>
+              </Select>
             </div>
           </div>
 

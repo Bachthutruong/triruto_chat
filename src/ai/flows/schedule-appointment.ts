@@ -1,3 +1,4 @@
+
 // schedule-appointment.ts
 'use server';
 
@@ -18,8 +19,8 @@ import {
   AppointmentDetailsSchema,
   type AppointmentRule,
 } from '@/ai/schemas/schedule-appointment-schemas';
-import { getAppSettings, getAppointmentRules, getBranches } from '@/app/actions';
-import type { AppSettings, SpecificDayRule, Branch } from '@/lib/types';
+import { getAppSettings, getAppointmentRules, getBranches, getProductById, getAllProducts } from '@/app/actions';
+import type { AppSettings, SpecificDayRule, Branch, ProductItem } from '@/lib/types';
 import AppointmentModel, { type IAppointment } from '@/models/Appointment.model';
 import { parseISO as dateFnsParseISO, getDay, addMinutes, isBefore, format as dateFnsFormat, isValid as isValidDate, compareAsc, addDays, isEqual } from 'date-fns';
 import mongoose from 'mongoose';
@@ -91,7 +92,7 @@ Dưới đây là các quy tắc do quản trị viên cấu hình mà bạn c�
 Hãy xem xét các quy tắc này khi phân tích yêu cầu đặt lịch của người dùng. Nếu từ khóa của người dùng khớp với một quy tắc, hãy ưu tiên áp dụng các điều kiện và hướng dẫn của quy tắc đó.
 {{/if}}
 
-Các dịch vụ có sẵn: Cắt tóc, Tạo kiểu, Nhuộm tóc, Làm móng tay, Làm móng chân, Chăm sóc da mặt, Massage, Gội đầu dưỡng sinh. (Thông tin này chỉ để bạn biết, không cần liệt kê lại trừ khi được hỏi).
+Các dịch vụ có sẵn (tham khảo): Cắt tóc, Tạo kiểu, Nhuộm tóc, Làm móng tay, Làm móng chân, Chăm sóc da mặt, Massage, Gội đầu dưỡng sinh. (Đây chỉ là gợi ý, bạn hãy dựa vào thông tin sản phẩm/dịch vụ được cung cấp trong products nếu có).
 
 Nhiệm vụ của bạn:
 1.  **Hiểu và duy trì ngữ cảnh**: Bạn PHẢI GHI NHỚ và SỬ DỤNG tất cả thông tin liên quan từ lịch sử trò chuyện. Nếu người dùng đã đề cập "cắt tóc" hoặc bất kỳ dịch vụ nào từ trước, ĐỪNG hỏi lại về dịch vụ. Tương tự, nếu họ đã cung cấp ngày hoặc giờ, GHI NHỚ thông tin đó. Chỉ hỏi về thông tin mà họ CHƯA cung cấp.
@@ -135,18 +136,14 @@ Nếu userInput là "đặt lịch 2h chiều ngày mai", và currentDateTime l�
 async function findNextAvailableSlots(
   originalRequestDate: Date,
   originalRequestTime: string,
-  appSettings: AppSettings,
-  // branchId?: string, // Future: Consider branch-specific rules here
-  serviceDuration: number,
+  appSettings: AppSettings, 
+  serviceDuration: number, 
   getAppointmentsForDate: (dateString: string, branchId?: string) => Promise<Pick<IAppointment, 'date' | 'time' | 'service' | 'branchId'>[]>,
   maxSuggestions = 3,
   searchLimitDays = 7
-): Promise<{ date: string; time: string; branch?: string }[]> { // Added branch to suggestion
+): Promise<{ date: string; time: string; branch?: string }[]> {
   const suggestions: { date: string; time: string; branch?: string }[] = [];
   let currentDateToSearch = new Date(originalRequestDate);
-
-  // For now, global appSettings define staff and hours. Branch selection is for recording.
-  // If branch-specific availability is needed, load branch settings here.
 
   for (let dayOffset = 0; dayOffset < searchLimitDays; dayOffset++) {
     const currentDate = addDays(currentDateToSearch, dayOffset);
@@ -173,11 +170,10 @@ async function findNextAvailableSlots(
       continue;
     }
 
-    // Fetch appointments for this day (potentially filtered by branchId if rules become branch-specific)
-    const existingAppointmentsOnThisDay = await getAppointmentsForDate(currentDayString /*, branchId */);
+    const existingAppointmentsOnThisDay = await getAppointmentsForDate(currentDayString);
 
     for (const slotTime of activeWorkingHours) {
-      // Skip past times on the original request day
+      // Skip past slots on the original request day
       if (dayOffset === 0 && isEqual(currentDate, originalRequestDate) && compareAsc(dateFnsParseISO(`${currentDayString}T${slotTime}`), dateFnsParseISO(`${currentDayString}T${originalRequestTime}`)) < 0) {
         continue;
       }
@@ -189,24 +185,26 @@ async function findNextAvailableSlots(
 
       let overlappingCount = 0;
       for (const exAppt of existingAppointmentsOnThisDay) {
-        // If checking for a specific branch, filter exAppt here if exAppt.branchId != branchId
         const exApptStart = dateFnsParseISO(`${exAppt.date}T${exAppt.time}:00.000Z`);
         if (!isValidDate(exApptStart)) continue;
 
+        // Determine duration for the existing appointment
         let exApptDuration = appSettings.defaultServiceDurationMinutes || 60;
         const exApptSpecificRule = appSettings.specificDayRules?.find(r => r.date === exAppt.date);
         if (exApptSpecificRule && exApptSpecificRule.serviceDurationMinutes) {
           exApptDuration = exApptSpecificRule.serviceDurationMinutes;
         }
+        // Potentially fetch product-specific duration if needed in future, for now using global/daily override
         const exApptEnd = addMinutes(exApptStart, exApptDuration);
 
+        // Check for overlap
         if (isBefore(slotStartDateTime, exApptEnd) && isBefore(exApptStart, slotEndDateTime)) {
           overlappingCount++;
         }
       }
 
       if (overlappingCount < activeNumStaff) {
-        suggestions.push({ date: currentDayString, time: slotTime /*, branch: branchName if applicable */ });
+        suggestions.push({ date: currentDayString, time: slotTime });
         if (suggestions.length >= maxSuggestions) {
           return suggestions;
         }
@@ -224,7 +222,6 @@ export async function checkRealAvailability(
   targetDateObj: Date,
   targetTime: string,
   appSettings: AppSettings,
-  // branchId?: string, // For future branch-specific capacity
   serviceDurationMinutesOverride?: number
 ): Promise<{
   isAvailable: boolean;
@@ -237,7 +234,6 @@ export async function checkRealAvailability(
   const targetDateString = dateFnsFormat(targetDateObj, 'yyyy-MM-dd');
   const targetDayOfWeek = getDay(targetDateObj);
 
-  // For now, using global appSettings. Branch-specific logic would load branch settings here.
   let currentWorkingHours = appSettings.workingHours || [];
   let currentNumStaff = appSettings.numberOfStaff || 1;
   let isDayOff = false;
@@ -257,12 +253,11 @@ export async function checkRealAvailability(
 
   if (isDayOff) {
     const suggestedAlternativeSlots = await findNextAvailableSlots(
-      addDays(targetDateObj, 1),
-      "00:00",
+      addDays(targetDateObj, 1), // Start searching from the next day
+      "00:00", // Start search from beginning of the day
       appSettings,
-      // branchId,
       effectiveServiceDuration,
-      async (dateStr: string /*, bId?: string */) => AppointmentModel.find({ date: dateStr, status: { $in: ['booked', 'pending_confirmation', 'rescheduled'] } /*, ...(bId && { branchId: bId }) */ }, 'date time service branchId').lean()
+      async (dateStr: string) => AppointmentModel.find({ date: dateStr, status: { $in: ['booked', 'pending_confirmation', 'rescheduled'] } }, 'date time service branchId').lean()
     );
     return {
       isAvailable: false,
@@ -276,9 +271,8 @@ export async function checkRealAvailability(
       addDays(targetDateObj, 1),
       "00:00",
       appSettings,
-      // branchId,
       effectiveServiceDuration,
-      async (dateStr: string /*, bId?: string */) => AppointmentModel.find({ date: dateStr, status: { $in: ['booked', 'pending_confirmation', 'rescheduled'] } /*, ...(bId && { branchId: bId }) */ }, 'date time service branchId').lean()
+      async (dateStr: string) => AppointmentModel.find({ date: dateStr, status: { $in: ['booked', 'pending_confirmation', 'rescheduled'] } }, 'date time service branchId').lean()
     );
     return {
       isAvailable: false,
@@ -293,13 +287,12 @@ export async function checkRealAvailability(
   }
 
   if (!currentWorkingHours.includes(targetTime)) {
-    const suggestedAlternativeSlots = await findNextAvailableSlots(
-      targetDateObj,
-      targetTime,
+     const suggestedAlternativeSlots = await findNextAvailableSlots(
+      targetDateObj, // Start search from original request day
+      targetTime,    // And original request time
       appSettings,
-      // branchId,
       effectiveServiceDuration,
-      async (dateStr: string /*, bId?: string */) => AppointmentModel.find({ date: dateStr, status: { $in: ['booked', 'pending_confirmation', 'rescheduled'] } /*, ...(bId && { branchId: bId }) */ }, 'date time service branchId').lean()
+      async (dateStr: string) => AppointmentModel.find({ date: dateStr, status: { $in: ['booked', 'pending_confirmation', 'rescheduled'] } }, 'date time service branchId').lean()
     );
     return {
       isAvailable: false,
@@ -314,22 +307,22 @@ export async function checkRealAvailability(
   const existingAppointmentsOnDate = await AppointmentModel.find({
     date: targetDateString,
     status: { $in: ['booked', 'pending_confirmation', 'rescheduled'] }
-    // Add branchId filter here if capacity is per branch: ...(branchId && { branchId: branchId })
   });
 
   let overlappingCount = 0;
   for (const exAppt of existingAppointmentsOnDate) {
     const exApptStart = dateFnsParseISO(`${exAppt.date}T${exAppt.time}:00.000Z`);
     if (!isValidDate(exApptStart)) continue;
-
-    let exApptDuration = appSettings.defaultServiceDurationMinutes || 60;
+    
+    let exApptDuration = appSettings.defaultServiceDurationMinutes || 60; // Default
     const exApptSpecificRule = appSettings.specificDayRules?.find(r => r.date === exAppt.date);
     if (exApptSpecificRule && exApptSpecificRule.serviceDurationMinutes) {
       exApptDuration = exApptSpecificRule.serviceDurationMinutes;
     }
-
+    // Add logic here to fetch product-specific duration if Appointment model links to Product and product has serviceDuration
     const exApptEnd = addMinutes(exApptStart, exApptDuration);
 
+    // Check for overlap
     if (isBefore(appointmentStartDateTime, exApptEnd) && isBefore(exApptStart, appointmentEndDateTime)) {
       overlappingCount++;
     }
@@ -340,9 +333,8 @@ export async function checkRealAvailability(
       targetDateObj,
       targetTime,
       appSettings,
-      // branchId,
       effectiveServiceDuration,
-      async (dateStr: string /*, bId?: string */) => AppointmentModel.find({ date: dateStr, status: { $in: ['booked', 'pending_confirmation', 'rescheduled'] } /*, ...(bId && { branchId: bId }) */ }, 'date time service branchId').lean()
+      async (dateStr: string) => AppointmentModel.find({ date: dateStr, status: { $in: ['booked', 'pending_confirmation', 'rescheduled'] } }, 'date time service branchId').lean()
     );
     return {
       isAvailable: false,
@@ -383,7 +375,6 @@ const scheduleAppointmentFlow = ai.defineFlow(
       };
     }
 
-
     const appointmentRulesFromDB = await getAppointmentRules();
     const appointmentRulesForAI: AppointmentRule[] = appointmentRulesFromDB.map(rule => ({
       id: rule.id,
@@ -398,12 +389,13 @@ const scheduleAppointmentFlow = ai.defineFlow(
     const activeBranches = await getBranches(true);
     const branchNamesForAI = activeBranches.map(b => b.name);
 
+    // First call to AI for NLU - understanding user intent and extracting details
     let promptInputForNLU: ScheduleAppointmentInput = {
       ...input,
       currentDateTime,
       appointmentRules: appointmentRulesForAI.length > 0 ? appointmentRulesForAI : undefined,
       availableBranches: branchNamesForAI.length > 0 ? branchNamesForAI : undefined,
-      availabilityCheckResult: undefined,
+      availabilityCheckResult: undefined, // No check result for the first NLU call
     };
     const { output: nluOutput } = await scheduleAppointmentPrompt(promptInputForNLU);
 
@@ -415,42 +407,49 @@ const scheduleAppointmentFlow = ai.defineFlow(
       };
     }
 
+    // If AI extracted details for booking/rescheduling and service is present
     if ((nluOutput.intent === 'booked' || nluOutput.intent === 'rescheduled') &&
       nluOutput.appointmentDetails?.date && nluOutput.appointmentDetails?.time &&
       /^\d{4}-\d{2}-\d{2}$/.test(nluOutput.appointmentDetails.date) &&
-      /^[0-2][0-9]:[0-5][0-9]$/.test(nluOutput.appointmentDetails.time)
+      /^[0-2][0-9]:[0-5][0-9]$/.test(nluOutput.appointmentDetails.time) &&
+      nluOutput.appointmentDetails.service // Ensure service is extracted
     ) {
       const targetDate = dateFnsParseISO(nluOutput.appointmentDetails.date);
       const targetTime = nluOutput.appointmentDetails.time;
-      // const targetBranchName = nluOutput.appointmentDetails.branch; // Get branch name from NLU
-      // const targetBranchId = activeBranches.find(b => b.name === targetBranchName)?.id;
-
+      // const serviceName = nluOutput.appointmentDetails.service; // Service name extracted by AI
 
       if (!isValidDate(targetDate)) {
+        // This scenario ideally should be handled by AI NLU by asking for clarification
         return {
           intent: 'clarification_needed',
           confirmationMessage: "Ngày bạn cung cấp không hợp lệ. Vui lòng kiểm tra lại (YYYY-MM-DD).",
           missingInformation: "ngày hợp lệ",
         };
       }
-
-      // Pass targetBranchId to checkRealAvailability if branch-specific capacity is implemented
-      const availability = await checkRealAvailability(targetDate, targetTime, appSettings, /* targetBranchId, */ undefined);
+      
+      // Check real availability using global settings (as per current logic)
+      const availability = await checkRealAvailability(
+        targetDate, 
+        targetTime, 
+        appSettings,
+        appSettings.defaultServiceDurationMinutes // Pass global default duration
+      );
 
       if (availability.isAvailable) {
+        // Slot is available, prepare for final confirmation message
         const promptInputForFinalConfirmation: ScheduleAppointmentInput = {
-          ...input,
-          userInput: "Hệ thống đã xác nhận lịch hẹn. Hãy tạo tin nhắn xác nhận cuối cùng cho người dùng.",
+          ...input, // Keep original context like chat history, user ID
+          userInput: "Hệ thống đã xác nhận lịch hẹn. Hãy tạo tin nhắn xác nhận cuối cùng cho người dùng.", // System instruction
           currentDateTime,
           appointmentRules: appointmentRulesForAI.length > 0 ? appointmentRulesForAI : undefined,
           availableBranches: branchNamesForAI.length > 0 ? branchNamesForAI : undefined,
           availabilityCheckResult: {
             status: "AVAILABLE",
-            confirmedSlot: {
+            confirmedSlot: { // Pass the confirmed slot details for AI to use in message
               date: nluOutput.appointmentDetails.date,
               time: nluOutput.appointmentDetails.time,
               service: nluOutput.appointmentDetails.service,
-              branch: nluOutput.appointmentDetails.branch, // Pass branch here
+              branch: nluOutput.appointmentDetails.branch, // Branch from NLU if any
             },
             isStatusUnavailable: false,
           },
@@ -460,27 +459,28 @@ const scheduleAppointmentFlow = ai.defineFlow(
         if (!finalConfirmationOutput) {
           return { intent: 'error', confirmationMessage: "Lỗi tạo tin nhắn xác nhận lịch hẹn.", requiresAssistance: true };
         }
+        // Return the confirmation from AI, along with AI's extracted details
         return {
-          ...finalConfirmationOutput,
-          appointmentDetails: {
+          ...finalConfirmationOutput, // Contains intent: "booked" and confirmationMessage from AI
+          appointmentDetails: { // Ensure details are from original NLU or confirmed slot
             ...nluOutput.appointmentDetails,
-            status: 'booked',
-            // branchId: targetBranchId // Add branchId to the final details
+            status: 'booked', // Set status to booked by system
           },
-          originalAppointmentIdToModify: nluOutput.originalAppointmentIdToModify,
+          originalAppointmentIdToModify: nluOutput.originalAppointmentIdToModify, // Pass through if rescheduling
         };
 
       } else {
+        // Slot is NOT available, prepare to inform user and suggest alternatives
         const promptInputForAlternatives: ScheduleAppointmentInput = {
           ...input,
-          userInput: "Lịch yêu cầu không trống. Hãy thông báo cho người dùng và đề xuất các khung giờ sau từ suggestedSlots.",
+          userInput: "Lịch yêu cầu không trống. Hãy thông báo cho người dùng và đề xuất các khung giờ sau từ suggestedSlots.", // System instruction
           currentDateTime,
           appointmentRules: appointmentRulesForAI.length > 0 ? appointmentRulesForAI : undefined,
           availableBranches: branchNamesForAI.length > 0 ? branchNamesForAI : undefined,
-          availabilityCheckResult: {
+          availabilityCheckResult: { // Pass the unavailability result
             status: "UNAVAILABLE",
             reason: availability.reason,
-            suggestedSlots: availability.suggestedSlots,
+            suggestedSlots: availability.suggestedSlots, // System suggested slots
             isStatusUnavailable: true,
           }
         };
@@ -488,13 +488,16 @@ const scheduleAppointmentFlow = ai.defineFlow(
         if (!alternativeOutput) {
           return { intent: 'error', confirmationMessage: "Lỗi khi gợi ý lịch hẹn thay thế.", requiresAssistance: true };
         }
+        // Return AI's response (which should include suggested slots)
         return {
-          ...alternativeOutput,
-          suggestedSlots: availability.suggestedSlots || alternativeOutput.suggestedSlots || [],
+          ...alternativeOutput, // Contains intent: "pending_alternatives" and confirmationMessage
+          suggestedSlots: availability.suggestedSlots || alternativeOutput.suggestedSlots || [], // Ensure suggestedSlots are passed
         };
       }
     } else if (nluOutput.intent === 'cancelled' || nluOutput.intent === 'clarification_needed' || nluOutput.intent === 'no_action_needed' || nluOutput.intent === 'error') {
+      // Handle cases where NLU doesn't result in booking or needs more info
       if (nluOutput.intent === 'cancelled' && !nluOutput.originalAppointmentIdToModify && (input.existingAppointments?.length ?? 0) > 0) {
+        // If AI wants to cancel but didn't pick which one, and user has appointments
         if ((input.existingAppointments?.length ?? 0) > 1) {
           return {
             intent: 'clarification_needed',
@@ -502,19 +505,23 @@ const scheduleAppointmentFlow = ai.defineFlow(
             missingInformation: "lịch hẹn cụ thể cần hủy",
           };
         } else if (input.existingAppointments?.length === 1) {
+          // If only one appointment, AI can assume to cancel that one
           nluOutput.originalAppointmentIdToModify = input.existingAppointments[0].appointmentId;
         }
       }
+      // Ensure suggestedSlots time format is correct if AI generated them in NLU (less likely now with system suggestions)
       if (nluOutput.intent === 'pending_alternatives' && nluOutput.suggestedSlots) {
         for (const slot of nluOutput.suggestedSlots) {
           if (!/^\d{4}-\d{2}-\d{2}$/.test(slot.date) || !/^[0-2][0-9]:[0-5][0-9]$/.test(slot.time)) {
+            // This is a safeguard, but system-generated slots should already be in correct format.
+            // If AI itself suggests slots initially, they might need reformatting or clarification.
             try {
-              const parsedTime = Date.parse(`1970/01/01 ${slot.time}`);
+              const parsedTime = Date.parse(`1970/01/01 ${slot.time}`); // Attempt to parse common time formats
               if (!isNaN(parsedTime)) {
                 slot.time = dateFnsFormat(new Date(parsedTime), "HH:mm");
               } else {
                 console.warn("AI suggested invalid time format in initial NLU, requesting clarification:", slot);
-                return {
+                return { // Ask user to clarify the time
                   intent: 'clarification_needed',
                   confirmationMessage: "Định dạng giờ gợi ý không hợp lệ. Bạn có thể cung cấp lại giờ mong muốn (HH:MM)?",
                   missingInformation: "giờ hợp lệ (HH:MM)",
@@ -522,7 +529,7 @@ const scheduleAppointmentFlow = ai.defineFlow(
               }
             } catch (e) {
               console.warn("AI suggested invalid time format in initial NLU, requesting clarification:", slot);
-              return {
+               return {
                 intent: 'clarification_needed',
                 confirmationMessage: "Định dạng giờ gợi ý không hợp lệ. Bạn có thể cung cấp lại giờ mong muốn (HH:MM)?",
                 missingInformation: "giờ hợp lệ (HH:MM)",
@@ -531,8 +538,9 @@ const scheduleAppointmentFlow = ai.defineFlow(
           }
         }
       }
-      return nluOutput;
+      return nluOutput; // Return NLU output directly for these intents
     } else {
+      // Fallback if NLU output is unexpected or details are missing for booking
       return {
         intent: 'clarification_needed',
         confirmationMessage: "Tôi chưa hiểu rõ yêu cầu đặt lịch của bạn. Bạn muốn đặt dịch vụ nào, vào ngày giờ nào?",
@@ -541,3 +549,4 @@ const scheduleAppointmentFlow = ai.defineFlow(
     }
   }
 );
+
