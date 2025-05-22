@@ -12,7 +12,7 @@ import { Badge } from '@/components/ui/badge';
 import { PlusCircle, Search, Edit, Trash2, ImageIcon, CalendarCog, ClockIcon, UsersIcon, CalendarDays, Save, XCircle } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { format, parse, isValid as isValidDateFns } from 'date-fns';
-import { ScrollArea } from '@/components/ui/scroll-area'; // Added import
+import { ScrollArea } from '@/components/ui/scroll-area';
 import {
   Dialog,
   DialogContent,
@@ -146,10 +146,10 @@ export default function StaffProductsPage() {
       setCategory(product.category || '');
       setImageUrl(product.imageUrl || '');
       setIsActive(product.isActive);
-      setIsSchedulable(product.isSchedulable ?? true); // Default to true if undefined
+      setIsSchedulable(product.isSchedulable ?? true); 
       setProductSchedulingRules(product.schedulingRules || {});
     } else {
-      setIsSchedulable(true); // Default for new product
+      setIsSchedulable(true); 
       setProductSchedulingRules({});
     }
     setIsModalOpen(true);
@@ -162,9 +162,9 @@ export default function StaffProductsPage() {
   const handleProductWeeklyOffDayChange = (dayId: number, checked: boolean | 'indeterminate') => {
     const currentOffDays = productSchedulingRules.weeklyOffDays || [];
     const newOffDays = checked === true
-      ? [...currentOffDays, dayId].filter((v, i, a) => a.indexOf(v) === i) // Add and ensure unique
+      ? [...currentOffDays, dayId].filter((v, i, a) => a.indexOf(v) === i) 
       : currentOffDays.filter(d => d !== dayId);
-    handleSchedulingRuleChange('weeklyOffDays', newOffDays.length > 0 ? newOffDays : undefined); // Store undefined if empty
+    handleSchedulingRuleChange('weeklyOffDays', newOffDays.length > 0 ? newOffDays : undefined); 
   };
   
 
@@ -185,7 +185,7 @@ export default function StaffProductsPage() {
   
   const handleRemoveProductOneTimeOffDate = (dateToRemove: string) => {
     const newDates = (productSchedulingRules.oneTimeOffDates || []).filter(d => d !== dateToRemove);
-    handleSchedulingRuleChange('oneTimeOffDates', newDates.length > 0 ? newDates : undefined); // Store undefined if empty
+    handleSchedulingRuleChange('oneTimeOffDates', newDates.length > 0 ? newDates : undefined); 
   };
 
   const handleAddProductSpecificDayRule = () => {
@@ -193,8 +193,8 @@ export default function StaffProductsPage() {
       toast({ title: "Thiếu thông tin", description: "Vui lòng chọn ngày hợp lệ (YYYY-MM-DD) cho quy tắc cụ thể của sản phẩm.", variant: "destructive" });
       return;
     }
-    const newRule: SpecificDayRule = { // SpecificDayRule includes ID
-      id: Date.now().toString(), // Temporary client-side ID
+    const newRule: SpecificDayRule = { 
+      id: Date.now().toString(), 
       date: tempProductSpecRuleDate,
       isOff: tempProductSpecRuleIsOff,
       workingHours: tempProductSpecRuleHours.split(',').map(h => h.trim()).filter(h => /^[0-2][0-9]:[0-5][0-9]$/.test(h)).length > 0 ? tempProductSpecRuleHours.split(',').map(h => h.trim()).filter(h => /^[0-2][0-9]:[0-5][0-9]$/.test(h)) : undefined,
@@ -208,7 +208,7 @@ export default function StaffProductsPage() {
 
   const handleRemoveProductSpecificDayRule = (idToRemove: string) => {
     const newRules = (productSchedulingRules.specificDayRules || []).filter(rule => rule.id !== idToRemove);
-    handleSchedulingRuleChange('specificDayRules', newRules.length > 0 ? newRules : undefined); // Store undefined if empty
+    handleSchedulingRuleChange('specificDayRules', newRules.length > 0 ? newRules : undefined); 
   };
 
 
@@ -231,11 +231,11 @@ export default function StaffProductsPage() {
             workingHours: (productSchedulingRules.workingHours && Array.isArray(productSchedulingRules.workingHours) && productSchedulingRules.workingHours.length > 0) ? productSchedulingRules.workingHours : undefined,
             weeklyOffDays: (productSchedulingRules.weeklyOffDays && Array.isArray(productSchedulingRules.weeklyOffDays) && productSchedulingRules.weeklyOffDays.length > 0) ? productSchedulingRules.weeklyOffDays : undefined,
             oneTimeOffDates: (productSchedulingRules.oneTimeOffDates && Array.isArray(productSchedulingRules.oneTimeOffDates) && productSchedulingRules.oneTimeOffDates.length > 0) ? productSchedulingRules.oneTimeOffDates : undefined,
-            specificDayRules: (productSchedulingRules.specificDayRules || []).map(r => { const { id, ...rest } = r; return rest; }), // Remove client-side ID
+            specificDayRules: (productSchedulingRules.specificDayRules || []).map(r => { const { id, ...rest } = r; return rest; }), 
         } : undefined,
       };
       
-      // Clean up undefined rule fields or empty arrays within schedulingRules
+      
       if (productData.schedulingRules) {
         if (productData.schedulingRules.specificDayRules?.length === 0) {
             delete productData.schedulingRules.specificDayRules;
@@ -249,7 +249,7 @@ export default function StaffProductsPage() {
         if (productData.schedulingRules.oneTimeOffDates?.length === 0) {
             delete productData.schedulingRules.oneTimeOffDates;
         }
-        // Delete schedulingRules object itself if all its properties are undefined or empty arrays
+        
         if (Object.values(productData.schedulingRules).every(value => value === undefined || (Array.isArray(value) && value.length === 0))) {
           delete productData.schedulingRules;
         }
@@ -437,7 +437,7 @@ export default function StaffProductsPage() {
       </Card>
 
       <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
-        <DialogContent className="sm:max-w-3xl"> {/* Increased width for more fields */}
+        <DialogContent className="sm:max-w-3xl"> 
           <DialogHeader>
             <DialogTitle>{currentProduct ? 'Chỉnh sửa Sản phẩm/Dịch vụ' : 'Thêm Sản phẩm/Dịch vụ Mới'}</DialogTitle>
             <DialogDescription>
@@ -449,7 +449,7 @@ export default function StaffProductsPage() {
           <form onSubmit={handleSubmit}>
             <ScrollArea className="max-h-[75vh] p-1 pr-3">
               <div className="space-y-4 ">
-                {/* Basic Product Info */}
+                
                 <Card>
                   <CardHeader><CardTitle className="text-lg">Thông tin cơ bản</CardTitle></CardHeader>
                   <CardContent className="space-y-3">
@@ -469,7 +469,7 @@ export default function StaffProductsPage() {
                   </CardContent>
                 </Card>
 
-                {/* Scheduling Configuration */}
+                
                 <Card>
                     <CardHeader>
                         <div className="flex items-center space-x-2">
@@ -494,7 +494,7 @@ export default function StaffProductsPage() {
                                 </div>
                             </div>
                              <div className="space-y-1.5">
-                                <Label htmlFor="prodWorkingHours"><CalendarIcon className="inline mr-1 h-4 w-4" />Giờ nhận khách riêng (HH:MM, HH:MM)</Label>
+                                <Label htmlFor="prodWorkingHours"><ClockIcon className="inline mr-1 h-4 w-4" />Giờ nhận khách riêng (HH:MM, HH:MM)</Label>
                                 <Input id="prodWorkingHours" value={(productSchedulingRules.workingHours || []).join(', ')} onChange={e => handleSchedulingRuleChange('workingHours', e.target.value.split(',').map(h => h.trim()).filter(h => /^[0-2][0-9]:[0-5][0-9]$/.test(h)))} placeholder="VD: 08:00,14:00 (Mặc định theo cài đặt chung)" disabled={isSubmitting}/>
                             </div>
                             <div className="space-y-1.5">
@@ -565,6 +565,7 @@ export default function StaffProductsPage() {
                 </Button>
               </DialogClose>
               <Button type="submit" disabled={isSubmitting}>
+                <Save className="mr-2 h-4 w-4" />
                 {isSubmitting
                   ? currentProduct
                     ? 'Đang cập nhật...'
