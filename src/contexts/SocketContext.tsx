@@ -32,12 +32,14 @@ export function SocketProvider({ children }: SocketProviderProps) {
     console.log('SocketProvider: Attempting to initialize Socket.IO client...');
     if (typeof window !== 'undefined') {
       let newSocketInstance: Socket | null = null;
-      try {
-        if (typeof ioClient === 'function') {
-          newSocketInstance = ioClient(window.location.origin, {
+      if (typeof ioClient === 'function') {
+        try {
+          newSocketInstance = ioClient(window.location.origin, { // Connect to the same origin as the Next.js app
             path: '/socket.io/', // Explicit path, must match server
-            transports: ['websocket'], 
-            // autoConnect: true, // Default is true
+            transports: ['websocket', 'polling'], // Try websocket first, then fallback to polling
+            reconnectionAttempts: 5, // Attempt to reconnect 5 times
+            reconnectionDelay: 3000, // Wait 3 seconds before attempting reconnection
+            // autoConnect: true, // Default is true, explicitly stating for clarity
           });
 
           if (newSocketInstance) {
@@ -52,6 +54,11 @@ export function SocketProvider({ children }: SocketProviderProps) {
             newSocketInstance.on('disconnect', (reason) => {
               console.log('SocketProvider: Socket disconnected. Reason:', reason);
               setIsConnected(false);
+              if (reason === 'io server disconnect') {
+                // The disconnection was initiated by the server, you need to reconnect manually if desired
+                // newSocketInstance.connect(); // Or handle as per your app's logic
+              }
+              // Else, the client will try to reconnect automatically if configured
             });
 
             newSocketInstance.on('connect_error', (err) => {
@@ -63,11 +70,11 @@ export function SocketProvider({ children }: SocketProviderProps) {
           } else {
              console.error('SocketProvider: Socket.IO client (ioClient) did not return an instance.');
           }
-        } else {
-          console.error('SocketProvider: Socket.IO client (ioClient) is not a function. Ensure socket.io-client is installed correctly.');
+        } catch (error) {
+          console.error('SocketProvider: Error during Socket.IO client instantiation or event listener setup:', error);
         }
-      } catch (error) {
-        console.error('SocketProvider: Error during Socket.IO client initialization:', error);
+      } else {
+        console.error('SocketProvider: Socket.IO client (ioClient) is not a function. Ensure socket.io-client is installed correctly and imported.');
       }
 
       // Cleanup on component unmount
