@@ -29,7 +29,7 @@ import type { ProductItem } from '@/lib/types';
 
 // This page is used by both /admin/products and /staff/products
 // The layout (AdminLayout or StaffLayout) will determine the sidebar and overall access.
-// The "Add" and "Edit" buttons will navigate to admin-specific routes.
+// CRUD ops will be permissioned by actions.
 
 export default function ProductsManagementPage() {
   const [products, setProducts] = useState<ProductItem[]>([]);
@@ -38,6 +38,15 @@ export default function ProductsManagementPage() {
   const [isLoading, setIsLoading] = useState(true);
   const { toast } = useToast();
   const router = useRouter();
+  const [isAdminRoute, setIsAdminRoute] = useState(false);
+
+  useEffect(() => {
+    // Check if router is ready and then get pathname
+    if (router && router.pathname) {
+      setIsAdminRoute(router.pathname.startsWith('/admin'));
+    }
+  }, [router]);
+
 
   const fetchProducts = useCallback(async () => {
     try {
@@ -110,8 +119,6 @@ export default function ProductsManagementPage() {
     }).format(priceVal);
   };
 
-  // Determine base path based on current route (admin or staff)
-  const isAdminRoute = router.pathname?.startsWith('/admin'); // router.pathname might be undefined initially
   const basePath = isAdminRoute ? '/admin' : '/staff';
 
   return (
@@ -121,7 +128,7 @@ export default function ProductsManagementPage() {
           <h1 className="text-2xl sm:text-3xl font-bold">Quản lý Sản phẩm/Dịch vụ</h1>
           <p className="text-muted-foreground text-sm sm:text-base">Xem và quản lý danh sách sản phẩm và dịch vụ.</p>
         </div>
-        {isAdminRoute && ( // Only show Add button for admin for now
+        {isAdminRoute && ( 
           <Button className="w-full sm:w-auto" asChild>
             <Link href={`${basePath}/products/add`}>
               <PlusCircle className="mr-2 h-4 w-4" /> Thêm Sản phẩm Mới
@@ -172,7 +179,7 @@ export default function ProductsManagementPage() {
                     <TableHead className="hidden md:table-cell">Ngày tạo</TableHead>
                     <TableHead>Trạng thái</TableHead>
                     <TableHead>Đặt lịch?</TableHead>
-                    <TableHead className="text-right">Hành động</TableHead>
+                    {isAdminRoute && <TableHead className="text-right">Hành động</TableHead>}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -192,50 +199,48 @@ export default function ProductsManagementPage() {
                           {product.isSchedulable ? 'Có thể' : 'Không'}
                         </Badge>
                       </TableCell>
-                      <TableCell className="text-right">
-                        {isAdminRoute && ( // Only show Edit/Delete for admin for now
-                          <>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="mr-2"
-                              asChild
-                            >
-                              <Link href={`${basePath}/products/edit/${product.id}`}>
-                                <Edit className="h-4 w-4" />
-                              </Link>
-                            </Button>
-                            <AlertDialog>
-                              <AlertDialogTrigger asChild>
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  className="text-destructive hover:text-destructive"
+                      {isAdminRoute && (
+                        <TableCell className="text-right">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="mr-2"
+                            asChild
+                          >
+                            <Link href={`${basePath}/products/edit/${product.id}`}>
+                              <Edit className="h-4 w-4" />
+                            </Link>
+                          </Button>
+                          <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="text-destructive hover:text-destructive"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent>
+                              <AlertDialogHeader>
+                                <AlertDialogTitle>Bạn có chắc chắn muốn xóa?</AlertDialogTitle>
+                                <AlertDialogDescription>
+                                  Hành động này không thể hoàn tác. Sản phẩm "{product.name}" sẽ bị xóa vĩnh viễn.
+                                </AlertDialogDescription>
+                              </AlertDialogHeader>
+                              <AlertDialogFooter>
+                                <AlertDialogCancel>Hủy</AlertDialogCancel>
+                                <AlertDialogAction
+                                  onClick={() => handleDeleteProduct(product.id)}
+                                  className="bg-destructive hover:bg-destructive/90"
                                 >
-                                  <Trash2 className="h-4 w-4" />
-                                </Button>
-                              </AlertDialogTrigger>
-                              <AlertDialogContent>
-                                <AlertDialogHeader>
-                                  <AlertDialogTitle>Bạn có chắc chắn muốn xóa?</AlertDialogTitle>
-                                  <AlertDialogDescription>
-                                    Hành động này không thể hoàn tác. Sản phẩm "{product.name}" sẽ bị xóa vĩnh viễn.
-                                  </AlertDialogDescription>
-                                </AlertDialogHeader>
-                                <AlertDialogFooter>
-                                  <AlertDialogCancel>Hủy</AlertDialogCancel>
-                                  <AlertDialogAction
-                                    onClick={() => handleDeleteProduct(product.id)}
-                                    className="bg-destructive hover:bg-destructive/90"
-                                  >
-                                    Xóa
-                                  </AlertDialogAction>
-                                </AlertDialogFooter>
-                              </AlertDialogContent>
-                            </AlertDialog>
-                          </>
-                        )}
-                      </TableCell>
+                                  Xóa
+                                </AlertDialogAction>
+                              </AlertDialogFooter>
+                            </AlertDialogContent>
+                          </AlertDialog>
+                        </TableCell>
+                      )}
                     </TableRow>
                   ))}
                 </TableBody>
