@@ -9,13 +9,13 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Separator } from '@/components/ui/separator';
-import { Save, Image as ImageIcon, Palette, FileText, Settings2, CalendarCog, Clock, UsersIcon, CalendarDays, Trash2, PlusCircle, CalendarIcon, UploadCloud, XCircle } from 'lucide-react';
+import { Save, Image as ImageIcon, Palette, FileText, Settings2, CalendarCog, Clock, UsersIcon, CalendarDays, Trash2, PlusCircle, CalendarIcon, UploadCloud, XCircle, Briefcase, MessagesSquare } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { getAppSettings, updateAppSettings } from '@/app/actions';
 import type { AppSettings, SpecificDayRule } from '@/lib/types';
 import { Checkbox } from '@/components/ui/checkbox';
 import { format, parse, isValid as isValidDateFns } from 'date-fns';
-import NextImage from 'next/image'; // Renamed to avoid conflict
+import NextImage from 'next/image'; 
 
 const defaultInitialBrandName = 'AetherChat';
 const MAX_LOGO_SIZE_MB = 1;
@@ -26,6 +26,8 @@ const initialSettingsState: Partial<AppSettings> = {
   logoUrl: '',
   logoDataUri: '',
   greetingMessage: 'Tôi là trợ lý AI của bạn. Tôi có thể giúp gì cho bạn hôm nay? Bạn có thể hỏi về dịch vụ hoặc đặt lịch hẹn.',
+  greetingMessageNewCustomer: '',
+  greetingMessageReturningCustomer: '',
   suggestedQuestions: ['Các dịch vụ của bạn?', 'Đặt lịch hẹn', 'Địa chỉ của bạn ở đâu?'],
   footerText: `© ${new Date().getFullYear()} ${defaultInitialBrandName}. Đã đăng ký Bản quyền.`,
   metaTitle: `${defaultInitialBrandName} - Live Chat Thông Minh`,
@@ -40,12 +42,17 @@ const initialSettingsState: Partial<AppSettings> = {
   weeklyOffDays: [],
   oneTimeOffDates: [],
   specificDayRules: [],
+  outOfOfficeResponseEnabled: false,
+  outOfOfficeMessage: 'Cảm ơn bạn đã liên hệ! Hiện tại chúng tôi đang ngoài giờ làm việc. Vui lòng để lại lời nhắn và chúng tôi sẽ phản hồi sớm nhất có thể.',
+  officeHoursStart: "09:00",
+  officeHoursEnd: "17:00",
+  officeDays: [1,2,3,4,5], // Mon-Fri
 };
 
 const daysOfWeek = [
-  { id: 0, label: 'Chủ nhật' }, { id: 1, label: 'Thứ 2' }, { id: 2, label: 'Thứ 3' },
-  { id: 3, label: 'Thứ 4' }, { id: 4, label: 'Thứ 5' }, { id: 5, label: 'Thứ 6' },
-  { id: 6, label: 'Thứ 7' }
+  { id: 1, label: 'Thứ 2' }, { id: 2, label: 'Thứ 3' }, { id: 3, label: 'Thứ 4' },
+  { id: 4, label: 'Thứ 5' }, { id: 5, label: 'Thứ 6' }, { id: 6, label: 'Thứ 7' },
+  { id: 0, label: 'Chủ nhật' }
 ];
 
 export default function AdminSettingsPage() {
@@ -57,7 +64,6 @@ export default function AdminSettingsPage() {
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
   const logoInputRef = useRef<HTMLInputElement>(null);
 
-  // State for new specific day rule
   const [newSpecificRuleDate, setNewSpecificRuleDate] = useState('');
   const [newSpecificRuleIsOff, setNewSpecificRuleIsOff] = useState(false);
   const [newSpecificRuleWorkingHours, setNewSpecificRuleWorkingHours] = useState('');
@@ -76,9 +82,10 @@ export default function AdminSettingsPage() {
             suggestedQuestions: fetchedSettings.suggestedQuestions && fetchedSettings.suggestedQuestions.length > 0 ? fetchedSettings.suggestedQuestions : initialSettingsState.suggestedQuestions,
             metaKeywords: fetchedSettings.metaKeywords && fetchedSettings.metaKeywords.length > 0 ? fetchedSettings.metaKeywords : initialSettingsState.metaKeywords,
             workingHours: fetchedSettings.workingHours && fetchedSettings.workingHours.length > 0 ? fetchedSettings.workingHours : initialSettingsState.workingHours,
-            weeklyOffDays: fetchedSettings.weeklyOffDays || [],
-            oneTimeOffDates: fetchedSettings.oneTimeOffDates || [],
-            specificDayRules: (fetchedSettings.specificDayRules || []).map(rule => ({...rule, id: rule.id || new Date().getTime().toString()})),
+            weeklyOffDays: fetchedSettings.weeklyOffDays || initialSettingsState.weeklyOffDays,
+            oneTimeOffDates: fetchedSettings.oneTimeOffDates || initialSettingsState.oneTimeOffDates,
+            specificDayRules: (fetchedSettings.specificDayRules || initialSettingsState.specificDayRules!).map(rule => ({...rule, id: rule.id || new Date().getTime().toString()})),
+            officeDays: fetchedSettings.officeDays && fetchedSettings.officeDays.length > 0 ? fetchedSettings.officeDays : initialSettingsState.officeDays,
         };
         setSettings(fullSettings);
         if (fullSettings.logoDataUri) {
@@ -113,10 +120,14 @@ export default function AdminSettingsPage() {
         let processedValue: any = value;
         if (isNumberField) {
             const num = parseFloat(value);
-            processedValue = isNaN(num) ? undefined : num; // Store undefined if NaN or empty
+            processedValue = isNaN(num) ? undefined : num; 
         }
         return { ...prev, [name]: processedValue };
     });
+  };
+
+  const handleCheckboxChange = (name: keyof AppSettings, checked: boolean | 'indeterminate') => {
+    setSettings(prev => ({ ...prev, [name]: checked === true }));
   };
   
   const handleSuggestedQuestionsChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -131,16 +142,28 @@ export default function AdminSettingsPage() {
     setSettings(prev => ({ ...prev, workingHours: e.target.value.split(',').map(h => h.trim()).filter(h => /^[0-2][0-9]:[0-5][0-9]$/.test(h)) }));
   };
   
-  const handleWeeklyOffDayChange = (dayId: number, checked: boolean) => {
+  const handleWeeklyOffDayChange = (dayId: number, checked: boolean | 'indeterminate') => {
     setSettings(prev => {
       const currentOffDays = prev.weeklyOffDays || [];
-      if (checked) {
+      if (checked === true) {
         return { ...prev, weeklyOffDays: [...currentOffDays, dayId] };
       } else {
         return { ...prev, weeklyOffDays: currentOffDays.filter(d => d !== dayId) };
       }
     });
   };
+  
+  const handleOfficeDayChange = (dayId: number, checked: boolean | 'indeterminate') => {
+    setSettings(prev => {
+      const currentOfficeDays = prev.officeDays || [];
+      if (checked === true) {
+        return { ...prev, officeDays: [...currentOfficeDays, dayId] };
+      } else {
+        return { ...prev, officeDays: currentOfficeDays.filter(d => d !== dayId) };
+      }
+    });
+  };
+
 
   const handleAddOneTimeOffDate = () => {
     if (newOneTimeOffDate && !settings.oneTimeOffDates?.includes(newOneTimeOffDate)) {
@@ -240,7 +263,7 @@ export default function AdminSettingsPage() {
           ...settingsToSave,
           specificDayRules: (settingsToSave.specificDayRules || []).filter(rule => rule.date && rule.date.trim() !== '')
              .map(rule => {
-                 const { id: ruleId, ...restOfRule } = rule; // Remove client-side ID before saving
+                 const { id: ruleId, ...restOfRule } = rule; 
                  return restOfRule;
              }),
       };
@@ -263,17 +286,16 @@ export default function AdminSettingsPage() {
       <h1 className="text-3xl font-bold">Cài đặt Ứng dụng</h1>
       <p className="text-muted-foreground">Cấu hình giao diện, SEO, và các cài đặt hệ thống khác.</p>
 
+      {/* General and Branding Settings */}
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center"><Palette className="mr-2 h-5 w-5 text-primary" /> Cài đặt Giao diện & Chào hỏi</CardTitle>
-          <CardDescription>Tùy chỉnh giao diện và cảm nhận của ứng dụng, lời chào và câu hỏi gợi ý.</CardDescription>
+          <CardTitle className="flex items-center"><Palette className="mr-2 h-5 w-5 text-primary" /> Giao diện & Thương hiệu</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-2">
             <Label htmlFor="brandName">Tên Thương hiệu</Label>
             <Input id="brandName" name="brandName" value={settings.brandName || ''} onChange={handleInputChange} disabled={isSubmitting} />
           </div>
-          
           <div className="space-y-2">
             <Label htmlFor="logoUpload">Logo Thương hiệu</Label>
             <div className="flex items-center gap-4">
@@ -292,7 +314,7 @@ export default function AdminSettingsPage() {
                   className="block w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20"
                   disabled={isSubmitting}
                 />
-                 <p className="text-xs text-muted-foreground">Tải lên logo (khuyên dùng .png, .svg, kích thước tối đa {MAX_LOGO_SIZE_MB}MB).</p>
+                 <p className="text-xs text-muted-foreground">Tải lên logo (khuyên dùng .png, .svg, tối đa {MAX_LOGO_SIZE_MB}MB).</p>
               </div>
               {logoPreview && (
                 <Button variant="ghost" size="icon" onClick={handleRemoveLogo} disabled={isSubmitting} title="Xóa logo đã tải lên">
@@ -301,34 +323,94 @@ export default function AdminSettingsPage() {
               )}
             </div>
           </div>
-
           <div className="space-y-2">
             <Label htmlFor="logoUrl">Hoặc URL Logo bên ngoài</Label>
             <Input id="logoUrl" name="logoUrl" type="url" placeholder="https://example.com/logo.png" value={settings.logoUrl || ''} onChange={(e) => { handleInputChange(e); if (e.target.value) setLogoPreview(e.target.value);}} disabled={isSubmitting} />
              <p className="text-xs text-muted-foreground">Nếu bạn tải lên logo, trường này sẽ bị bỏ qua.</p>
           </div>
-
            <div className="space-y-2">
             <Label htmlFor="footerText">Chữ Chân trang</Label>
             <Input id="footerText" name="footerText" value={settings.footerText || ''} onChange={handleInputChange} disabled={isSubmitting} />
           </div>
-          <div className="space-y-2">
-            <Label htmlFor="greetingMessage">Lời chào tùy chỉnh (Phần sau "Chào mừng đến [Tên Thương Hiệu]!")</Label>
-            <Textarea id="greetingMessage" name="greetingMessage" value={settings.greetingMessage || ''} onChange={handleInputChange} disabled={isSubmitting} placeholder="Ví dụ: Tôi là trợ lý AI của bạn..." />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="suggestedQuestions">Câu hỏi gợi ý (Mỗi câu một dòng)</Label>
-            <Textarea id="suggestedQuestions" name="suggestedQuestions" value={(settings.suggestedQuestions || []).join('\n')} onChange={handleSuggestedQuestionsChange} disabled={isSubmitting} placeholder="Dịch vụ của bạn là gì?\nĐặt lịch hẹn"/>
-          </div>
+        </CardContent>
+      </Card>
+      
+      {/* Greeting and Initial Interaction Settings */}
+      <Card>
+        <CardHeader>
+            <CardTitle className="flex items-center"><MessagesSquare className="mr-2 h-5 w-5 text-primary" /> Lời chào & Tương tác Ban đầu</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+            <div className="space-y-2">
+                <Label htmlFor="greetingMessage">Lời chào mặc định</Label>
+                <Textarea id="greetingMessage" name="greetingMessage" value={settings.greetingMessage || ''} onChange={handleInputChange} disabled={isSubmitting} placeholder="Ví dụ: Chào bạn! Tôi là trợ lý AI của spa..." />
+            </div>
+            <div className="space-y-2">
+                <Label htmlFor="greetingMessageNewCustomer">Lời chào cho Khách Mới (tùy chọn)</Label>
+                <Textarea id="greetingMessageNewCustomer" name="greetingMessageNewCustomer" value={settings.greetingMessageNewCustomer || ''} onChange={handleInputChange} disabled={isSubmitting} placeholder="Ví dụ: Chào mừng bạn lần đầu đến với chúng tôi!"/>
+            </div>
+            <div className="space-y-2">
+                <Label htmlFor="greetingMessageReturningCustomer">Lời chào cho Khách Cũ (tùy chọn)</Label>
+                <Textarea id="greetingMessageReturningCustomer" name="greetingMessageReturningCustomer" value={settings.greetingMessageReturningCustomer || ''} onChange={handleInputChange} disabled={isSubmitting} placeholder="Ví dụ: Chào mừng bạn quay trở lại!"/>
+            </div>
+            <div className="space-y-2">
+                <Label htmlFor="suggestedQuestions">Câu hỏi gợi ý ban đầu (Mỗi câu một dòng)</Label>
+                <Textarea id="suggestedQuestions" name="suggestedQuestions" value={(settings.suggestedQuestions || []).join('\n')} onChange={handleSuggestedQuestionsChange} disabled={isSubmitting} placeholder="Dịch vụ của bạn là gì?\nĐặt lịch hẹn"/>
+            </div>
         </CardContent>
       </Card>
 
-      <Separator />
-
+      {/* Out of Office Settings */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center"><Briefcase className="mr-2 h-5 w-5 text-primary" /> Phản hồi Ngoài giờ Làm việc</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex items-center space-x-2">
+            <Checkbox id="outOfOfficeResponseEnabled" name="outOfOfficeResponseEnabled" checked={settings.outOfOfficeResponseEnabled} onCheckedChange={(checked) => handleCheckboxChange('outOfOfficeResponseEnabled', checked)} disabled={isSubmitting}/>
+            <Label htmlFor="outOfOfficeResponseEnabled">Bật phản hồi ngoài giờ</Label>
+          </div>
+          {settings.outOfOfficeResponseEnabled && (
+            <>
+              <div className="space-y-2">
+                <Label htmlFor="outOfOfficeMessage">Nội dung phản hồi ngoài giờ</Label>
+                <Textarea id="outOfOfficeMessage" name="outOfOfficeMessage" value={settings.outOfOfficeMessage || ''} onChange={handleInputChange} disabled={isSubmitting} />
+              </div>
+              <div className="grid md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="officeHoursStart">Giờ bắt đầu làm việc</Label>
+                  <Input id="officeHoursStart" name="officeHoursStart" type="time" value={settings.officeHoursStart || ''} onChange={handleInputChange} disabled={isSubmitting} />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="officeHoursEnd">Giờ kết thúc làm việc</Label>
+                  <Input id="officeHoursEnd" name="officeHoursEnd" type="time" value={settings.officeHoursEnd || ''} onChange={handleInputChange} disabled={isSubmitting} />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label>Ngày làm việc trong tuần</Label>
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
+                  {daysOfWeek.map(day => (
+                    <div key={`officeDay-${day.id}`} className="flex items-center space-x-2">
+                      <Checkbox
+                        id={`officeDay-${day.id}`}
+                        checked={(settings.officeDays || []).includes(day.id)}
+                        onCheckedChange={(checked) => handleOfficeDayChange(day.id, checked)}
+                        disabled={isSubmitting}
+                      />
+                      <Label htmlFor={`officeDay-${day.id}`} className="font-normal">{day.label}</Label>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </>
+          )}
+        </CardContent>
+      </Card>
+      
+      {/* SEO Settings */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center"><FileText className="mr-2 h-5 w-5 text-primary" /> Cài đặt SEO</CardTitle>
-          <CardDescription>Tối ưu hóa ứng dụng của bạn cho các công cụ tìm kiếm.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-2">
@@ -358,17 +440,15 @@ export default function AdminSettingsPage() {
         </CardContent>
       </Card>
       
-      <Separator />
-
+      {/* Appointment Scheduling Rules */}
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center"><CalendarCog className="mr-2 h-5 w-5 text-primary" /> Cài đặt Quy tắc Đặt lịch</CardTitle>
-          <CardDescription>Thiết lập các quy tắc chung cho việc đặt lịch hẹn tự động.</CardDescription>
+          <CardTitle className="flex items-center"><CalendarCog className="mr-2 h-5 w-5 text-primary" /> Quy tắc Đặt lịch Chung</CardTitle>
         </CardHeader>
         <CardContent className="space-y-6">
           <div className="grid md:grid-cols-2 gap-6">
             <div className="space-y-2">
-              <Label htmlFor="numberOfStaff"><UsersIcon className="inline mr-1 h-4 w-4" />Số lượng nhân viên có thể phục vụ cùng lúc</Label>
+              <Label htmlFor="numberOfStaff"><UsersIcon className="inline mr-1 h-4 w-4" />Số nhân viên (chung)</Label>
               <Input id="numberOfStaff" name="numberOfStaff" type="number" min="0" value={settings.numberOfStaff ?? ''} onChange={handleInputChange} disabled={isSubmitting} />
             </div>
             <div className="space-y-2">
@@ -377,20 +457,19 @@ export default function AdminSettingsPage() {
             </div>
           </div>
           <div className="space-y-2">
-            <Label htmlFor="workingHours"><CalendarIcon className="inline mr-1 h-4 w-4" />Giờ nhận khách (HH:MM, cách nhau bằng dấu phẩy)</Label>
+            <Label htmlFor="workingHours"><CalendarIcon className="inline mr-1 h-4 w-4" />Giờ nhận khách (chung) (HH:MM, cách nhau bằng dấu phẩy)</Label>
             <Input id="workingHours" name="workingHours" value={(settings.workingHours || []).join(', ')} onChange={handleWorkingHoursChange} placeholder="Ví dụ: 09:00, 10:00, 13:30, 14:30" disabled={isSubmitting} />
             <p className="text-xs text-muted-foreground">Các giờ bắt đầu của lịch hẹn. Ví dụ: 09:00,10:00,14:00,15:00</p>
           </div>
-          
           <div className="space-y-2">
-            <Label><CalendarDays className="inline mr-1 h-4 w-4" />Ngày nghỉ hàng tuần</Label>
+            <Label><CalendarDays className="inline mr-1 h-4 w-4" />Ngày nghỉ hàng tuần (chung)</Label>
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
               {daysOfWeek.map(day => (
-                <div key={day.id} className="flex items-center space-x-2">
+                <div key={`weeklyOffDay-${day.id}`} className="flex items-center space-x-2">
                   <Checkbox
                     id={`weeklyOffDay-${day.id}`}
                     checked={(settings.weeklyOffDays || []).includes(day.id)}
-                    onCheckedChange={(checked) => handleWeeklyOffDayChange(day.id, !!checked)}
+                    onCheckedChange={(checked) => handleWeeklyOffDayChange(day.id, checked)}
                     disabled={isSubmitting}
                   />
                   <Label htmlFor={`weeklyOffDay-${day.id}`} className="font-normal">{day.label}</Label>
@@ -398,9 +477,8 @@ export default function AdminSettingsPage() {
               ))}
             </div>
           </div>
-
           <div className="space-y-2">
-            <Label><CalendarDays className="inline mr-1 h-4 w-4" />Ngày nghỉ Lễ/Đặc biệt (một lần)</Label>
+            <Label><CalendarDays className="inline mr-1 h-4 w-4" />Ngày nghỉ Lễ/Đặc biệt (chung)</Label>
             <div className="flex gap-2 items-center">
               <Input 
                 type="date" 
@@ -422,10 +500,9 @@ export default function AdminSettingsPage() {
               ))}
             </ul>
           </div>
-          
           <Separator />
            <div>
-            <h4 className="text-md font-semibold mb-2">Quy tắc cho Ngày Cụ thể</h4>
+            <h4 className="text-md font-semibold mb-2">Quy tắc cho Ngày Cụ thể (chung)</h4>
             <p className="text-sm text-muted-foreground mb-3">Ghi đè các quy tắc chung cho một ngày nhất định. Để trống các trường nếu muốn dùng giá trị chung.</p>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 p-3 border rounded-md mb-4">
                 <Input type="date" value={newSpecificRuleDate} onChange={e => setNewSpecificRuleDate(e.target.value)} placeholder="Ngày (YYYY-MM-DD)" className="h-9"/>
@@ -460,14 +537,12 @@ export default function AdminSettingsPage() {
               </div>
             )}
           </div>
-
         </CardContent>
       </Card>
 
-       <Card>
+      <Card>
         <CardHeader>
           <CardTitle className="flex items-center"><Settings2 className="mr-2 h-5 w-5 text-primary" /> Cấu hình Khác</CardTitle>
-          <CardDescription>Các cấu hình hệ thống chung (hiện tại chưa có).</CardDescription>
         </CardHeader>
         <CardContent>
             <p className="text-muted-foreground">Chưa có cấu hình chung khác.</p>
@@ -483,3 +558,4 @@ export default function AdminSettingsPage() {
   );
 }
     
+```

@@ -3,18 +3,16 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, usePathname } from 'next/navigation'; // Added usePathname
 import Link from 'next/link';
 import { AppHeader } from '@/components/layout/AppHeader';
 import { AppFooter } from '@/components/layout/AppFooter';
 import { ChatInterface } from '@/components/chat/ChatInterface';
-import { ChatWindow } from '@/components/chat/ChatWindow';
 import type { Message, UserSession, Conversation, MessageViewerRole, AppointmentBookingFormData } from '@/lib/types';
-import {
-  handleCustomerAccess,
-  processUserMessage,
+import { 
+  handleCustomerAccess, 
+  processUserMessage, 
   createNewConversationForUser,
-  getConversationHistory as getConversationHistoryAction, // Renamed to avoid conflict
   getUserConversations,
   getMessagesByIds,
   updateConversationTitle,
@@ -25,7 +23,8 @@ import {
   deleteStaffMessage,
   editStaffMessage,
   handleBookAppointmentFromForm,
-} from './actions';
+  getConversationHistory,
+} from './actions'; 
 import { useToast } from '@/hooks/use-toast';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -33,8 +32,9 @@ import { LogIn, Loader2 } from 'lucide-react';
 import { useAppSettingsContext } from '@/contexts/AppSettingsContext';
 import { getAppSettings } from './actions';
 import { AppointmentBookingForm } from '@/components/chat/AppointmentBookingForm';
-import { useSocket } from '@/contexts/SocketContext';
+import { useSocket } from '@/contexts/SocketContext'; 
 import { cn } from '@/lib/utils';
+import { ChatWindow } from '@/components/chat/ChatWindow';
 
 export default function HomePage() {
   const [currentUserSession, setCurrentUserSession] = useState<UserSession | null>(null);
@@ -51,13 +51,15 @@ export default function HomePage() {
 
   const { toast } = useToast();
   const router = useRouter();
+  const pathname = usePathname(); // Get current pathname
   const appSettingsContext = useAppSettingsContext();
   const [brandName, setBrandName] = useState('AetherChat');
 
-  const { socket, isConnected } = useSocket();
   const usersTypingMapRef = useRef<Record<string, string>>({});
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const [typingUsers, setTypingUsers] = useState<Record<string, string>>({});
+
+  const { socket, isConnected } = useSocket();
 
   useEffect(() => {
     const updateBrandName = async () => {
@@ -71,26 +73,23 @@ export default function HomePage() {
     updateBrandName();
   }, [appSettingsContext]);
 
-  const loadConversation = useCallback(async (conversationId: string, customerId: string) => {
+  const loadConversation = useCallback(async (conversationId: string, customerId?: string) => {
     if (!customerId) {
       console.warn("loadConversation called without customerId");
+      setIsChatLoading(false);
       return;
     }
     setIsChatLoading(true);
     try {
-      const messages = await getConversationHistoryAction(conversationId);
+      const messages = await getConversationHistory(conversationId);
       setCurrentMessages(messages);
       setActiveConversationId(conversationId);
 
       const currentAppSettings = appSettingsContext || await getAppSettings();
-      if (messages.length === 0 && currentAppSettings?.suggestedQuestions && currentAppSettings.suggestedQuestions.length > 0) {
-        setCurrentSuggestedReplies(currentAppSettings.suggestedQuestions);
-      } else if (messages.length > 0 && messages.length <=2 && currentAppSettings?.suggestedQuestions && currentAppSettings.suggestedQuestions.length > 0 && messages.some(m => m.sender === 'system' && m.content.startsWith('Chào mừng'))) {
-        setCurrentSuggestedReplies(currentAppSettings.suggestedQuestions);
-      }
-       else {
+      if (messages.length > 1 && !(messages.length <=2 && currentAppSettings?.suggestedQuestions && currentAppSettings.suggestedQuestions.length > 0 && messages.some(m => m.sender === 'system' && m.content.startsWith('Chào mừng')))) {
         setCurrentSuggestedReplies([]);
       }
+
 
       setCurrentUserSession(prev => {
         if (prev && prev.id === customerId) {
@@ -118,40 +117,34 @@ export default function HomePage() {
     }
     setIsLoadingSession(true);
     try {
-      const userConversations = await getUserConversations(session.id);
-      let targetConversation: Conversation | null = null;
+      const { 
+        userSession: updatedSession, 
+        initialMessages, 
+        initialSuggestedReplies, 
+        activeConversationId: primaryConvId, 
+        conversations: customerConversations 
+      } = await handleCustomerAccess(session.phoneNumber);
 
-      if (userConversations && userConversations.length > 0) {
-        targetConversation = userConversations[0];
-      } else {
-        const newConvDoc = await createNewConversationForUser(session.id, `Trò chuyện với ${session.name || session.phoneNumber}`);
-        if (newConvDoc) {
-          targetConversation = newConvDoc;
-          setConversations([newConvDoc]); // Ensure conversations state is updated
-        } else {
-          toast({ title: "Lỗi", description: "Không thể tạo cuộc trò chuyện mới.", variant: "destructive" });
-          setIsLoadingSession(false);
-          return;
-        }
+      setCurrentUserSession(updatedSession);
+      setCurrentMessages(initialMessages);
+      setCurrentSuggestedReplies(initialSuggestedReplies);
+      setActiveConversationId(primaryConvId);
+      setConversations(customerConversations); // Should be an array with one conversation for customer
+      if (primaryConvId && updatedSession?.id) {
+        await loadConversation(primaryConvId, updatedSession.id);
       }
-      setConversations(userConversations || (targetConversation ? [targetConversation] : []));
 
-
-      if (targetConversation) {
-        await loadConversation(targetConversation.id, session.id);
-      } else {
-        setCurrentMessages([]);
-        const currentAppSettings = appSettingsContext || await getAppSettings();
-        setCurrentSuggestedReplies(currentAppSettings?.suggestedQuestions || []);
-        setActiveConversationId(null);
-      }
     } catch (error) {
       console.error("Lỗi tải dữ liệu ban đầu:", error);
       toast({ title: "Lỗi", description: "Không thể tải dữ liệu trò chuyện.", variant: "destructive" });
+      if (typeof window !== 'undefined') { 
+        sessionStorage.removeItem('aetherChatUserSession');
+        router.replace('/enter-phone');
+      }
     } finally {
       setIsLoadingSession(false);
     }
-  }, [loadConversation, toast, appSettingsContext]);
+  }, [toast, router, loadConversation]); 
 
 
   useEffect(() => {
@@ -167,25 +160,28 @@ export default function HomePage() {
         router.replace('/enter-phone');
       }
     } else {
-      router.replace('/enter-phone');
+      if (pathname !== '/enter-phone') {
+        router.replace('/enter-phone');
+      } else {
+        setIsLoadingSession(false); 
+      }
     }
-  }, [router]);
+  }, [router, pathname]);
 
   useEffect(() => {
     if (initialSessionFromStorage) {
       if (initialSessionFromStorage.role === 'customer') {
-        setCurrentUserSession(initialSessionFromStorage);
         loadInitialData(initialSessionFromStorage);
       } else if (initialSessionFromStorage.role === 'admin' || initialSessionFromStorage.role === 'staff') {
-        setCurrentUserSession(initialSessionFromStorage); // Set session for admin/staff
-        setIsLoadingSession(false); // Stop loading as no chat data to load here
+        setCurrentUserSession(initialSessionFromStorage); 
+        setIsLoadingSession(false); 
       } else {
         setIsLoadingSession(false);
       }
-    } else if (router && router.pathname && !router.pathname.startsWith('/enter-phone')) {
+    } else if (router && router.pathname && !router.pathname.startsWith('/enter-phone')) { 
       setIsLoadingSession(false);
     }
-  }, [initialSessionFromStorage, loadInitialData, router]);
+  }, [initialSessionFromStorage, loadInitialData, router.pathname]); // router.pathname dependency
 
 
   useEffect(() => {
@@ -197,7 +193,7 @@ export default function HomePage() {
     socket.emit('joinRoom', activeConversationId);
 
     const handleNewMessage = (newMessage: Message) => {
-      console.log('Customer received new message:', newMessage);
+      console.log('Customer received new message via socket:', newMessage);
       if (newMessage.conversationId === activeConversationId && newMessage.userId !== currentUserSession?.id) {
         setCurrentMessages(prev => {
           if (prev.find(m => m.id === newMessage.id)) return prev;
@@ -207,7 +203,7 @@ export default function HomePage() {
     };
 
     const handleUserTyping = ({ userId, userName, conversationId: incomingConvId }: { userId: string, userName: string, conversationId: string }) => {
-      if (incomingConvId === activeConversationId && userId !== socket.id) {
+      if (incomingConvId === activeConversationId && userId !== socket.id) { // Assuming socket.id is client's socket id
         usersTypingMapRef.current[userId] = userName;
         setTypingUsers({ ...usersTypingMapRef.current });
       }
@@ -225,7 +221,7 @@ export default function HomePage() {
     socket.on('userStopTyping', handleUserStopTyping);
 
     return () => {
-      if (socket && activeConversationId) {
+      if (socket && activeConversationId && currentUserSession) {
         console.log(`Customer ${currentUserSession.id} leaving room: ${activeConversationId}`);
         socket.emit('leaveRoom', activeConversationId);
         socket.off('newMessage', handleNewMessage);
@@ -281,10 +277,10 @@ export default function HomePage() {
     };
 
     setCurrentMessages((prevMessages) => [...prevMessages, userMessage]);
-    setCurrentSuggestedReplies([]);
+    setCurrentSuggestedReplies([]); 
     setIsChatLoading(true);
     if (socket && isConnected && onTyping) {
-      onTyping(false); // Explicitly stop typing
+      onTyping(false); 
       if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
     }
 
@@ -294,13 +290,13 @@ export default function HomePage() {
         messageContent,
         currentUserSession,
         activeConversationId,
-        [...currentMessages, userMessage]
+        [...currentMessages, userMessage] 
       );
 
       setCurrentMessages((prevMessages) => [
-        ...prevMessages.filter(m => m.id !== userMessage.id),
-        savedUserMessage,
-        aiMessage
+        ...prevMessages.filter(m => m.id !== userMessage.id), 
+        savedUserMessage, 
+        aiMessage 
       ]);
 
       if (socket && isConnected) {
@@ -325,7 +321,7 @@ export default function HomePage() {
         timestamp: new Date(),
         conversationId: activeConversationId,
       };
-      setCurrentMessages((prevMessages) => [...prevMessages, errorMessage]);
+      setCurrentMessages((prevMessages) => [...prevMessages.filter(m => m.id !== userMessage.id), errorMessage]); 
       toast({
         title: "Lỗi tin nhắn",
         description: "Không thể xử lý tin nhắn của bạn. Vui lòng thử lại.",
@@ -336,16 +332,16 @@ export default function HomePage() {
     }
   };
 
-  const handleTyping = (isTyping: boolean) => {
+  const onTyping = (isTypingStatus: boolean) => {
     if (!socket || !isConnected || !activeConversationId || !currentUserSession) return;
-    if (isTyping) {
+    if (isTypingStatus) {
       socket.emit('typing', { conversationId: activeConversationId, userName: currentUserSession.name || `User ${currentUserSession.id.slice(-4)}` });
       if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
     } else {
       if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
       typingTimeoutRef.current = setTimeout(() => {
         if (socket && isConnected) socket.emit('stopTyping', { conversationId: activeConversationId, userId: currentUserSession.id });
-      }, 1500);
+      }, 1500); 
     }
   };
 
@@ -355,18 +351,78 @@ export default function HomePage() {
       return <div className="flex-grow flex items-center justify-center p-4"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
     }
     return (
-      <ChatWindow
+      <ChatInterface
         userSession={currentUserSession}
+        conversations={conversations}
+        activeConversationId={activeConversationId}
         messages={currentMessages}
         pinnedMessages={currentMessages.filter(m => m.isPinned)}
         suggestedReplies={currentSuggestedReplies}
         onSendMessage={handleSendMessage}
-        onSuggestedReplyClick={handleSendMessage}
-        isLoading={isChatLoading || isLoadingSession}
-        viewerRole="customer_view"
+        onSelectConversation={(convId) => {
+          if (currentUserSession.id) {
+            loadConversation(convId, currentUserSession.id);
+          }
+        }}
+        onCreateNewConversation={async () => {
+          if (currentUserSession?.id) {
+            const newConv = await createNewConversationForUser(currentUserSession.id);
+            if (newConv) {
+              setConversations(prev => [newConv, ...prev]);
+              setActiveConversationId(newConv.id);
+              setCurrentMessages([]); // Start with empty messages for new conversation
+              loadConversation(newConv.id, currentUserSession.id);
+            }
+          }
+        }}
+        isChatLoading={isChatLoading || isLoadingSession}
+        viewerRole="customer_view" 
+        onUpdateConversationTitle={async (convId, newTitle) => {
+          if (currentUserSession?.id) {
+            const updatedConv = await updateConversationTitle(convId, newTitle, currentUserSession.id);
+            if (updatedConv) {
+              setConversations(prev => prev.map(c => c.id === convId ? updatedConv : c));
+            }
+          }
+        }}
+        onPinConversation={async (convId) => {
+          if (currentUserSession?.id) {
+            const updatedProfile = await pinConversationForUser(currentUserSession.id, convId);
+            if (updatedProfile && updatedProfile.pinnedConversationIds) {
+                setCurrentUserSession(prev => prev ? {...prev, pinnedConversationIds: updatedProfile.pinnedConversationIds} : null);
+                setConversations(prevConvs => prevConvs.map(c => c.id === convId ? {...c, isPinned: true} : c));
+            }
+          }
+        }}
+        onUnpinConversation={async (convId) => {
+           if (currentUserSession?.id) {
+            const updatedProfile = await unpinConversationForUser(currentUserSession.id, convId);
+             if (updatedProfile && updatedProfile.pinnedConversationIds) {
+                setCurrentUserSession(prev => prev ? {...prev, pinnedConversationIds: updatedProfile.pinnedConversationIds} : null);
+                setConversations(prevConvs => prevConvs.map(c => c.id === convId ? {...c, isPinned: false} : c));
+            }
+          }
+        }}
+        onPinMessage={async (messageId) => {
+            if(activeConversationId && currentUserSession?.id) {
+                const updatedConv = await pinMessageToConversation(activeConversationId, messageId, currentUserSession);
+                if (updatedConv) {
+                    setConversations(prev => prev.map(c => c.id === activeConversationId ? updatedConv : c));
+                    loadConversation(activeConversationId, currentUserSession.id); // Reload to get pinned messages
+                }
+            }
+        }}
+        onUnpinMessage={async (messageId) => {
+             if(activeConversationId && currentUserSession?.id) {
+                const updatedConv = await unpinMessageFromConversation(activeConversationId, messageId, currentUserSession);
+                 if (updatedConv) {
+                    setConversations(prev => prev.map(c => c.id === activeConversationId ? updatedConv : c));
+                    loadConversation(activeConversationId, currentUserSession.id); // Reload to get pinned messages
+                }
+            }
+        }}
         onBookAppointmentClick={() => setIsBookingModalOpen(true)}
-        onTyping={handleTyping}
-        typingUsers={typingUsers}
+        onTyping={onTyping}
       />
     );
   };
@@ -396,7 +452,10 @@ export default function HomePage() {
         conversationId: activeConversationId,
       };
       setCurrentMessages(prev => [...prev, systemMessage]);
-      if (result.success) setIsBookingModalOpen(false);
+      if (socket && isConnected) {
+        socket.emit('sendMessage', { message: systemMessage, conversationId: activeConversationId });
+      }
+      if(result.success) setIsBookingModalOpen(false);
 
     } catch (error: any) {
       toast({ title: "Lỗi đặt lịch", description: error.message || "Không thể đặt lịch hẹn.", variant: "destructive" });
@@ -406,7 +465,7 @@ export default function HomePage() {
   };
 
   const renderContent = () => {
-    if (isLoadingSession || !initialSessionFromStorage) {
+    if (isLoadingSession || (!initialSessionFromStorage && (router.pathname && !router.pathname.startsWith('/enter-phone')))) {
       return (
         <div className="flex flex-col items-center justify-center h-full flex-grow">
           <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />
@@ -457,20 +516,13 @@ export default function HomePage() {
           </div>
         );
       }
-      // If customer
       return (
         <div className="flex-grow flex flex-col items-stretch w-full overflow-hidden h-full">
           {renderCustomerChatInterface()}
         </div>
       );
     }
-
-    return (
-      <div className="flex flex-col items-center justify-center h-full flex-grow">
-        <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />
-        <p className="text-muted-foreground">Đang chuẩn bị...</p>
-      </div>
-    );
+    return null;
   };
 
   return (
@@ -478,7 +530,7 @@ export default function HomePage() {
       <AppHeader userSession={currentUserSession} onLogout={handleLogout} />
       <main className={cn(
         "flex-grow flex items-stretch w-full overflow-hidden pt-16 h-full",
-        currentUserSession?.role !== 'customer' && "items-center justify-center" // Center content if not customer
+        currentUserSession?.role !== 'customer' && "items-center justify-center" 
       )}>
         {renderContent()}
       </main>

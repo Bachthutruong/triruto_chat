@@ -8,6 +8,7 @@ export type Message = {
   userId?: string; // ID of the actual user who sent (if staff/admin sent as 'ai')
   isPinned?: boolean;
   updatedAt?: Date; // For edited messages
+  conversationId?: string; // To associate message with a conversation for Socket.IO
 };
 
 export type AppointmentStatus = 'booked' | 'cancelled' | 'completed' | 'pending_confirmation' | 'rescheduled';
@@ -138,7 +139,9 @@ export type SpecificDayRule = {
 
 export type AppSettings = {
   id: string;
-  greetingMessage?: string;
+  greetingMessage?: string; // General greeting
+  greetingMessageNewCustomer?: string; // Greeting for new customers
+  greetingMessageReturningCustomer?: string; // Greeting for returning customers
   suggestedQuestions?: string[];
 
   brandName?: string;
@@ -153,12 +156,20 @@ export type AppSettings = {
   robotsTxtContent?: string;
   sitemapXmlContent?: string;
 
+  // Scheduling Rules
   numberOfStaff?: number;
   defaultServiceDurationMinutes?: number;
-  workingHours?: string[];
-  weeklyOffDays?: number[];
-  oneTimeOffDates?: string[];
-  specificDayRules?: SpecificDayRule[];
+  workingHours?: string[]; // General working hours
+  weeklyOffDays?: number[]; // General weekly off days
+  oneTimeOffDates?: string[]; // General one-time off dates
+  specificDayRules?: SpecificDayRule[]; // General specific day rules
+
+  // Out-of-Office Settings
+  outOfOfficeResponseEnabled?: boolean;
+  outOfOfficeMessage?: string;
+  officeHoursStart?: string; // e.g., "09:00"
+  officeHoursEnd?: string; // e.g., "17:00"
+  officeDays?: number[]; // [1,2,3,4,5] for Mon-Fri
 
   updatedAt?: Date;
 };
@@ -177,11 +188,10 @@ export type Branch = {
   address?: string;
   contactInfo?: string; // e.g., phone number, email for the branch
   isActive: boolean;
-  // Optional: Branch-specific overrides. If not set, global AppSettings are used.
-  workingHours?: string[]; // Branch specific working hours ["HH:MM", "HH:MM"]
-  offDays?: number[]; // Branch specific weekly off days [0-6]
-  numberOfStaff?: number; // Branch specific staff count
-  specificDayOverrides?: BranchSpecificDayRule[]; // For holidays or special days for this branch
+  workingHours?: string[]; 
+  offDays?: number[]; 
+  numberOfStaff?: number; 
+  specificDayOverrides?: BranchSpecificDayRule[]; 
   createdAt?: Date;
   updatedAt?: Date;
 };
@@ -269,13 +279,13 @@ export type Conversation = {
 };
 
 export type AppointmentBookingFormData = {
-  service: string; // This will be the product name
-  productId?: string; // The ID of the selected product
+  service: string; 
+  productId?: string; 
   date: string; // YYYY-MM-DD
   time: string; // HH:MM
   customerId: string;
-  branch?: string; // Branch name
-  branchId?: string; // Branch ID
+  branch?: string; 
+  branchId?: string; 
   notes?: string;
 };
 
@@ -286,3 +296,5 @@ export type QuickReplyType = {
   createdAt: Date;
   updatedAt: Date;
 };
+
+```
