@@ -156,37 +156,36 @@ export type AppSettings = {
   robotsTxtContent?: string;
   sitemapXmlContent?: string;
 
-  // Scheduling Rules
+  // Global Scheduling Rules (Fallbacks)
   numberOfStaff?: number;
   defaultServiceDurationMinutes?: number;
-  workingHours?: string[]; // General working hours
-  weeklyOffDays?: number[]; // General weekly off days
-  oneTimeOffDates?: string[]; // General one-time off dates
-  specificDayRules?: SpecificDayRule[]; // General specific day rules
+  workingHours?: string[]; 
+  weeklyOffDays?: number[]; 
+  oneTimeOffDates?: string[]; 
+  specificDayRules?: SpecificDayRule[]; 
 
-  // Out-of-Office Settings
   outOfOfficeResponseEnabled?: boolean;
   outOfOfficeMessage?: string;
-  officeHoursStart?: string; // e.g., "09:00"
-  officeHoursEnd?: string; // e.g., "17:00"
-  officeDays?: number[]; // [1,2,3,4,5] for Mon-Fri
+  officeHoursStart?: string; 
+  officeHoursEnd?: string; 
+  officeDays?: number[]; 
 
   updatedAt?: Date;
 };
 
 export type BranchSpecificDayRule = {
-  id?: string; // Optional for client-side temporary ID
-  date: string; // "YYYY-MM-DD"
+  id?: string; 
+  date: string; 
   isOff?: boolean;
-  workingHours?: string[]; // If different from branch's main workingHours
-  numberOfStaff?: number; // If different from branch's main staff count
+  workingHours?: string[]; 
+  numberOfStaff?: number; 
 };
 
 export type Branch = {
   id: string;
   name: string;
   address?: string;
-  contactInfo?: string; // e.g., phone number, email for the branch
+  contactInfo?: string; 
   isActive: boolean;
   workingHours?: string[]; 
   offDays?: number[]; 
@@ -203,6 +202,7 @@ export type GetAppointmentsFilters = {
   customerId?: string;
   staffId?: string;
   status?: string[];
+  serviceName?: string; // Added for filtering by service name
 };
 
 export type AdminDashboardStats = {
@@ -220,6 +220,15 @@ export type StaffDashboardStats = {
   totalAssignedToMeCount: number;
 };
 
+export type ProductSchedulingRules = {
+  numberOfStaff?: number;
+  serviceDurationMinutes?: number;
+  workingHours?: string[];
+  weeklyOffDays?: number[];
+  oneTimeOffDates?: string[];
+  specificDayRules?: SpecificDayRule[];
+};
+
 export type ProductItem = {
   id: string;
   name: string;
@@ -228,9 +237,10 @@ export type ProductItem = {
   category: string;
   imageUrl?: string;
   isActive: boolean;
+  isSchedulable?: boolean; // New: Can this product be scheduled?
+  schedulingRules?: ProductSchedulingRules; // New: Specific rules for this product
   createdAt: Date;
   updatedAt: Date;
-  // Removed isSchedulable and schedulingRules
 };
 
 export type ReminderStatus = 'pending' | 'completed' | 'cancelled';
@@ -281,7 +291,7 @@ export type Conversation = {
 
 export type AppointmentBookingFormData = {
   service: string; 
-  productId?: string; 
+  productId: string; // Changed to productId
   date: string; // YYYY-MM-DD
   time: string; // HH:MM
   customerId: string;
@@ -296,4 +306,13 @@ export type QuickReplyType = {
   content: string;
   createdAt: Date;
   updatedAt: Date;
+};
+
+// Used to pass effective scheduling rules to checkRealAvailability
+export type EffectiveSchedulingRules = {
+  numberOfStaff: number; // Must have a value (from product or global)
+  workingHours: string[]; // Must have a value
+  weeklyOffDays: number[]; // Must have a value
+  oneTimeOffDates: string[]; // Must have a value
+  specificDayRules: SpecificDayRule[]; // Must have a value
 };

@@ -2,13 +2,6 @@
 // src/ai/schemas/schedule-appointment-schemas.ts
 /**
  * @fileOverview Schema definitions for the scheduleAppointment flow.
- *
- * - AppointmentDetailsSchema - Zod schema for appointment details.
- * - AppointmentRuleSchema - Zod schema for appointment rules.
- * - ScheduleAppointmentInputSchema - Zod schema for input.
- * - ScheduleAppointmentInput - TypeScript type for input.
- * - ScheduleAppointmentOutputSchema - Zod schema for output.
- * - ScheduleAppointmentOutput - TypeScript type for output.
  */
 import { z } from 'genkit';
 
@@ -17,7 +10,7 @@ export const AppointmentDetailsSchema = z.object({
   userId: z.string().optional().describe('ID người dùng (sẽ được hệ thống điền)'),
   service: z.string().describe('Dịch vụ'),
   productId: z.string().optional().describe('ID của sản phẩm/dịch vụ nếu có'),
-  time: z.string().describe('Thời gian hẹn (ví dụ: "14:00")'), // Standardized to HH:MM
+  time: z.string().describe('Thời gian hẹn (HH:MM)'), 
   date: z.string().describe('Ngày hẹn (YYYY-MM-DD)'),
   branch: z.string().optional().describe('Chi nhánh'),
   branchId: z.string().optional().describe('ID của chi nhánh nếu có'),
@@ -27,6 +20,7 @@ export const AppointmentDetailsSchema = z.object({
   notes: z.string().optional().describe('Ghi chú cho lịch hẹn'),
   createdAt: z.string().datetime().optional().describe('Ngày tạo (sẽ được hệ thống điền)'),
   updatedAt: z.string().datetime().optional().describe('Ngày cập nhật (sẽ được hệ thống điền)'),
+  // serviceSpecificDurationMinutes: z.number().optional().describe('Thời gian của dịch vụ cụ thể này (phút). Nếu không có, dùng mặc định.') // Added for AI context
 });
 
 export const AppointmentRuleSchema = z.object({
@@ -49,13 +43,19 @@ export const ScheduleAppointmentInputSchema = z.object({
   chatHistory: z.string().optional().describe('Lịch sử trò chuyện gần đây của người dùng, để cung cấp ngữ cảnh.'),
   appointmentRules: z.array(AppointmentRuleSchema).optional().describe('Các quy tắc đặt lịch có sẵn để AI xem xét khi xử lý yêu cầu.'),
   availableBranches: z.array(z.string()).optional().describe('Danh sách tên các chi nhánh đang hoạt động để AI gợi ý.'),
-  // serviceSpecificDurationMinutes: z.number().optional().describe('Thời gian của dịch vụ cụ thể (nếu có).'), // Removed
   availabilityCheckResult: z.object({
-    status: z.enum(["AVAILABLE", "UNAVAILABLE", "NEEDS_CLARIFICATION"]),
+    status: z.enum(["AVAILABLE", "UNAVAILABLE", "NEEDS_CLARIFICATION", "SERVICE_NOT_SCHEDULABLE"]),
     reason: z.string().optional(),
     suggestedSlots: z.array(z.object({ date: z.string(), time: z.string(), service: z.string().optional(), branch: z.string().optional() })).optional(),
-    confirmedSlot: z.object({ date: z.string(), time: z.string(), service: z.string().optional(), branch: z.string().optional() }).optional(),
+    confirmedSlot: z.object({ 
+        date: z.string(), 
+        time: z.string(), 
+        service: z.string().optional(), 
+        branch: z.string().optional(),
+        durationMinutes: z.number().optional().describe("Thời gian thực hiện dịch vụ đã xác nhận (phút).")
+    }).optional(),
     isStatusUnavailable: z.boolean().optional().describe("Flag indicating if the status is UNAVAILABLE, for Handlebars logic."),
+    isServiceNotSchedulable: z.boolean().optional().describe("Flag indicating if the service is not schedulable.")
   }).optional().describe("Kết quả kiểm tra lịch trống từ hệ thống (chỉ dùng nội bộ)."),
 });
 export type ScheduleAppointmentInput = z.infer<typeof ScheduleAppointmentInputSchema>;

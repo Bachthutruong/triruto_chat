@@ -1,7 +1,7 @@
 
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Fragment } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
@@ -9,9 +9,9 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
-import { PlusCircle, Search, Edit, Trash2, ImageIcon } from 'lucide-react';
+import { PlusCircle, Search, Edit, Trash2, ImageIcon, CalendarCog, ClockIcon, UsersIcon, CalendarDays, Save, XCircle } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { format } from 'date-fns';
+import { format, parse, isValid as isValidDateFns } from 'date-fns';
 import {
   Dialog,
   DialogContent,
@@ -33,8 +33,17 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { getAllProducts, createProduct, updateProduct, deleteProduct } from '@/app/actions';
-import type { ProductItem } from '@/lib/types';
-// Removed imports related to service-specific scheduling (Accordion, Checkbox, etc.)
+import type { ProductItem, ProductSchedulingRules, SpecificDayRule } from '@/lib/types';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
+import { Separator } from '@/components/ui/separator';
+import { Textarea } from '@/components/ui/textarea';
+
+const daysOfWeek = [
+  { id: 1, label: 'Thứ 2' }, { id: 2, label: 'Thứ 3' }, { id: 3, label: 'Thứ 4' },
+  { id: 4, label: 'Thứ 5' }, { id: 5, label: 'Thứ 6' }, { id: 6, label: 'Thứ 7' },
+  { id: 0, label: 'Chủ nhật' } 
+];
 
 export default function StaffProductsPage() {
   const [products, setProducts] = useState<ProductItem[]>([]);
@@ -54,7 +63,20 @@ export default function StaffProductsPage() {
   const [imageUrl, setImageUrl] = useState('');
   const [isActive, setIsActive] = useState(true);
 
-  // Removed states for service-specific scheduling rules
+  // New state for service-specific scheduling rules
+  const [isSchedulable, setIsSchedulable] = useState(true);
+  const [productSchedulingRules, setProductSchedulingRules] = useState<Partial<ProductSchedulingRules>>({});
+
+  // State for temporary input for specific day rules for a product
+  const [tempProductSpecRuleDate, setTempProductSpecRuleDate] = useState('');
+  const [tempProductSpecRuleIsOff, setTempProductSpecRuleIsOff] = useState(false);
+  const [tempProductSpecRuleHours, setTempProductSpecRuleHours] = useState('');
+  const [tempProductSpecRuleStaff, setTempProductSpecRuleStaff] = useState('');
+  const [tempProductSpecRuleDuration, setTempProductSpecRuleDuration] = useState('');
+  
+  // State for temporary input for one-time off dates for a product
+  const [tempProductOneTimeOffDate, setTempProductOneTimeOffDate] = useState('');
+
 
   useEffect(() => {
     const fetchProducts = async () => {
@@ -88,8 +110,8 @@ export default function StaffProductsPage() {
     const filtered = products.filter(
       (product) =>
         product.name.toLowerCase().includes(lowerQuery) ||
-        product.description.toLowerCase().includes(lowerQuery) ||
-        product.category.toLowerCase().includes(lowerQuery)
+        (product.description && product.description.toLowerCase().includes(lowerQuery)) ||
+        (product.category && product.category.toLowerCase().includes(lowerQuery))
     );
 
     setFilteredProducts(filtered);
@@ -103,7 +125,14 @@ export default function StaffProductsPage() {
     setCategory('');
     setImageUrl('');
     setIsActive(true);
-    // Reset states for service-specific scheduling rules
+    setIsSchedulable(true);
+    setProductSchedulingRules({});
+    setTempProductSpecRuleDate('');
+    setTempProductSpecRuleIsOff(false);
+    setTempProductSpecRuleHours('');
+    setTempProductSpecRuleStaff('');
+    setTempProductSpecRuleDuration('');
+    setTempProductOneTimeOffDate('');
   };
 
   const handleOpenModal = (product: ProductItem | null = null) => {
@@ -111,30 +140,102 @@ export default function StaffProductsPage() {
     if (product) {
       setCurrentProduct(product);
       setName(product.name);
-      setDescription(product.description);
+      setDescription(product.description || '');
       setPrice(product.price.toString());
-      setCategory(product.category);
+      setCategory(product.category || '');
       setImageUrl(product.imageUrl || '');
       setIsActive(product.isActive);
-      // Set states for service-specific scheduling rules from product
+      setIsSchedulable(product.isSchedulable ?? true);
+      setProductSchedulingRules(product.schedulingRules || {});
     }
     setIsModalOpen(true);
   };
+  
+  const handleSchedulingRuleChange = (field: keyof ProductSchedulingRules, value: any) => {
+    setProductSchedulingRules(prev => ({ ...prev, [field]: value }));
+  };
+
+  const handleProductWeeklyOffDayChange = (dayId: number, checked: boolean | 'indeterminate') => {
+    handleSchedulingRuleChange('weeklyOffDays', 
+      checked === true 
+        ? [...(productSchedulingRules.weeklyOffDays || []), dayId].filter((v,i,a) => a.indexOf(v) === i)
+        : (productSchedulingRules.weeklyOffDays || []).filter(d => d !== dayId)
+    );
+  };
+
+  const handleAddProductOneTimeOffDate = () => {
+    if (tempProductOneTimeOffDate && !isValidDateFns(parse(tempProductOneTimeOffDate, 'yyyy-MM-dd', new Date()))) {
+        toast({ title: "Lỗi định dạng ngày", description: "Ngày nghỉ riêng không hợp lệ. Phải là YYYY-MM-DD.", variant: "destructive" });
+        return;
+    }
+    if (tempProductOneTimeOffDate && !(productSchedulingRules.oneTimeOffDates || []).includes(tempProductOneTimeOffDate)) {
+        handleSchedulingRuleChange('oneTimeOffDates', [...(productSchedulingRules.oneTimeOffDates || []), tempProductOneTimeOffDate]);
+        setTempProductOneTimeOffDate('');
+    }
+  };
+  
+  const handleRemoveProductOneTimeOffDate = (dateToRemove: string) => {
+    handleSchedulingRuleChange('oneTimeOffDates', (productSchedulingRules.oneTimeOffDates || []).filter(d => d !== dateToRemove));
+  };
+
+  const handleAddProductSpecificDayRule = () => {
+    if (!tempProductSpecRuleDate || !isValidDateFns(parse(tempProductSpecRuleDate, 'yyyy-MM-dd', new Date()))) {
+      toast({ title: "Thiếu thông tin", description: "Vui lòng chọn ngày hợp lệ (YYYY-MM-DD) cho quy tắc cụ thể của sản phẩm.", variant: "destructive" });
+      return;
+    }
+    const newRule: Omit<SpecificDayRule, 'id'> = {
+      date: tempProductSpecRuleDate,
+      isOff: tempProductSpecRuleIsOff,
+      workingHours: tempProductSpecRuleHours.split(',').map(h => h.trim()).filter(h => /^[0-2][0-9]:[0-5][0-9]$/.test(h)).length > 0 ? tempProductSpecRuleHours.split(',').map(h => h.trim()).filter(h => /^[0-2][0-9]:[0-5][0-9]$/.test(h)) : undefined,
+      numberOfStaff: tempProductSpecRuleStaff.trim() !== '' ? parseFloat(tempProductSpecRuleStaff) : undefined,
+      serviceDurationMinutes: tempProductSpecRuleDuration.trim() !== '' ? parseFloat(tempProductSpecRuleDuration) : undefined,
+    };
+    const existingRules = productSchedulingRules.specificDayRules || [];
+    handleSchedulingRuleChange('specificDayRules', [...existingRules, { ...newRule, id: Date.now().toString() }]); // Add temp client-side ID
+    setTempProductSpecRuleDate(''); setTempProductSpecRuleIsOff(false); setTempProductSpecRuleHours(''); setTempProductSpecRuleStaff(''); setTempProductSpecRuleDuration('');
+  };
+
+  const handleRemoveProductSpecificDayRule = (idToRemove: string) => {
+    handleSchedulingRuleChange('specificDayRules', (productSchedulingRules.specificDayRules || []).filter(rule => rule.id !== idToRemove));
+  };
+
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
 
     try {
-      const productData = {
+      const productData: Omit<ProductItem, 'id' | 'createdAt' | 'updatedAt'> = {
         name,
         description,
-        price: parseFloat(price),
+        price: parseFloat(price) || 0,
         category,
         imageUrl: imageUrl || undefined,
         isActive,
-        // Removed isSchedulable and schedulingRules from productData
+        isSchedulable,
+        schedulingRules: isSchedulable ? {
+            numberOfStaff: productSchedulingRules.numberOfStaff !== undefined && !isNaN(parseFloat(productSchedulingRules.numberOfStaff as any)) ? parseFloat(productSchedulingRules.numberOfStaff as any) : undefined,
+            serviceDurationMinutes: productSchedulingRules.serviceDurationMinutes !== undefined && !isNaN(parseFloat(productSchedulingRules.serviceDurationMinutes as any)) ? parseFloat(productSchedulingRules.serviceDurationMinutes as any) : undefined,
+            workingHours: (productSchedulingRules.workingHours && Array.isArray(productSchedulingRules.workingHours) && productSchedulingRules.workingHours.length > 0) ? productSchedulingRules.workingHours : undefined,
+            weeklyOffDays: (productSchedulingRules.weeklyOffDays && Array.isArray(productSchedulingRules.weeklyOffDays) && productSchedulingRules.weeklyOffDays.length > 0) ? productSchedulingRules.weeklyOffDays : undefined,
+            oneTimeOffDates: (productSchedulingRules.oneTimeOffDates && Array.isArray(productSchedulingRules.oneTimeOffDates) && productSchedulingRules.oneTimeOffDates.length > 0) ? productSchedulingRules.oneTimeOffDates : undefined,
+            specificDayRules: (productSchedulingRules.specificDayRules || []).map(r => { const { id, ...rest } = r; return rest; }), // Remove client-side ID
+        } : undefined,
       };
+      
+      // Clean up undefined rule fields if not schedulable or rules are empty
+      if (productData.schedulingRules) {
+        Object.keys(productData.schedulingRules).forEach(key => {
+          const K = key as keyof ProductSchedulingRules;
+          if (productData.schedulingRules![K] === undefined || (Array.isArray(productData.schedulingRules![K]) && (productData.schedulingRules![K] as any[]).length === 0)) {
+            delete productData.schedulingRules![K];
+          }
+        });
+        if (Object.keys(productData.schedulingRules).length === 0) {
+          delete productData.schedulingRules;
+        }
+      }
+
 
       if (currentProduct) {
         const updatedProduct = await updateProduct(currentProduct.id, productData);
@@ -179,15 +280,20 @@ export default function StaffProductsPage() {
     }
   };
 
-  const formatDate = (date: Date) => {
-    return format(new Date(date), 'dd/MM/yyyy');
+  const formatDate = (date: Date | string | undefined) => {
+    if (!date) return 'N/A';
+    try {
+      return format(new Date(date), 'dd/MM/yyyy');
+    } catch {
+      return 'Invalid Date';
+    }
   };
 
-  const formatPrice = (price: number) => {
+  const formatPrice = (priceVal: number) => {
     return new Intl.NumberFormat('vi-VN', {
       style: 'currency',
       currency: 'VND',
-    }).format(price);
+    }).format(priceVal);
   };
 
   return (
@@ -243,6 +349,7 @@ export default function StaffProductsPage() {
                     <TableHead>Giá</TableHead>
                     <TableHead className="hidden md:table-cell">Ngày tạo</TableHead>
                     <TableHead>Trạng thái</TableHead>
+                    <TableHead>Đặt lịch?</TableHead>
                     <TableHead className="text-right">Hành động</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -256,6 +363,11 @@ export default function StaffProductsPage() {
                       <TableCell>
                         <Badge variant={product.isActive ? 'default' : 'secondary'}>
                           {product.isActive ? 'Đang bán' : 'Ngừng bán'}
+                        </Badge>
+                      </TableCell>
+                       <TableCell>
+                        <Badge variant={product.isSchedulable ? 'outline' : 'secondary'} className={product.isSchedulable ? 'border-green-500 text-green-600' : ''}>
+                          {product.isSchedulable ? 'Có thể' : 'Không'}
                         </Badge>
                       </TableCell>
                       <TableCell className="text-right">
@@ -306,64 +418,127 @@ export default function StaffProductsPage() {
       </Card>
 
       <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
-        <DialogContent className="sm:max-w-2xl"> {/* Increased width for more fields */}
+        <DialogContent className="sm:max-w-3xl"> {/* Increased width for more fields */}
           <DialogHeader>
-            <DialogTitle>{currentProduct ? 'Chỉnh sửa Sản phẩm' : 'Thêm Sản phẩm Mới'}</DialogTitle>
+            <DialogTitle>{currentProduct ? 'Chỉnh sửa Sản phẩm/Dịch vụ' : 'Thêm Sản phẩm/Dịch vụ Mới'}</DialogTitle>
             <DialogDescription>
               {currentProduct
-                ? 'Cập nhật thông tin chi tiết cho sản phẩm.'
-                : 'Điền thông tin để tạo sản phẩm mới.'}
+                ? 'Cập nhật thông tin chi tiết.'
+                : 'Điền thông tin để tạo mới.'}
             </DialogDescription>
           </DialogHeader>
           <form onSubmit={handleSubmit}>
-            <div className="space-y-4 max-h-[70vh] overflow-y-auto p-1">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="name">Tên sản phẩm <span className="text-destructive">*</span></Label>
-                  <Input id="name" value={name} onChange={(e) => setName(e.target.value)} required disabled={isSubmitting} />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="category">Danh mục <span className="text-destructive">*</span></Label>
-                  <Input id="category" value={category} onChange={(e) => setCategory(e.target.value)} required disabled={isSubmitting} />
-                </div>
-              </div>
+            <ScrollArea className="max-h-[75vh] p-1 pr-3">
+              <div className="space-y-4 ">
+                {/* Basic Product Info */}
+                <Card>
+                  <CardHeader><CardTitle className="text-lg">Thông tin cơ bản</CardTitle></CardHeader>
+                  <CardContent className="space-y-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div className="space-y-1.5"><Label htmlFor="name">Tên <span className="text-destructive">*</span></Label><Input id="name" value={name} onChange={(e) => setName(e.target.value)} required disabled={isSubmitting} /></div>
+                      <div className="space-y-1.5"><Label htmlFor="category">Danh mục <span className="text-destructive">*</span></Label><Input id="category" value={category} onChange={(e) => setCategory(e.target.value)} required disabled={isSubmitting} /></div>
+                    </div>
+                    <div className="space-y-1.5"><Label htmlFor="description">Mô tả</Label><Textarea id="description" value={description} onChange={(e) => setDescription(e.target.value)} disabled={isSubmitting} /></div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div className="space-y-1.5"><Label htmlFor="price">Giá (VND) <span className="text-destructive">*</span></Label><Input id="price" type="number" value={price} onChange={(e) => setPrice(e.target.value)} required disabled={isSubmitting} /></div>
+                      <div className="space-y-1.5"><Label htmlFor="imageUrl">URL Hình ảnh</Label><Input id="imageUrl" value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} disabled={isSubmitting} placeholder="https://example.com/image.jpg" /></div>
+                    </div>
+                     <div className="flex items-center space-x-2 pt-2">
+                        <Checkbox id="isActive" checked={isActive} onCheckedChange={(checked) => setIsActive(!!checked)} disabled={isSubmitting} />
+                        <Label htmlFor="isActive" className="font-normal">Đang bán/Hoạt động</Label>
+                      </div>
+                  </CardContent>
+                </Card>
 
-              <div className="space-y-2">
-                <Label htmlFor="description">Mô tả <span className="text-destructive">*</span></Label>
-                <Input id="description" value={description} onChange={(e) => setDescription(e.target.value)} required disabled={isSubmitting} />
-              </div>
+                {/* Scheduling Configuration */}
+                <Card>
+                    <CardHeader>
+                        <div className="flex items-center space-x-2">
+                            <Checkbox id="isSchedulable" checked={isSchedulable} onCheckedChange={(checked) => setIsSchedulable(!!checked)} disabled={isSubmitting} />
+                            <Label htmlFor="isSchedulable" className="text-lg font-semibold cursor-pointer">Có thể đặt lịch hẹn cho sản phẩm/dịch vụ này?</Label>
+                        </div>
+                         <CardDescription className="pl-6">Nếu được chọn, bạn có thể cấu hình các quy tắc đặt lịch riêng cho dịch vụ này. Nếu không, các cài đặt chung sẽ được áp dụng (nếu có).</CardDescription>
+                    </CardHeader>
+                    {isSchedulable && (
+                        <CardContent className="space-y-4 pt-0 pl-6">
+                            <Separator className="my-3"/>
+                             <p className="text-xs text-muted-foreground">Để trống các trường dưới đây nếu muốn sử dụng cài đặt chung của toàn hệ thống cho dịch vụ này.</p>
+                            
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div className="space-y-1.5">
+                                    <Label htmlFor="prodNumberOfStaff"><UsersIcon className="inline mr-1 h-4 w-4" />Số nhân viên riêng</Label>
+                                    <Input id="prodNumberOfStaff" type="number" min="0" value={productSchedulingRules.numberOfStaff ?? ''} onChange={e => handleSchedulingRuleChange('numberOfStaff', e.target.value === '' ? undefined : parseFloat(e.target.value))} placeholder="Mặc định theo cài đặt chung" disabled={isSubmitting}/>
+                                </div>
+                                <div className="space-y-1.5">
+                                    <Label htmlFor="prodServiceDuration"><ClockIcon className="inline mr-1 h-4 w-4" />Thời gian DV riêng (phút)</Label>
+                                    <Input id="prodServiceDuration" type="number" min="5" value={productSchedulingRules.serviceDurationMinutes ?? ''} onChange={e => handleSchedulingRuleChange('serviceDurationMinutes', e.target.value === '' ? undefined : parseFloat(e.target.value))} placeholder="Mặc định theo cài đặt chung" disabled={isSubmitting}/>
+                                </div>
+                            </div>
+                             <div className="space-y-1.5">
+                                <Label htmlFor="prodWorkingHours"><CalendarIcon className="inline mr-1 h-4 w-4" />Giờ nhận khách riêng (HH:MM, HH:MM)</Label>
+                                <Input id="prodWorkingHours" value={(productSchedulingRules.workingHours || []).join(', ')} onChange={e => handleSchedulingRuleChange('workingHours', e.target.value.split(',').map(h => h.trim()).filter(h => /^[0-2][0-9]:[0-5][0-9]$/.test(h)))} placeholder="VD: 08:00,14:00 (Mặc định theo cài đặt chung)" disabled={isSubmitting}/>
+                            </div>
+                            <div className="space-y-1.5">
+                                <Label><CalendarDays className="inline mr-1 h-4 w-4" />Ngày nghỉ hàng tuần riêng</Label>
+                                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 mt-1">
+                                {daysOfWeek.map(day => (
+                                    <div key={`prodOffDay-${day.id}`} className="flex items-center space-x-2">
+                                    <Checkbox id={`prodOffDay-${day.id}`} checked={(productSchedulingRules.weeklyOffDays || []).includes(day.id)} onCheckedChange={(checked) => handleProductWeeklyOffDayChange(day.id, checked)} disabled={isSubmitting}/>
+                                    <Label htmlFor={`prodOffDay-${day.id}`} className="font-normal text-sm">{day.label}</Label>
+                                    </div>
+                                ))}
+                                </div>
+                            </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="price">Giá (VND) <span className="text-destructive">*</span></Label>
-                  <Input id="price" type="number" value={price} onChange={(e) => setPrice(e.target.value)} required disabled={isSubmitting} />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="status" className="block mb-2">Trạng thái</Label>
-                  <div className="flex items-center space-x-2">
-                    <input
-                      type="checkbox"
-                      id="isActive"
-                      checked={isActive}
-                      onChange={(e) => setIsActive(e.target.checked)}
-                      className="h-4 w-4"
-                      disabled={isSubmitting}
-                    />
-                    <Label htmlFor="isActive" className="font-normal">
-                      Đang bán
-                    </Label>
-                  </div>
-                </div>
+                            <div className="space-y-1.5">
+                                <Label><CalendarDays className="inline mr-1 h-4 w-4" />Ngày nghỉ Lễ/Đặc biệt riêng</Label>
+                                <div className="flex gap-2 items-center">
+                                    <Input type="date" value={tempProductOneTimeOffDate} onChange={e => setTempProductOneTimeOffDate(e.target.value)} className="max-w-xs h-9 text-sm" disabled={isSubmitting}/>
+                                    <Button type="button" onClick={handleAddProductOneTimeOffDate} disabled={isSubmitting || !tempProductOneTimeOffDate} size="sm" className="h-9">Thêm</Button>
+                                </div>
+                                <ul className="mt-2 space-y-1 text-sm">
+                                {(productSchedulingRules.oneTimeOffDates || []).map(date => (
+                                    <li key={date} className="flex items-center justify-between p-1 bg-muted/50 rounded text-xs">
+                                    {isValidDateFns(parse(date, 'yyyy-MM-dd', new Date())) ? format(parse(date, 'yyyy-MM-dd', new Date()), 'dd/MM/yyyy') : 'Ngày không hợp lệ'}
+                                    <Button type="button" variant="ghost" size="icon" className="h-6 w-6" onClick={() => handleRemoveProductOneTimeOffDate(date)} disabled={isSubmitting}>
+                                        <Trash2 className="h-3 w-3 text-destructive" />
+                                    </Button>
+                                    </li>
+                                ))}
+                                </ul>
+                            </div>
+                            <Separator />
+                            <div>
+                                <h4 className="text-sm font-semibold mb-1">Quy tắc Ngày Cụ thể (Riêng cho DV này)</h4>
+                                 <p className="text-xs text-muted-foreground mb-2">Ghi đè các quy tắc riêng của dịch vụ này cho một ngày nhất định. Nếu không có quy tắc ngày cụ thể ở đây, sẽ áp dụng quy tắc ngày cụ thể chung (nếu có), sau đó mới đến các quy tắc chung/riêng khác của dịch vụ.</p>
+                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2 p-2 border rounded-md mb-3 items-end">
+                                    <Input type="date" value={tempProductSpecRuleDate} onChange={e => setTempProductSpecRuleDate(e.target.value)} placeholder="Ngày" className="h-8 text-xs"/>
+                                    <Input value={tempProductSpecRuleHours} onChange={e => setTempProductSpecRuleHours(e.target.value)} placeholder="Giờ làm (HH:MM,)" className="h-8 text-xs"/>
+                                    <Input type="number" value={tempProductSpecRuleStaff} onChange={e => setTempProductSpecRuleStaff(e.target.value)} placeholder="Số NV" className="h-8 text-xs"/>
+                                    <Input type="number" value={tempProductSpecRuleDuration} onChange={e => setTempProductSpecRuleDuration(e.target.value)} placeholder="TG DV (phút)" className="h-8 text-xs"/>
+                                    <div className="flex items-center space-x-2"><Checkbox id="tempProdSpecRuleIsOff" checked={tempProductSpecRuleIsOff} onCheckedChange={checked => setTempProductSpecRuleIsOff(!!checked)} /><Label htmlFor="tempProdSpecRuleIsOff" className="text-xs">Ngày nghỉ</Label></div>
+                                    <Button type="button" onClick={handleAddProductSpecificDayRule} size="xs" className="h-8 text-xs"><PlusCircle className="mr-1 h-3 w-3"/>Thêm</Button>
+                                </div>
+                                <div className="space-y-1 max-h-40 overflow-y-auto">
+                                {(productSchedulingRules.specificDayRules || []).map((rule, index) => (
+                                <Card key={rule.id || index} className="p-2 bg-muted/30 text-xs">
+                                    <div className="flex justify-between items-start mb-1">
+                                        <p className="font-semibold">Ngày: {isValidDateFns(parse(rule.date, 'yyyy-MM-dd', new Date())) ? format(parse(rule.date, 'yyyy-MM-dd', new Date()), 'dd/MM/yyyy') : 'Ngày không hợp lệ'}</p>
+                                        <Button type="button" variant="ghost" size="icon" onClick={() => handleRemoveProductSpecificDayRule(rule.id!)} className="h-5 w-5"><Trash2 className="h-3 w-3 text-destructive"/></Button>
+                                    </div>
+                                    <p>Nghỉ: {rule.isOff ? 'Có' : 'Không'}</p>
+                                    {rule.workingHours && <p>Giờ: {rule.workingHours.join(', ')}</p>}
+                                    {rule.numberOfStaff !== undefined && <p>Số NV: {rule.numberOfStaff}</p>}
+                                    {rule.serviceDurationMinutes !== undefined && <p>TG DV: {rule.serviceDurationMinutes} phút</p>}
+                                </Card>
+                                ))}
+                                </div>
+                            </div>
+                        </CardContent>
+                    )}
+                </Card>
               </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="imageUrl">URL Hình ảnh (tùy chọn)</Label>
-                <Input id="imageUrl" value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} disabled={isSubmitting} placeholder="https://example.com/image.jpg" />
-              </div>
-              
-              {/* Scheduling rules section removed */}
-
-            </div>
+            </ScrollArea>
             <DialogFooter className="pt-4 border-t mt-4">
               <DialogClose asChild>
                 <Button type="button" variant="outline" disabled={isSubmitting}>
@@ -385,4 +560,4 @@ export default function StaffProductsPage() {
       </Dialog>
     </div>
   );
-} 
+}

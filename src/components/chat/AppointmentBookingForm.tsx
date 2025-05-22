@@ -18,18 +18,25 @@ import { getCustomerListForSelect, getAllProducts, getBranches, getAppSettings }
 import { useAppSettingsContext } from '@/contexts/AppSettingsContext';
 
 
-const generateDefaultTimeSlots = (appSettings: AppSettings | null): string[] => {
-  if (appSettings?.workingHours && appSettings.workingHours.length > 0) {
-    return appSettings.workingHours;
+const generateTimeSlots = (workingHours?: string[], serviceDuration?: number, defaultDuration = 60): string[] => {
+  const slots: string[] = [];
+  const effectiveDuration = serviceDuration || defaultDuration;
+
+  if (workingHours && workingHours.length > 0) {
+    // Use configured working hours if available
+    // This could be further refined to remove slots where `effectiveDuration` doesn't fit before the next slot or end of day
+    return workingHours;
   }
+  
   // Fallback to default time slots if no working hours configured
-  const slots = [];
   let date = startOfHour(new Date());
-  date = setHours(date, 0); // Start from 00:00
+  date = setHours(date, 8); // Start from 8 AM
   date = setMinutes(date, 0);
-  for (let i = 0; i < 24 * 4; i++) { // Generate slots for 24 hours, every 15 minutes
+  const endDate = setHours(new Date(), 21); // End at 9 PM
+
+  while (date < endDate) {
     slots.push(format(date, 'HH:mm'));
-    date = addMinutes(date, 15); // Assuming 15 minute intervals if not specified
+    date = addMinutes(date, 30); // Default to 30 minute intervals if not specified by workingHours
   }
   return slots;
 };
@@ -57,52 +64,71 @@ export function AppointmentBookingForm({ isOpen, onClose, onSubmit, currentUserS
   const [products, setProducts] = useState<ProductItem[]>([]);
   const [branches, setBranches] = useState<Branch[]>([]);
   const [timeSlots, setTimeSlots] = useState<string[]>([]);
+  const [currentAppSettings, setCurrentAppSettings] = useState<AppSettings | null>(null);
+
+  useEffect(() => {
+    const appSettingsToUse = appSettingsFromContext || currentAppSettings;
+    const selectedProduct = products.find(p => p.id === selectedProductId);
+    let serviceSpecificWorkingHours = selectedProduct?.schedulingRules?.workingHours;
+    let serviceSpecificDuration = selectedProduct?.schedulingRules?.serviceDurationMinutes;
+
+    const slots = generateTimeSlots(
+      serviceSpecificWorkingHours?.length ? serviceSpecificWorkingHours : appSettingsToUse?.workingHours,
+      serviceSpecificDuration,
+      appSettingsToUse?.defaultServiceDurationMinutes
+    );
+    setTimeSlots(slots);
+    if (slots.length > 0 && !slots.includes(time)) {
+        setTime(slots[0]);
+    } else if (slots.length === 0 && time) {
+        setTime(''); // Clear time if no slots available for selected config
+    }
+  }, [selectedProductId, products, appSettingsFromContext, currentAppSettings, time]);
+
 
   useEffect(() => {
     if (isOpen) {
       const fetchData = async () => {
         try {
-          // Fetch app settings first to determine time slots
-          const currentAppSettings = appSettingsFromContext || await getAppSettings();
-          const fetchedTimeSlots = generateDefaultTimeSlots(currentAppSettings);
-          setTimeSlots(fetchedTimeSlots);
-          if (fetchedTimeSlots.length > 0 && !time) { // Set default time if not already set
-            setTime(fetchedTimeSlots[0]);
-          }
+          const settings = appSettingsFromContext || await getAppSettings();
+          setCurrentAppSettings(settings);
           
           const [fetchedProducts, fetchedBranches, fetchedCustomers] = await Promise.all([
             getAllProducts(),
             getBranches(true), 
             (currentUserSession?.role === 'admin' || currentUserSession?.role === 'staff') ? getCustomerListForSelect() : Promise.resolve([]),
           ]);
-          setProducts(fetchedProducts.filter(p => p.isActive)); // Filter for active products
+          
+          // Filter for active and schedulable products
+          setProducts(fetchedProducts.filter(p => p.isActive && p.isSchedulable)); 
           setBranches(fetchedBranches);
           setCustomerList(fetchedCustomers);
           
           if (currentUserSession?.role === 'customer') {
             setSelectedCustomerId(currentUserSession.id);
           }
+          // Time slots will be set by the other useEffect based on product/settings
         } catch (error) {
           toast({ title: "Lỗi tải dữ liệu", description: "Không thể tải danh sách dịch vụ, chi nhánh hoặc khách hàng.", variant: "destructive" });
         }
       };
       fetchData();
     }
-  }, [currentUserSession, isOpen, toast, appSettingsFromContext, time]); // Added time to deps if we want to reset default time based on slots
+  }, [currentUserSession, isOpen, toast, appSettingsFromContext]); // Removed time from deps
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const selectedProduct = products.find(p => p.id === selectedProductId);
     const selectedBranch = branches.find(b => b.id === selectedBranchId);
 
-    if (!selectedProduct || !selectedDate || !time || !selectedCustomerId || (branches.length > 0 && !selectedBranch)) {
-      toast({ title: 'Thiếu thông tin', description: 'Vui lòng điền đầy đủ các trường bắt buộc: Dịch vụ, Khách hàng, Ngày, Giờ và Chi nhánh (nếu có).', variant: 'destructive' });
+    if (!selectedProduct || !selectedDate || !time || !selectedCustomerId || (branches.length > 0 && !selectedBranchId && branches.length > 0)) {
+      toast({ title: 'Thiếu thông tin', description: 'Vui lòng điền đầy đủ các trường bắt buộc: Dịch vụ, Khách hàng, Ngày, Giờ và Chi nhánh (nếu có nhiều hơn 1).', variant: 'destructive' });
       return;
     }
     setIsSubmitting(true);
     const formData: AppointmentBookingFormData = {
       service: selectedProduct.name,
-      productId: selectedProduct.id,
+      productId: selectedProduct.id, // Send productId
       date: format(selectedDate, 'yyyy-MM-dd'),
       time,
       branch: selectedBranch?.name,
@@ -136,9 +162,17 @@ export function AppointmentBookingForm({ isOpen, onClose, onSubmit, currentUserS
           )}
           <div className="space-y-2">
             <Label htmlFor="service" className="text-sm font-medium">Dịch vụ <span className="text-destructive">*</span></Label>
-            <Select value={selectedProductId} onValueChange={setSelectedProductId} disabled={isSubmitting || products.length === 0}>
+            <Select 
+                value={selectedProductId} 
+                onValueChange={(value) => {
+                    setSelectedProductId(value);
+                    // Reset time when service changes, so new slots can be populated
+                    if (timeSlots.length > 0) setTime(timeSlots[0]); else setTime('');
+                }} 
+                disabled={isSubmitting || products.length === 0}
+            >
               <SelectTrigger id="service" className="w-full">
-                <SelectValue placeholder={products.length === 0 ? "Không có dịch vụ nào" : "Chọn dịch vụ"} />
+                <SelectValue placeholder={products.length === 0 ? "Không có dịch vụ có thể đặt lịch" : "Chọn dịch vụ"} />
               </SelectTrigger>
               <SelectContent>
                 {products.map(p => <SelectItem key={p.id} value={p.id}>{p.name} ({p.category})</SelectItem>)}
@@ -150,12 +184,12 @@ export function AppointmentBookingForm({ isOpen, onClose, onSubmit, currentUserS
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="date" className="text-sm font-medium">Ngày <span className="text-destructive">*</span></Label>
-              <div className="border rounded-md p-0"> {/* Adjusted padding */}
+              <div className="border rounded-md p-0 flex justify-center">
                 <Calendar
                   mode="single"
                   selected={selectedDate}
                   onSelect={setSelectedDate}
-                  className="mx-auto" // Ensures calendar is centered
+                  className="mx-auto" 
                   disabled={(date) => date < new Date(new Date().setDate(new Date().getDate() - 1)) || isSubmitting}
                   locale={vi}
                 />
@@ -166,10 +200,10 @@ export function AppointmentBookingForm({ isOpen, onClose, onSubmit, currentUserS
               <Label htmlFor="time" className="text-sm font-medium">Giờ <span className="text-destructive">*</span></Label>
               <Select value={time} onValueChange={setTime} disabled={isSubmitting || timeSlots.length === 0}>
                 <SelectTrigger id="time" className="w-full">
-                  <SelectValue placeholder={timeSlots.length === 0 ? "Không có khung giờ" : "Chọn giờ"} />
+                  <SelectValue placeholder={timeSlots.length === 0 ? "Chọn dịch vụ để xem giờ" : "Chọn giờ"} />
                 </SelectTrigger>
                 <SelectContent className="max-h-60">
-                  {timeSlots.length === 0 && <SelectItem value="" disabled>Không có khung giờ cấu hình</SelectItem>}
+                  {timeSlots.length === 0 && <SelectItem value="" disabled>Không có khung giờ phù hợp</SelectItem>}
                   {timeSlots.map(slot => <SelectItem key={slot} value={slot}>{slot}</SelectItem>)}
                 </SelectContent>
               </Select>
@@ -178,10 +212,15 @@ export function AppointmentBookingForm({ isOpen, onClose, onSubmit, currentUserS
 
           {branches.length > 0 && (
             <div className="space-y-2">
-              <Label htmlFor="branch" className="text-sm font-medium">Chi nhánh <span className="text-destructive">*</span></Label>
-              <Select value={selectedBranchId} onValueChange={setSelectedBranchId} disabled={isSubmitting}>
+              <Label htmlFor="branch" className="text-sm font-medium">Chi nhánh {branches.length === 1 ? '(Mặc định)' : <span className="text-destructive">*</span>}</Label>
+              <Select 
+                value={selectedBranchId || (branches.length === 1 ? branches[0].id : '')} 
+                onValueChange={setSelectedBranchId} 
+                disabled={isSubmitting || branches.length === 0}
+                required={branches.length > 1}
+              >
                 <SelectTrigger id="branch" className="w-full">
-                  <SelectValue placeholder="Chọn chi nhánh" />
+                  <SelectValue placeholder={branches.length > 1 ? "Chọn chi nhánh" : (branches.length === 1 ? branches[0].name : "Không có chi nhánh")} />
                 </SelectTrigger>
                 <SelectContent>
                   {branches.map(b => <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>)}
@@ -211,7 +250,7 @@ export function AppointmentBookingForm({ isOpen, onClose, onSubmit, currentUserS
               </DialogClose>
               <Button
                 type="submit"
-                disabled={isSubmitting || !selectedProductId || (branches.length > 0 && !selectedBranchId)}
+                disabled={isSubmitting || !selectedProductId || (branches.length > 1 && !selectedBranchId) || !time}
                 className="w-full sm:w-auto"
               >
                 {isSubmitting ? 'Đang xử lý...' : 'Đặt lịch'}
