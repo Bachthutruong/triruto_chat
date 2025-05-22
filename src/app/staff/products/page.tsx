@@ -12,6 +12,7 @@ import { Badge } from '@/components/ui/badge';
 import { PlusCircle, Search, Edit, Trash2, ImageIcon, CalendarCog, ClockIcon, UsersIcon, CalendarDays, Save, XCircle } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { format, parse, isValid as isValidDateFns } from 'date-fns';
+import { ScrollArea } from '@/components/ui/scroll-area'; // Added import
 import {
   Dialog,
   DialogContent,
@@ -145,8 +146,11 @@ export default function StaffProductsPage() {
       setCategory(product.category || '');
       setImageUrl(product.imageUrl || '');
       setIsActive(product.isActive);
-      setIsSchedulable(product.isSchedulable ?? true);
+      setIsSchedulable(product.isSchedulable ?? true); // Default to true if undefined
       setProductSchedulingRules(product.schedulingRules || {});
+    } else {
+      setIsSchedulable(true); // Default for new product
+      setProductSchedulingRules({});
     }
     setIsModalOpen(true);
   };
@@ -156,26 +160,32 @@ export default function StaffProductsPage() {
   };
 
   const handleProductWeeklyOffDayChange = (dayId: number, checked: boolean | 'indeterminate') => {
-    handleSchedulingRuleChange('weeklyOffDays', 
-      checked === true 
-        ? [...(productSchedulingRules.weeklyOffDays || []), dayId].filter((v,i,a) => a.indexOf(v) === i)
-        : (productSchedulingRules.weeklyOffDays || []).filter(d => d !== dayId)
-    );
+    const currentOffDays = productSchedulingRules.weeklyOffDays || [];
+    const newOffDays = checked === true
+      ? [...currentOffDays, dayId].filter((v, i, a) => a.indexOf(v) === i) // Add and ensure unique
+      : currentOffDays.filter(d => d !== dayId);
+    handleSchedulingRuleChange('weeklyOffDays', newOffDays.length > 0 ? newOffDays : undefined); // Store undefined if empty
   };
+  
 
   const handleAddProductOneTimeOffDate = () => {
     if (tempProductOneTimeOffDate && !isValidDateFns(parse(tempProductOneTimeOffDate, 'yyyy-MM-dd', new Date()))) {
         toast({ title: "Lỗi định dạng ngày", description: "Ngày nghỉ riêng không hợp lệ. Phải là YYYY-MM-DD.", variant: "destructive" });
         return;
     }
-    if (tempProductOneTimeOffDate && !(productSchedulingRules.oneTimeOffDates || []).includes(tempProductOneTimeOffDate)) {
-        handleSchedulingRuleChange('oneTimeOffDates', [...(productSchedulingRules.oneTimeOffDates || []), tempProductOneTimeOffDate]);
+    if (tempProductOneTimeOffDate) {
+        const currentDates = productSchedulingRules.oneTimeOffDates || [];
+        if (!currentDates.includes(tempProductOneTimeOffDate)) {
+            const newDates = [...currentDates, tempProductOneTimeOffDate];
+            handleSchedulingRuleChange('oneTimeOffDates', newDates);
+        }
         setTempProductOneTimeOffDate('');
     }
   };
   
   const handleRemoveProductOneTimeOffDate = (dateToRemove: string) => {
-    handleSchedulingRuleChange('oneTimeOffDates', (productSchedulingRules.oneTimeOffDates || []).filter(d => d !== dateToRemove));
+    const newDates = (productSchedulingRules.oneTimeOffDates || []).filter(d => d !== dateToRemove);
+    handleSchedulingRuleChange('oneTimeOffDates', newDates.length > 0 ? newDates : undefined); // Store undefined if empty
   };
 
   const handleAddProductSpecificDayRule = () => {
@@ -183,7 +193,8 @@ export default function StaffProductsPage() {
       toast({ title: "Thiếu thông tin", description: "Vui lòng chọn ngày hợp lệ (YYYY-MM-DD) cho quy tắc cụ thể của sản phẩm.", variant: "destructive" });
       return;
     }
-    const newRule: Omit<SpecificDayRule, 'id'> = {
+    const newRule: SpecificDayRule = { // SpecificDayRule includes ID
+      id: Date.now().toString(), // Temporary client-side ID
       date: tempProductSpecRuleDate,
       isOff: tempProductSpecRuleIsOff,
       workingHours: tempProductSpecRuleHours.split(',').map(h => h.trim()).filter(h => /^[0-2][0-9]:[0-5][0-9]$/.test(h)).length > 0 ? tempProductSpecRuleHours.split(',').map(h => h.trim()).filter(h => /^[0-2][0-9]:[0-5][0-9]$/.test(h)) : undefined,
@@ -191,12 +202,13 @@ export default function StaffProductsPage() {
       serviceDurationMinutes: tempProductSpecRuleDuration.trim() !== '' ? parseFloat(tempProductSpecRuleDuration) : undefined,
     };
     const existingRules = productSchedulingRules.specificDayRules || [];
-    handleSchedulingRuleChange('specificDayRules', [...existingRules, { ...newRule, id: Date.now().toString() }]); // Add temp client-side ID
+    handleSchedulingRuleChange('specificDayRules', [...existingRules, newRule]);
     setTempProductSpecRuleDate(''); setTempProductSpecRuleIsOff(false); setTempProductSpecRuleHours(''); setTempProductSpecRuleStaff(''); setTempProductSpecRuleDuration('');
   };
 
   const handleRemoveProductSpecificDayRule = (idToRemove: string) => {
-    handleSchedulingRuleChange('specificDayRules', (productSchedulingRules.specificDayRules || []).filter(rule => rule.id !== idToRemove));
+    const newRules = (productSchedulingRules.specificDayRules || []).filter(rule => rule.id !== idToRemove);
+    handleSchedulingRuleChange('specificDayRules', newRules.length > 0 ? newRules : undefined); // Store undefined if empty
   };
 
 
@@ -223,15 +235,22 @@ export default function StaffProductsPage() {
         } : undefined,
       };
       
-      // Clean up undefined rule fields if not schedulable or rules are empty
+      // Clean up undefined rule fields or empty arrays within schedulingRules
       if (productData.schedulingRules) {
-        Object.keys(productData.schedulingRules).forEach(key => {
-          const K = key as keyof ProductSchedulingRules;
-          if (productData.schedulingRules![K] === undefined || (Array.isArray(productData.schedulingRules![K]) && (productData.schedulingRules![K] as any[]).length === 0)) {
-            delete productData.schedulingRules![K];
-          }
-        });
-        if (Object.keys(productData.schedulingRules).length === 0) {
+        if (productData.schedulingRules.specificDayRules?.length === 0) {
+            delete productData.schedulingRules.specificDayRules;
+        }
+        if (productData.schedulingRules.workingHours?.length === 0) {
+            delete productData.schedulingRules.workingHours;
+        }
+        if (productData.schedulingRules.weeklyOffDays?.length === 0) {
+            delete productData.schedulingRules.weeklyOffDays;
+        }
+        if (productData.schedulingRules.oneTimeOffDates?.length === 0) {
+            delete productData.schedulingRules.oneTimeOffDates;
+        }
+        // Delete schedulingRules object itself if all its properties are undefined or empty arrays
+        if (Object.values(productData.schedulingRules).every(value => value === undefined || (Array.isArray(value) && value.length === 0))) {
           delete productData.schedulingRules;
         }
       }
@@ -280,7 +299,7 @@ export default function StaffProductsPage() {
     }
   };
 
-  const formatDate = (date: Date | string | undefined) => {
+  const formatDateDisplay = (date: Date | string | undefined) => {
     if (!date) return 'N/A';
     try {
       return format(new Date(date), 'dd/MM/yyyy');
@@ -359,7 +378,7 @@ export default function StaffProductsPage() {
                       <TableCell className="font-medium">{product.name}</TableCell>
                       <TableCell className="hidden md:table-cell">{product.category}</TableCell>
                       <TableCell>{formatPrice(product.price)}</TableCell>
-                      <TableCell className="hidden md:table-cell">{formatDate(product.createdAt)}</TableCell>
+                      <TableCell className="hidden md:table-cell">{formatDateDisplay(product.createdAt)}</TableCell>
                       <TableCell>
                         <Badge variant={product.isActive ? 'default' : 'secondary'}>
                           {product.isActive ? 'Đang bán' : 'Ngừng bán'}
@@ -561,3 +580,4 @@ export default function StaffProductsPage() {
     </div>
   );
 }
+
