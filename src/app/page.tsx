@@ -3,7 +3,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { useRouter, usePathname } from 'next/navigation'; // Added usePathname
+import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
 import { AppHeader } from '@/components/layout/AppHeader';
 import { AppFooter } from '@/components/layout/AppFooter';
@@ -12,7 +12,8 @@ import type { Message, UserSession, Conversation, MessageViewerRole, Appointment
 import { 
   handleCustomerAccess, 
   processUserMessage, 
-  createNewConversationForUser,
+  // createNewConversationForUser, // Removed as it's not exported from actions
+  getConversationHistory, 
   getUserConversations,
   getMessagesByIds,
   updateConversationTitle,
@@ -23,7 +24,6 @@ import {
   deleteStaffMessage,
   editStaffMessage,
   handleBookAppointmentFromForm,
-  getConversationHistory,
 } from './actions'; 
 import { useToast } from '@/hooks/use-toast';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -51,7 +51,7 @@ export default function HomePage() {
 
   const { toast } = useToast();
   const router = useRouter();
-  const pathname = usePathname(); // Get current pathname
+  const pathname = usePathname(); 
   const appSettingsContext = useAppSettingsContext();
   const [brandName, setBrandName] = useState('AetherChat');
 
@@ -74,25 +74,35 @@ export default function HomePage() {
   }, [appSettingsContext]);
 
   const loadConversation = useCallback(async (conversationId: string, customerId?: string) => {
-    if (!customerId) {
-      console.warn("loadConversation called without customerId");
+    if (!customerId && (!currentUserSession || currentUserSession.role !== 'customer')) {
+      console.warn("loadConversation called without customerId and no customer session");
       setIsChatLoading(false);
       return;
     }
+    const effectiveCustomerId = customerId || currentUserSession?.id;
+    if (!effectiveCustomerId) {
+      console.warn("loadConversation: effectiveCustomerId is undefined");
+      setIsChatLoading(false);
+      return;
+    }
+
     setIsChatLoading(true);
     try {
-      const messages = await getConversationHistory(conversationId);
-      setCurrentMessages(messages);
+      const messagesFromHistory = await getConversationHistory(conversationId);
+      setCurrentMessages(messagesFromHistory); // This loads history, greeting is handled by initial load
       setActiveConversationId(conversationId);
 
+      // Suggested replies logic: show only if chat is very new and based on admin settings
       const currentAppSettings = appSettingsContext || await getAppSettings();
-      if (messages.length > 1 && !(messages.length <=2 && currentAppSettings?.suggestedQuestions && currentAppSettings.suggestedQuestions.length > 0 && messages.some(m => m.sender === 'system' && m.content.startsWith('Chào mừng')))) {
-        setCurrentSuggestedReplies([]);
+      if (messagesFromHistory.length <= 2 && currentAppSettings?.suggestedQuestions && currentAppSettings.suggestedQuestions.length > 0 && messagesFromHistory.some(m => m.sender === 'ai' && m.content.startsWith('Chào'))) {
+         // If it's the initial greeting, retain admin-configured suggested questions
+         // This condition might need adjustment based on how `initialMessages` from `handleCustomerAccess` is structured
+      } else {
+        setCurrentSuggestedReplies([]); // Clear for ongoing chats
       }
 
-
       setCurrentUserSession(prev => {
-        if (prev && prev.id === customerId) {
+        if (prev && prev.id === effectiveCustomerId) {
           const updatedSession = { ...prev, currentConversationId: conversationId };
           if (typeof window !== 'undefined') {
             sessionStorage.setItem('aetherChatUserSession', JSON.stringify(updatedSession));
@@ -108,7 +118,7 @@ export default function HomePage() {
     } finally {
       setIsChatLoading(false);
     }
-  }, [toast, appSettingsContext]);
+  }, [toast, appSettingsContext, currentUserSession]); // Removed loadConversation from its own deps
 
   const loadInitialData = useCallback(async (session: UserSession) => {
     if (session.role !== 'customer' || !session.id) {
@@ -126,13 +136,15 @@ export default function HomePage() {
       } = await handleCustomerAccess(session.phoneNumber);
 
       setCurrentUserSession(updatedSession);
-      setCurrentMessages(initialMessages);
+      // initialMessages from handleCustomerAccess should now contain the greeting + history
+      setCurrentMessages(initialMessages); 
       setCurrentSuggestedReplies(initialSuggestedReplies);
       setActiveConversationId(primaryConvId);
-      setConversations(customerConversations); // Should be an array with one conversation for customer
-      if (primaryConvId && updatedSession?.id) {
-        await loadConversation(primaryConvId, updatedSession.id);
-      }
+      setConversations(customerConversations); 
+      
+      // DO NOT call loadConversation here for the primaryConvId, 
+      // as initialMessages from handleCustomerAccess already contains the full initial state.
+      // loadConversation is for when the user explicitly switches to another (older) conversation.
 
     } catch (error) {
       console.error("Lỗi tải dữ liệu ban đầu:", error);
@@ -144,7 +156,7 @@ export default function HomePage() {
     } finally {
       setIsLoadingSession(false);
     }
-  }, [toast, router, loadConversation]); 
+  }, [toast, router]); 
 
 
   useEffect(() => {
@@ -153,7 +165,7 @@ export default function HomePage() {
     if (storedSessionString) {
       try {
         const session: UserSession = JSON.parse(storedSessionString);
-        setInitialSessionFromStorage(session);
+        setInitialSessionFromStorage(session); // Set intermediary state
       } catch (error) {
         console.error("Lỗi phân tích cú pháp session từ sessionStorage:", error);
         sessionStorage.removeItem('aetherChatUserSession');
@@ -166,12 +178,13 @@ export default function HomePage() {
         setIsLoadingSession(false); 
       }
     }
-  }, [router, pathname]);
+  }, [router, pathname]); // router.pathname to re-check if path changes
 
   useEffect(() => {
     if (initialSessionFromStorage) {
       if (initialSessionFromStorage.role === 'customer') {
-        loadInitialData(initialSessionFromStorage);
+        setCurrentUserSession(initialSessionFromStorage); // Set current user session
+        loadInitialData(initialSessionFromStorage);       // Then load initial data
       } else if (initialSessionFromStorage.role === 'admin' || initialSessionFromStorage.role === 'staff') {
         setCurrentUserSession(initialSessionFromStorage); 
         setIsLoadingSession(false); 
@@ -181,7 +194,7 @@ export default function HomePage() {
     } else if (router && router.pathname && !router.pathname.startsWith('/enter-phone')) { 
       setIsLoadingSession(false);
     }
-  }, [initialSessionFromStorage, loadInitialData, router.pathname]); // router.pathname dependency
+  }, [initialSessionFromStorage, loadInitialData, router]); // router is stable, router.pathname is not
 
 
   useEffect(() => {
@@ -196,22 +209,22 @@ export default function HomePage() {
       console.log('Customer received new message via socket:', newMessage);
       if (newMessage.conversationId === activeConversationId && newMessage.userId !== currentUserSession?.id) {
         setCurrentMessages(prev => {
-          if (prev.find(m => m.id === newMessage.id)) return prev;
+          if (prev.find(m => m.id === newMessage.id)) return prev; // Avoid duplicates
           return [...prev, newMessage];
         });
       }
     };
 
-    const handleUserTyping = ({ userId, userName, conversationId: incomingConvId }: { userId: string, userName: string, conversationId: string }) => {
-      if (incomingConvId === activeConversationId && userId !== socket.id) { // Assuming socket.id is client's socket id
-        usersTypingMapRef.current[userId] = userName;
+    const handleUserTyping = ({ userId: typingUserId, userName, conversationId: incomingConvId }: { userId: string, userName: string, conversationId: string }) => {
+      if (incomingConvId === activeConversationId && typingUserId !== currentUserSession?.id) {
+        usersTypingMapRef.current[typingUserId] = userName;
         setTypingUsers({ ...usersTypingMapRef.current });
       }
     };
 
-    const handleUserStopTyping = ({ userId, conversationId: incomingConvId }: { userId: string, conversationId: string }) => {
-      if (incomingConvId === activeConversationId && userId !== socket.id) {
-        delete usersTypingMapRef.current[userId];
+    const handleUserStopTyping = ({ userId: typingUserId, conversationId: incomingConvId }: { userId: string, conversationId: string }) => {
+      if (incomingConvId === activeConversationId && typingUserId !== currentUserSession?.id) {
+        delete usersTypingMapRef.current[typingUserId];
         setTypingUsers({ ...usersTypingMapRef.current });
       }
     };
@@ -245,6 +258,10 @@ export default function HomePage() {
       clearTimeout(typingTimeoutRef.current);
       typingTimeoutRef.current = null;
     }
+    if(socket && activeConversationId && currentUserSession?.id && onTyping) {
+        onTyping(false); // Emit stop typing on logout
+    }
+
 
     setCurrentUserSession(null);
     setInitialSessionFromStorage(null);
@@ -263,6 +280,21 @@ export default function HomePage() {
     }
   };
 
+  const onTyping = (isTypingStatus: boolean) => {
+    if (!socket || !isConnected || !activeConversationId || !currentUserSession) return;
+    if (isTypingStatus) {
+      socket.emit('typing', { conversationId: activeConversationId, userName: currentUserSession.name || `User ${currentUserSession.id.slice(-4)}` });
+      if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+    } else {
+      // Debounce stopTyping event
+      if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+      typingTimeoutRef.current = setTimeout(() => {
+        if (socket && isConnected) socket.emit('stopTyping', { conversationId: activeConversationId, userId: currentUserSession.id });
+      }, 1500); 
+    }
+  };
+
+
   const handleSendMessage = async (messageContent: string) => {
     if (!currentUserSession || !activeConversationId) return;
 
@@ -280,7 +312,7 @@ export default function HomePage() {
     setCurrentSuggestedReplies([]); 
     setIsChatLoading(true);
     if (socket && isConnected && onTyping) {
-      onTyping(false); 
+      onTyping(false); // Ensure typing indicator stops
       if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
     }
 
@@ -290,15 +322,17 @@ export default function HomePage() {
         messageContent,
         currentUserSession,
         activeConversationId,
-        [...currentMessages, userMessage] 
+        [...currentMessages, userMessage] // Send the current view of messages for history
       );
 
+      // Replace local message with saved one and add AI message
       setCurrentMessages((prevMessages) => [
-        ...prevMessages.filter(m => m.id !== userMessage.id), 
-        savedUserMessage, 
-        aiMessage 
+        ...prevMessages.filter(m => m.id !== userMessage.id), // Remove local optimistic message
+        savedUserMessage, // Add saved user message from server
+        aiMessage // Add AI message from server
       ]);
 
+      // Emit messages to other clients via socket
       if (socket && isConnected) {
         socket.emit('sendMessage', { message: savedUserMessage, conversationId: activeConversationId });
         socket.emit('sendMessage', { message: aiMessage, conversationId: activeConversationId });
@@ -306,6 +340,7 @@ export default function HomePage() {
 
 
       if (updatedAppointment) {
+        // Handle appointment update UI if needed, e.g., toast or update an appointments list
         toast({
           title: "Cập nhật lịch hẹn",
           description: `Dịch vụ: ${updatedAppointment.service}, Ngày: ${updatedAppointment.date}, Giờ: ${updatedAppointment.time}, Trạng thái: ${updatedAppointment.status}`,
@@ -314,6 +349,7 @@ export default function HomePage() {
 
     } catch (error) {
       console.error("Lỗi xử lý tin nhắn:", error);
+      // Remove the optimistic local message if an error occurred
       const errorMessage: Message = {
         id: `msg_error_${Date.now()}`,
         sender: 'system',
@@ -332,20 +368,6 @@ export default function HomePage() {
     }
   };
 
-  const onTyping = (isTypingStatus: boolean) => {
-    if (!socket || !isConnected || !activeConversationId || !currentUserSession) return;
-    if (isTypingStatus) {
-      socket.emit('typing', { conversationId: activeConversationId, userName: currentUserSession.name || `User ${currentUserSession.id.slice(-4)}` });
-      if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
-    } else {
-      if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
-      typingTimeoutRef.current = setTimeout(() => {
-        if (socket && isConnected) socket.emit('stopTyping', { conversationId: activeConversationId, userId: currentUserSession.id });
-      }, 1500); 
-    }
-  };
-
-
   const renderCustomerChatInterface = () => {
     if (!currentUserSession || !activeConversationId) {
       return <div className="flex-grow flex items-center justify-center p-4"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
@@ -353,74 +375,21 @@ export default function HomePage() {
     return (
       <ChatInterface
         userSession={currentUserSession}
-        conversations={conversations}
+        conversations={conversations} // This is empty for customers as they see only one conversation
         activeConversationId={activeConversationId}
         messages={currentMessages}
         pinnedMessages={currentMessages.filter(m => m.isPinned)}
         suggestedReplies={currentSuggestedReplies}
         onSendMessage={handleSendMessage}
         onSelectConversation={(convId) => {
-          if (currentUserSession.id) {
+          if (currentUserSession.id && convId !== activeConversationId) { // Only load if different
             loadConversation(convId, currentUserSession.id);
           }
         }}
-        onCreateNewConversation={async () => {
-          if (currentUserSession?.id) {
-            const newConv = await createNewConversationForUser(currentUserSession.id);
-            if (newConv) {
-              setConversations(prev => [newConv, ...prev]);
-              setActiveConversationId(newConv.id);
-              setCurrentMessages([]); // Start with empty messages for new conversation
-              loadConversation(newConv.id, currentUserSession.id);
-            }
-          }
-        }}
+        // onCreateNewConversation is not for customers in this single-conversation model
         isChatLoading={isChatLoading || isLoadingSession}
         viewerRole="customer_view" 
-        onUpdateConversationTitle={async (convId, newTitle) => {
-          if (currentUserSession?.id) {
-            const updatedConv = await updateConversationTitle(convId, newTitle, currentUserSession.id);
-            if (updatedConv) {
-              setConversations(prev => prev.map(c => c.id === convId ? updatedConv : c));
-            }
-          }
-        }}
-        onPinConversation={async (convId) => {
-          if (currentUserSession?.id) {
-            const updatedProfile = await pinConversationForUser(currentUserSession.id, convId);
-            if (updatedProfile && updatedProfile.pinnedConversationIds) {
-                setCurrentUserSession(prev => prev ? {...prev, pinnedConversationIds: updatedProfile.pinnedConversationIds} : null);
-                setConversations(prevConvs => prevConvs.map(c => c.id === convId ? {...c, isPinned: true} : c));
-            }
-          }
-        }}
-        onUnpinConversation={async (convId) => {
-           if (currentUserSession?.id) {
-            const updatedProfile = await unpinConversationForUser(currentUserSession.id, convId);
-             if (updatedProfile && updatedProfile.pinnedConversationIds) {
-                setCurrentUserSession(prev => prev ? {...prev, pinnedConversationIds: updatedProfile.pinnedConversationIds} : null);
-                setConversations(prevConvs => prevConvs.map(c => c.id === convId ? {...c, isPinned: false} : c));
-            }
-          }
-        }}
-        onPinMessage={async (messageId) => {
-            if(activeConversationId && currentUserSession?.id) {
-                const updatedConv = await pinMessageToConversation(activeConversationId, messageId, currentUserSession);
-                if (updatedConv) {
-                    setConversations(prev => prev.map(c => c.id === activeConversationId ? updatedConv : c));
-                    loadConversation(activeConversationId, currentUserSession.id); // Reload to get pinned messages
-                }
-            }
-        }}
-        onUnpinMessage={async (messageId) => {
-             if(activeConversationId && currentUserSession?.id) {
-                const updatedConv = await unpinMessageFromConversation(activeConversationId, messageId, currentUserSession);
-                 if (updatedConv) {
-                    setConversations(prev => prev.map(c => c.id === activeConversationId ? updatedConv : c));
-                    loadConversation(activeConversationId, currentUserSession.id); // Reload to get pinned messages
-                }
-            }
-        }}
+        // Pinning and title updates are not for customer view in this model
         onBookAppointmentClick={() => setIsBookingModalOpen(true)}
         onTyping={onTyping}
       />
@@ -465,7 +434,7 @@ export default function HomePage() {
   };
 
   const renderContent = () => {
-    if (isLoadingSession || (!initialSessionFromStorage && (router.pathname && !router.pathname.startsWith('/enter-phone')))) {
+    if (isLoadingSession || (!initialSessionFromStorage && (router && router.pathname && !router.pathname.startsWith('/enter-phone')))) {
       return (
         <div className="flex flex-col items-center justify-center h-full flex-grow">
           <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />
@@ -516,21 +485,32 @@ export default function HomePage() {
           </div>
         );
       }
+      // Customer View
       return (
         <div className="flex-grow flex flex-col items-stretch w-full overflow-hidden h-full">
           {renderCustomerChatInterface()}
         </div>
       );
     }
-    return null;
+    // If no currentUserSession and not loading, it means user should be at /enter-phone or login
+    // This case is usually handled by the redirects in useEffect, but as a fallback:
+    if (pathname !== '/enter-phone' && pathname !== '/login' && pathname !== '/register') {
+        return (
+             <div className="flex-grow flex items-center justify-center p-4">
+                <p>Đang chuyển hướng...</p>
+             </div>
+        )
+    }
+    return null; 
   };
 
   return (
     <div className="flex flex-col min-h-screen bg-background h-screen">
       <AppHeader userSession={currentUserSession} onLogout={handleLogout} />
       <main className={cn(
-        "flex-grow flex items-stretch w-full overflow-hidden pt-16 h-full",
-        currentUserSession?.role !== 'customer' && "items-center justify-center" 
+        "flex-grow flex items-stretch w-full overflow-hidden pt-16",
+        currentUserSession?.role !== 'customer' && "items-center justify-center",
+        currentUserSession?.role === 'customer' ? "h-[calc(100vh-4rem)]" : "h-auto" // Full height for customer chat
       )}>
         {renderContent()}
       </main>
@@ -545,3 +525,5 @@ export default function HomePage() {
     </div>
   );
 }
+
+    

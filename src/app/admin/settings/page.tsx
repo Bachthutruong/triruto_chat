@@ -22,7 +22,7 @@ const MAX_LOGO_SIZE_MB = 1;
 const MAX_LOGO_SIZE_BYTES = MAX_LOGO_SIZE_MB * 1024 * 1024;
 
 const initialSettingsState: AppSettings = {
-  id: '', // Will be populated from DB or a new one if not exists
+  id: '', 
   brandName: defaultInitialBrandName,
   logoUrl: '',
   logoDataUri: '',
@@ -47,13 +47,13 @@ const initialSettingsState: AppSettings = {
   outOfOfficeMessage: 'Cảm ơn bạn đã liên hệ! Hiện tại chúng tôi đang ngoài giờ làm việc. Vui lòng để lại lời nhắn và chúng tôi sẽ phản hồi sớm nhất có thể.',
   officeHoursStart: "09:00",
   officeHoursEnd: "17:00",
-  officeDays: [1, 2, 3, 4, 5], // Mon-Fri
+  officeDays: [1, 2, 3, 4, 5], 
 };
 
 const daysOfWeek = [
   { id: 1, label: 'Thứ 2' }, { id: 2, label: 'Thứ 3' }, { id: 3, label: 'Thứ 4' },
   { id: 4, label: 'Thứ 5' }, { id: 5, label: 'Thứ 6' }, { id: 6, label: 'Thứ 7' },
-  { id: 0, label: 'Chủ nhật' } // Sunday is 0 in date-fns
+  { id: 0, label: 'Chủ nhật' } 
 ];
 
 export default function AdminSettingsPage() {
@@ -76,11 +76,9 @@ export default function AdminSettingsPage() {
     try {
       const fetchedSettings = await getAppSettings();
       if (fetchedSettings) {
-        // Ensure all fields have defaults if not present in fetchedSettings
         const mergedSettings: AppSettings = {
-          ...initialSettingsState, // Start with all initial defaults
-          ...fetchedSettings,     // Override with fetched values
-          // Explicitly ensure array fields are arrays, falling back to initial defaults if necessary
+          ...initialSettingsState, 
+          ...fetchedSettings,     
           suggestedQuestions: fetchedSettings.suggestedQuestions && fetchedSettings.suggestedQuestions.length > 0 ? fetchedSettings.suggestedQuestions : initialSettingsState.suggestedQuestions,
           metaKeywords: fetchedSettings.metaKeywords && fetchedSettings.metaKeywords.length > 0 ? fetchedSettings.metaKeywords : initialSettingsState.metaKeywords || [],
           workingHours: fetchedSettings.workingHours && fetchedSettings.workingHours.length > 0 ? fetchedSettings.workingHours : initialSettingsState.workingHours,
@@ -147,7 +145,7 @@ export default function AdminSettingsPage() {
     setSettings(prev => {
       const currentOffDays = prev.weeklyOffDays || [];
       if (checked === true) {
-        return { ...prev, weeklyOffDays: [...currentOffDays, dayId].filter((v, i, a) => a.indexOf(v) === i) }; // Unique
+        return { ...prev, weeklyOffDays: [...currentOffDays, dayId].filter((v, i, a) => a.indexOf(v) === i) }; 
       } else {
         return { ...prev, weeklyOffDays: currentOffDays.filter(d => d !== dayId) };
       }
@@ -158,7 +156,7 @@ export default function AdminSettingsPage() {
     setSettings(prev => {
       const currentOfficeDays = prev.officeDays || [];
       if (checked === true) {
-        return { ...prev, officeDays: [...currentOfficeDays, dayId].filter((v, i, a) => a.indexOf(v) === i) }; // Unique
+        return { ...prev, officeDays: [...currentOfficeDays, dayId].filter((v, i, a) => a.indexOf(v) === i) }; 
       } else {
         return { ...prev, officeDays: currentOfficeDays.filter(d => d !== dayId) };
       }
@@ -247,31 +245,35 @@ export default function AdminSettingsPage() {
   const handleSaveSettings = async () => {
     setIsSubmitting(true);
     try {
-      // Ensure all array fields are at least empty arrays before saving
-      const settingsToSave: Partial<Omit<AppSettings, 'id' | 'updatedAt'>> = {
+      const finalSettingsToSave: Partial<Omit<AppSettings, 'id' | 'updatedAt'>> = {
         ...settings,
-        id: undefined, // id should not be sent for update, MongoDB handles it
-        updatedAt: undefined, // updatedAt should not be sent
+        id: undefined, 
+        updatedAt: undefined, 
         suggestedQuestions: settings.suggestedQuestions || [],
         metaKeywords: settings.metaKeywords || [],
         workingHours: settings.workingHours || [],
         weeklyOffDays: settings.weeklyOffDays || [],
         oneTimeOffDates: settings.oneTimeOffDates || [],
         specificDayRules: (settings.specificDayRules || []).map(rule => {
-          const { id: ruleId, ...restOfRule } = rule; // Remove client-side temporary ID
+          const { id: ruleId, ...restOfRule } = rule; 
           return restOfRule;
         }),
         officeDays: settings.officeDays || [],
       };
       
-      // Remove undefined fields explicitly as some MongoDB drivers might interpret undefined differently
-      Object.keys(settingsToSave).forEach(key => {
-        if (settingsToSave[key as keyof typeof settingsToSave] === undefined) {
-          delete settingsToSave[key as keyof typeof settingsToSave];
+      Object.keys(finalSettingsToSave).forEach(key => {
+        if (finalSettingsToSave[key as keyof typeof finalSettingsToSave] === undefined) {
+          // Keep undefined for numeric fields if they were intentionally cleared to use defaults
+          // For arrays, they are already defaulted to [] above.
+          if (typeof initialSettingsState[key as keyof AppSettings] === 'number' && finalSettingsToSave[key as keyof typeof finalSettingsToSave] === undefined) {
+            // Explicitly do nothing to allow undefined to be sent for numbers
+          } else if (finalSettingsToSave[key as keyof typeof finalSettingsToSave] === undefined) {
+             delete finalSettingsToSave[key as keyof typeof finalSettingsToSave];
+          }
         }
       });
 
-      await updateAppSettings(settingsToSave);
+      await updateAppSettings(finalSettingsToSave);
       toast({ title: "Thành công", description: "Cài đặt đã được lưu." });
       fetchSettings();
     } catch (error: any) {
@@ -561,3 +563,5 @@ export default function AdminSettingsPage() {
     </div>
   );
 }
+
+    
