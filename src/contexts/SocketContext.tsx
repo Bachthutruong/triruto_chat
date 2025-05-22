@@ -36,15 +36,12 @@ export function SocketProvider({ children }: SocketProviderProps) {
 
       if (typeof ioClient === 'function') {
         try {
-          // Attempt to connect to the Socket.IO server
-          // It's assumed the server is running on the same host and port as the Next.js app
-          // and listens on the path '/socket.io/'
-          newSocketInstance = ioClient(window.location.origin, {
-            path: '/socket.io/', // Ensure this matches the server configuration
-            transports: ['websocket', 'polling'], // Default order, websocket preferred
-            reconnectionAttempts: 3, // Try to reconnect a few times
-            reconnectionDelay: 2000, // Wait 2 seconds between reconnection attempts
-            timeout: 10000, // Client-side connection timeout: 10 seconds
+          newSocketInstance = ioClient(window.location.origin, { // Connect to the same origin Next.js is served from
+            path: '/socket.io/', // Crucial: Must match server-side path
+            transports: ['websocket', 'polling'], 
+            reconnectionAttempts: 5,
+            reconnectionDelay: 3000,
+            timeout: 10000, // Client-side connection attempt timeout
           });
 
           if (newSocketInstance) {
@@ -60,41 +57,33 @@ export function SocketProvider({ children }: SocketProviderProps) {
               console.log('SocketProvider: Socket disconnected. Reason:', reason);
               setIsConnected(false);
               if (reason === 'io server disconnect') {
-                // This means the server deliberately disconnected the socket.
-                // You might want to attempt to reconnect manually if appropriate for your app.
-                // e.g., newSocketInstance.connect();
+                // The server deliberately disconnected the socket
+                // newSocketInstance.connect(); // Optionally attempt to reconnect
               }
-              // For other reasons (like 'transport close'), the client will attempt to reconnect automatically
-              // based on the reconnectionAttempts and reconnectionDelay options.
             });
 
             newSocketInstance.on('connect_error', (err) => {
-              // This event fires when the initial connection fails or subsequent reconnections fail.
               console.error('SocketProvider: CRITICAL SOCKET CONNECTION ERROR (connect_error event). This indicates a problem reaching or handshaking with the Socket.IO server.');
-              console.error('Full error object:', err); // Log the entire error object
-              // err.message often includes more details like 'xhr poll error', 'websocket error', etc.
-              // err.cause might provide underlying error details in some cases.
+              console.error('Full error object:', err); 
               setIsConnected(false);
             });
-
-            newSocketInstance.on('connect_timeout', (timeout) => {
-              // This event fires if the client-side `timeout` option is reached during connection attempt.
-              console.error('SocketProvider: SOCKET CONNECTION TIMEOUT (connect_timeout event). Connection attempt exceeded', timeout, 'ms.');
+            
+            newSocketInstance.on('connect_timeout', (timeoutValue) => {
+              console.error('SocketProvider: SOCKET CONNECTION TIMEOUT (connect_timeout event). Connection attempt exceeded', timeoutValue, 'ms.');
               setIsConnected(false);
             });
 
             newSocketInstance.on('error', (err) => {
-                // This is a general error event from the socket instance.
                 console.error('SocketProvider: GENERAL SOCKET ERROR (error event). This might occur after connection.');
                 console.error('Full error object:', err);
-                setIsConnected(false); // Depending on the error, you might want to handle this differently
+                // Depending on the error, you might want to set isConnected to false
+                // setIsConnected(false); 
             });
 
           } else {
              console.error('SocketProvider: Socket.IO client (ioClient) did not return an instance. This is unexpected.');
           }
         } catch (error) {
-          // Catch synchronous errors during ioClient() call or event listener setup
           console.error('SocketProvider: CRITICAL ERROR during Socket.IO client instantiation or initial event listener setup:');
           console.error(error);
         }
@@ -102,7 +91,6 @@ export function SocketProvider({ children }: SocketProviderProps) {
         console.error('SocketProvider: Socket.IO client (ioClient) is not a function. Ensure socket.io-client is installed correctly and imported.');
       }
 
-      // Cleanup function for when the component unmounts
       return () => {
         if (newSocketInstance) {
           console.log('SocketProvider: Cleaning up socket connection on component unmount...');
@@ -115,7 +103,7 @@ export function SocketProvider({ children }: SocketProviderProps) {
       console.log('SocketProvider: Not in a browser environment, skipping Socket.IO client initialization.');
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // Empty dependency array ensures this runs only once on mount and unmount
+  }, []); 
 
   return (
     <SocketContext.Provider value={{ socket, isConnected }}>
