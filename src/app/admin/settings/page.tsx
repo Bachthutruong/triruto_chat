@@ -119,8 +119,8 @@ export default function AdminSettingsPage() {
     setSettings(prev => {
         let processedValue: any = value;
         if (isNumberField) {
-            const num = parseFloat(value);
-            processedValue = isNaN(num) ? undefined : num; 
+            const parsedNum = parseFloat(value);
+            processedValue = isNaN(parsedNum) ? undefined : parsedNum; 
         }
         return { ...prev, [name]: processedValue };
     });
@@ -558,4 +558,3 @@ export default function AdminSettingsPage() {
   );
 }
     
-```
