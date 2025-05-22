@@ -33,8 +33,14 @@ export default function ProductsManagementPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const { toast } = useToast();
-  const pathname = usePathname(); // Use usePathname directly
-  const isAdminRoute = pathname.startsWith('/admin'); // Determine if it's an admin route
+  const pathname = usePathname();
+  const [isAdminRoute, setIsAdminRoute] = useState(false);
+
+  useEffect(() => {
+    if (pathname) {
+      setIsAdminRoute(pathname.startsWith('/admin'));
+    }
+  }, [pathname]);
 
   const fetchProducts = useCallback(async () => {
     try {
@@ -78,6 +84,8 @@ export default function ProductsManagementPage() {
       const result = await deleteProduct(productId);
       if (result.success) {
         setProducts((prevProducts) => prevProducts.filter((p) => p.id !== productId));
+        // Also update filteredProducts to reflect the deletion immediately
+        setFilteredProducts((prevFiltered) => prevFiltered.filter((p) => p.id !== productId));
         toast({ title: 'Thành công', description: 'Sản phẩm đã được xóa.' });
       } else {
         throw new Error("Lỗi xóa sản phẩm từ server.");
@@ -100,11 +108,11 @@ export default function ProductsManagementPage() {
     }
   };
 
-  const formatPrice = (priceVal: number) => {
+  const formatPrice = (price: number) => { // Ensure parameter name is 'price'
     return new Intl.NumberFormat('vi-VN', {
       style: 'currency',
       currency: 'VND',
-    }).format(priceVal);
+    }).format(price); // And used as 'price' here
   };
 
   const basePath = isAdminRoute ? '/admin' : '/staff';
@@ -142,7 +150,7 @@ export default function ProductsManagementPage() {
           <CardTitle className="text-base sm:text-lg">Tất cả Sản phẩm/Dịch vụ</CardTitle>
           <CardDescription className="text-xs sm:text-sm">
             Danh sách tất cả sản phẩm và dịch vụ trong hệ thống.
-          </Description>
+          </CardDescription>
         </CardHeader>
         <CardContent>
           {isLoading ? (
