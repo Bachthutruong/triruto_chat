@@ -5,16 +5,17 @@ import { parse } from 'url';
 import next from 'next';
 import { Server as SocketIOServer, Socket } from 'socket.io';
 import dotenv from 'dotenv';
-// Import necessary actions if server needs to call them directly
-import { pinMessageToConversation, unpinMessageFromConversation } from './app/actions'; // Assuming these are safe to call from server
+import { pinMessageToConversation, unpinMessageFromConversation } from './app/actions'; 
 import type { UserSession } from './lib/types';
 
-
 dotenv.config();
+console.log("Socket.IO Server: dotenv configured.");
 
 const dev = process.env.NODE_ENV !== 'production';
 const hostname = process.env.HOSTNAME || 'localhost';
 const port = parseInt(process.env.PORT || '9002', 10);
+
+console.log(`Socket.IO Server: Starting in ${dev ? 'development' : 'production'} mode on ${hostname}:${port}.`);
 
 console.log("Socket.IO Server: Initializing Next.js app...");
 const app = next({ dev, hostname, port });
@@ -38,9 +39,9 @@ app.prepare().then(() => {
 
   console.log("Socket.IO Server: Attempting to initialize Socket.IO server with explicit path '/socket.io/'...");
   const io = new SocketIOServer(httpServer, {
-    path: '/socket.io/', // Explicitly set path
+    path: '/socket.io/', 
     cors: {
-      origin: "*", // For development. Restrict in production.
+      origin: "*", 
       methods: ["GET", "POST"],
       credentials: true
     },
@@ -69,7 +70,7 @@ app.prepare().then(() => {
 
     socket.on('sendMessage', ({ message, conversationId }) => {
       if (conversationId && message) {
-        socket.to(conversationId).emit('newMessage', message); // Broadcast to others in the room
+        socket.to(conversationId).emit('newMessage', message); 
         console.log(`Socket.IO Server: > Message from ${socket.id} in room '${conversationId}' broadcasted: ${message?.content?.substring(0, 30)}...`);
       }
     });
@@ -80,7 +81,7 @@ app.prepare().then(() => {
       }
     });
 
-    socket.on('stopTyping', ({ conversationId }) => {
+    socket.on('stopTyping', ({ conversationId, userId }) => { // Added userId to be more specific
       if (conversationId) {
         socket.to(conversationId).emit('userStopTyping', { userId: socket.id, conversationId });
       }
@@ -102,9 +103,11 @@ app.prepare().then(() => {
             pinnedMessageIds: updatedConversation.pinnedMessageIds || [] 
           });
           console.log(`Socket.IO Server: Emitted pinnedMessagesUpdated for convId: ${conversationId}`);
+        } else {
+          console.warn(`Socket.IO Server: pinMessageToConversation returned null or undefined for convId: ${conversationId}`);
         }
       } catch (error: any) {
-        console.error(`Socket.IO Server: Error processing pinMessageRequested for convId ${conversationId}:`, error.message);
+        console.error(`Socket.IO Server: Error processing pinMessageRequested for convId ${conversationId}:`, error.message, error.stack);
         socket.emit('pinActionError', { messageId, error: error.message || 'Failed to pin message' });
       }
     });
@@ -125,9 +128,11 @@ app.prepare().then(() => {
             pinnedMessageIds: updatedConversation.pinnedMessageIds || [] 
           });
            console.log(`Socket.IO Server: Emitted pinnedMessagesUpdated for convId: ${conversationId} after unpin`);
+        } else {
+          console.warn(`Socket.IO Server: unpinMessageFromConversation returned null or undefined for convId: ${conversationId}`);
         }
       } catch (error: any) {
-        console.error(`Socket.IO Server: Error processing unpinMessageRequested for convId ${conversationId}:`, error.message);
+        console.error(`Socket.IO Server: Error processing unpinMessageRequested for convId ${conversationId}:`, error.message, error.stack);
         socket.emit('unpinActionError', { messageId, error: error.message || 'Failed to unpin message' });
       }
     });
@@ -154,8 +159,9 @@ app.prepare().then(() => {
       console.error(`Socket.IO Server: > Socket error for ${socket.id}:`, err);
     });
 
-    socket.on('connect_error', (err: Error) => {
-      console.error(`Socket.IO Server: > Connection error for attempting socket ${socket.id}:`, err.message, err.cause);
+    // This event is for the server-side socket itself, less common to hit.
+    io.engine.on("connection_error", (err) => {
+      console.error("Socket.IO Server: Engine connection error:", err.code, err.message, err.context);
     });
   });
 
@@ -170,6 +176,6 @@ app.prepare().then(() => {
       console.log(`Socket.IO Server: > Socket.IO listening on port ${port} at path /socket.io/`);
     });
 }).catch(err => {
-    console.error("Socket.IO Server: Error during Next.js app preparation:", err);
+    console.error("Socket.IO Server: CRITICAL Error during Next.js app preparation:", err);
     process.exit(1);
 });

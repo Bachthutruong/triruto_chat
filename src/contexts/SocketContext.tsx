@@ -36,11 +36,11 @@ export function SocketProvider({ children }: SocketProviderProps) {
 
       if (typeof ioClient === 'function') {
         try {
-          const socketConnectionUrl = window.location.origin;
+          const socketConnectionUrl = window.location.origin; // e.g., http://localhost:9002
           console.log(`SocketProvider: Connecting to Socket.IO server at ${socketConnectionUrl} with path '/socket.io/'`);
           
           newSocketInstance = ioClient(socketConnectionUrl, {
-            path: '/socket.io/', // Explicitly set path, must match server
+            path: '/socket.io/', 
             transports: ['websocket', 'polling'], 
             reconnectionAttempts: 5,
             reconnectionDelay: 3000,
@@ -60,16 +60,15 @@ export function SocketProvider({ children }: SocketProviderProps) {
               console.log('SocketProvider: Socket disconnected. Reason:', reason);
               setIsConnected(false);
               if (reason === 'io server disconnect') {
-                 console.log('SocketProvider: Server deliberately disconnected socket.');
+                 console.warn('SocketProvider: Server deliberately disconnected socket.');
+              } else if (reason === 'transport close') {
+                console.warn('SocketProvider: Socket disconnected due to transport close. This might be a network interruption or server restart.');
               }
             });
 
             newSocketInstance.on('connect_error', (err) => {
-              // This event fires when the initial connection fails or subsequent reconnections fail.
               console.error('SocketProvider: CRITICAL SOCKET CONNECTION ERROR (connect_error event). This indicates a problem reaching or handshaking with the Socket.IO server.');
-              console.error('Full error object:', err); // Log the entire error object
-              // err.message often includes more details like 'xhr poll error', 'websocket error', etc.
-              // err.cause might provide underlying error details in some cases.
+              console.error('Full error object:', err); 
               setIsConnected(false);
             });
             
@@ -79,10 +78,8 @@ export function SocketProvider({ children }: SocketProviderProps) {
             });
 
             newSocketInstance.on('error', (err) => {
-                // This event can fire for various reasons after a connection is established or during attempts.
                 console.error('SocketProvider: GENERAL SOCKET ERROR (error event).');
                 console.error('Full error object:', err);
-                // Consider setting isConnected to false if the error is severe, e.g., err.message.includes('TransportError')
             });
 
           } else {
