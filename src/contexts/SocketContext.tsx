@@ -31,20 +31,21 @@ export function SocketProvider({ children }: SocketProviderProps) {
   useEffect(() => {
     console.log('SocketProvider: useEffect triggered for socket initialization.');
     if (typeof window !== 'undefined') {
-      console.log('SocketProvider: Attempting to initialize Socket.IO client...');
       let newSocketInstance: Socket | null = null;
-
+      
       if (typeof ioClient === 'function') {
         try {
-          const socketConnectionUrl = window.location.origin; // e.g., http://localhost:9002
+          console.log('SocketProvider: Attempting to initialize Socket.IO client...');
+          const socketConnectionUrl = window.location.origin; 
           console.log(`SocketProvider: Connecting to Socket.IO server at ${socketConnectionUrl} with path '/socket.io/'`);
           
           newSocketInstance = ioClient(socketConnectionUrl, {
             path: '/socket.io/', 
             transports: ['websocket', 'polling'], 
-            reconnectionAttempts: 5,
-            reconnectionDelay: 3000,
-            timeout: 10000, // Client-side connection attempt timeout
+            reconnection: true, // Explicitly enable reconnection
+            reconnectionAttempts: 5, // Number of reconnection attempts
+            reconnectionDelay: 3000, // Delay between attempts
+            timeout: 10000, // Connection attempt timeout
           });
 
           if (newSocketInstance) {
@@ -61,14 +62,17 @@ export function SocketProvider({ children }: SocketProviderProps) {
               setIsConnected(false);
               if (reason === 'io server disconnect') {
                  console.warn('SocketProvider: Server deliberately disconnected socket.');
-              } else if (reason === 'transport close') {
-                console.warn('SocketProvider: Socket disconnected due to transport close. This might be a network interruption or server restart.');
+              } else if (reason === 'transport close' || reason === 'ping timeout') {
+                console.warn('SocketProvider: Socket disconnected due to transport/ping issue. Will attempt to reconnect if configured.');
               }
             });
 
             newSocketInstance.on('connect_error', (err) => {
+              // This event fires when the initial connection fails or subsequent reconnections fail.
               console.error('SocketProvider: CRITICAL SOCKET CONNECTION ERROR (connect_error event). This indicates a problem reaching or handshaking with the Socket.IO server.');
               console.error('Full error object:', err); 
+              // err.message often includes more details like 'xhr poll error', 'websocket error', etc.
+              // err.cause might provide underlying error details in some cases.
               setIsConnected(false);
             });
             
@@ -77,9 +81,16 @@ export function SocketProvider({ children }: SocketProviderProps) {
               setIsConnected(false);
             });
 
-            newSocketInstance.on('error', (err) => {
-                console.error('SocketProvider: GENERAL SOCKET ERROR (error event).');
-                console.error('Full error object:', err);
+            newSocketInstance.on('error', (err) => { // General error events
+                console.error('SocketProvider: GENERAL SOCKET ERROR (error event on socket instance).');
+                console.error('Full error object for general error:', err);
+            });
+             newSocketInstance.on('reconnect_attempt', (attemptNumber) => {
+              console.log(`SocketProvider: Reconnect attempt ${attemptNumber}`);
+            });
+
+            newSocketInstance.on('reconnect_failed', () => {
+              console.error('SocketProvider: All reconnection attempts failed.');
             });
 
           } else {
