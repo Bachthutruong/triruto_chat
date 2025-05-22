@@ -15,19 +15,20 @@ import { getAppSettings, updateAppSettings } from '@/app/actions';
 import type { AppSettings, SpecificDayRule } from '@/lib/types';
 import { Checkbox } from '@/components/ui/checkbox';
 import { format, parse, isValid as isValidDateFns } from 'date-fns';
-import NextImage from 'next/image'; 
+import NextImage from 'next/image';
 
 const defaultInitialBrandName = 'AetherChat';
 const MAX_LOGO_SIZE_MB = 1;
 const MAX_LOGO_SIZE_BYTES = MAX_LOGO_SIZE_MB * 1024 * 1024;
 
-const initialSettingsState: Partial<AppSettings> = {
+const initialSettingsState: AppSettings = {
+  id: '', // Will be populated from DB or a new one if not exists
   brandName: defaultInitialBrandName,
   logoUrl: '',
   logoDataUri: '',
   greetingMessage: 'Tôi là trợ lý AI của bạn. Tôi có thể giúp gì cho bạn hôm nay? Bạn có thể hỏi về dịch vụ hoặc đặt lịch hẹn.',
-  greetingMessageNewCustomer: '',
-  greetingMessageReturningCustomer: '',
+  greetingMessageNewCustomer: 'Chào mừng bạn lần đầu đến với chúng tôi! Bạn cần hỗ trợ gì ạ?',
+  greetingMessageReturningCustomer: 'Chào mừng bạn quay trở lại! Rất vui được gặp lại bạn.',
   suggestedQuestions: ['Các dịch vụ của bạn?', 'Đặt lịch hẹn', 'Địa chỉ của bạn ở đâu?'],
   footerText: `© ${new Date().getFullYear()} ${defaultInitialBrandName}. Đã đăng ký Bản quyền.`,
   metaTitle: `${defaultInitialBrandName} - Live Chat Thông Minh`,
@@ -46,18 +47,18 @@ const initialSettingsState: Partial<AppSettings> = {
   outOfOfficeMessage: 'Cảm ơn bạn đã liên hệ! Hiện tại chúng tôi đang ngoài giờ làm việc. Vui lòng để lại lời nhắn và chúng tôi sẽ phản hồi sớm nhất có thể.',
   officeHoursStart: "09:00",
   officeHoursEnd: "17:00",
-  officeDays: [1,2,3,4,5], // Mon-Fri
+  officeDays: [1, 2, 3, 4, 5], // Mon-Fri
 };
 
 const daysOfWeek = [
   { id: 1, label: 'Thứ 2' }, { id: 2, label: 'Thứ 3' }, { id: 3, label: 'Thứ 4' },
   { id: 4, label: 'Thứ 5' }, { id: 5, label: 'Thứ 6' }, { id: 6, label: 'Thứ 7' },
-  { id: 0, label: 'Chủ nhật' }
+  { id: 0, label: 'Chủ nhật' } // Sunday is 0 in date-fns
 ];
 
 export default function AdminSettingsPage() {
   const { toast } = useToast();
-  const [settings, setSettings] = useState<Partial<AppSettings>>(initialSettingsState);
+  const [settings, setSettings] = useState<AppSettings>(initialSettingsState);
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [newOneTimeOffDate, setNewOneTimeOffDate] = useState('');
@@ -70,33 +71,35 @@ export default function AdminSettingsPage() {
   const [newSpecificRuleStaff, setNewSpecificRuleStaff] = useState('');
   const [newSpecificRuleDuration, setNewSpecificRuleDuration] = useState('');
 
-
   const fetchSettings = useCallback(async () => {
     setIsLoading(true);
     try {
       const fetchedSettings = await getAppSettings();
       if (fetchedSettings) {
-        const fullSettings = {
-            ...initialSettingsState, 
-            ...fetchedSettings, 
-            suggestedQuestions: fetchedSettings.suggestedQuestions && fetchedSettings.suggestedQuestions.length > 0 ? fetchedSettings.suggestedQuestions : initialSettingsState.suggestedQuestions,
-            metaKeywords: fetchedSettings.metaKeywords && fetchedSettings.metaKeywords.length > 0 ? fetchedSettings.metaKeywords : initialSettingsState.metaKeywords,
-            workingHours: fetchedSettings.workingHours && fetchedSettings.workingHours.length > 0 ? fetchedSettings.workingHours : initialSettingsState.workingHours,
-            weeklyOffDays: fetchedSettings.weeklyOffDays || initialSettingsState.weeklyOffDays,
-            oneTimeOffDates: fetchedSettings.oneTimeOffDates || initialSettingsState.oneTimeOffDates,
-            specificDayRules: (fetchedSettings.specificDayRules || initialSettingsState.specificDayRules!).map(rule => ({...rule, id: rule.id || new Date().getTime().toString()})),
-            officeDays: fetchedSettings.officeDays && fetchedSettings.officeDays.length > 0 ? fetchedSettings.officeDays : initialSettingsState.officeDays,
+        // Ensure all fields have defaults if not present in fetchedSettings
+        const mergedSettings: AppSettings = {
+          ...initialSettingsState, // Start with all initial defaults
+          ...fetchedSettings,     // Override with fetched values
+          // Explicitly ensure array fields are arrays, falling back to initial defaults if necessary
+          suggestedQuestions: fetchedSettings.suggestedQuestions && fetchedSettings.suggestedQuestions.length > 0 ? fetchedSettings.suggestedQuestions : initialSettingsState.suggestedQuestions,
+          metaKeywords: fetchedSettings.metaKeywords && fetchedSettings.metaKeywords.length > 0 ? fetchedSettings.metaKeywords : initialSettingsState.metaKeywords || [],
+          workingHours: fetchedSettings.workingHours && fetchedSettings.workingHours.length > 0 ? fetchedSettings.workingHours : initialSettingsState.workingHours,
+          weeklyOffDays: fetchedSettings.weeklyOffDays || initialSettingsState.weeklyOffDays || [],
+          oneTimeOffDates: fetchedSettings.oneTimeOffDates || initialSettingsState.oneTimeOffDates || [],
+          specificDayRules: (fetchedSettings.specificDayRules || initialSettingsState.specificDayRules!).map(rule => ({ ...rule, id: rule.id || new Date().getTime().toString() + Math.random() })),
+          officeDays: fetchedSettings.officeDays && fetchedSettings.officeDays.length > 0 ? fetchedSettings.officeDays : initialSettingsState.officeDays || [],
         };
-        setSettings(fullSettings);
-        if (fullSettings.logoDataUri) {
-          setLogoPreview(fullSettings.logoDataUri);
-        } else if (fullSettings.logoUrl) {
-          setLogoPreview(fullSettings.logoUrl);
+        setSettings(mergedSettings);
+
+        if (mergedSettings.logoDataUri) {
+          setLogoPreview(mergedSettings.logoDataUri);
+        } else if (mergedSettings.logoUrl) {
+          setLogoPreview(mergedSettings.logoUrl);
         } else {
           setLogoPreview(null);
         }
       } else {
-        setSettings(initialSettingsState); 
+        setSettings(initialSettingsState);
         setLogoPreview(null);
       }
     } catch (error) {
@@ -114,22 +117,20 @@ export default function AdminSettingsPage() {
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value, type } = e.target;
-    const isNumberField = type === 'number';
-    
     setSettings(prev => {
-        let processedValue: any = value;
-        if (isNumberField) {
-            const parsedNum = parseFloat(value);
-            processedValue = isNaN(parsedNum) ? undefined : parsedNum; 
-        }
-        return { ...prev, [name]: processedValue };
+      let processedValue: any = value;
+      if (type === 'number') {
+        const parsedNum = parseFloat(value);
+        processedValue = isNaN(parsedNum) ? undefined : parsedNum;
+      }
+      return { ...prev, [name]: processedValue };
     });
   };
 
   const handleCheckboxChange = (name: keyof AppSettings, checked: boolean | 'indeterminate') => {
     setSettings(prev => ({ ...prev, [name]: checked === true }));
   };
-  
+
   const handleSuggestedQuestionsChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     setSettings(prev => ({ ...prev, suggestedQuestions: e.target.value.split('\n').map(q => q.trim()).filter(Boolean) }));
   };
@@ -141,69 +142,59 @@ export default function AdminSettingsPage() {
   const handleWorkingHoursChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setSettings(prev => ({ ...prev, workingHours: e.target.value.split(',').map(h => h.trim()).filter(h => /^[0-2][0-9]:[0-5][0-9]$/.test(h)) }));
   };
-  
+
   const handleWeeklyOffDayChange = (dayId: number, checked: boolean | 'indeterminate') => {
     setSettings(prev => {
       const currentOffDays = prev.weeklyOffDays || [];
       if (checked === true) {
-        return { ...prev, weeklyOffDays: [...currentOffDays, dayId] };
+        return { ...prev, weeklyOffDays: [...currentOffDays, dayId].filter((v, i, a) => a.indexOf(v) === i) }; // Unique
       } else {
         return { ...prev, weeklyOffDays: currentOffDays.filter(d => d !== dayId) };
       }
     });
   };
-  
+
   const handleOfficeDayChange = (dayId: number, checked: boolean | 'indeterminate') => {
     setSettings(prev => {
       const currentOfficeDays = prev.officeDays || [];
       if (checked === true) {
-        return { ...prev, officeDays: [...currentOfficeDays, dayId] };
+        return { ...prev, officeDays: [...currentOfficeDays, dayId].filter((v, i, a) => a.indexOf(v) === i) }; // Unique
       } else {
         return { ...prev, officeDays: currentOfficeDays.filter(d => d !== dayId) };
       }
     });
   };
 
-
   const handleAddOneTimeOffDate = () => {
     if (newOneTimeOffDate && !settings.oneTimeOffDates?.includes(newOneTimeOffDate)) {
-      try {
-        if (!isValidDateFns(parse(newOneTimeOffDate, 'yyyy-MM-dd', new Date()))) {
-             toast({title: "Lỗi định dạng ngày", description: "Vui lòng nhập ngày hợp lệ theo định dạng YYYY-MM-DD", variant: "destructive"});
-             return;
-        }
-        setSettings(prev => ({ ...prev, oneTimeOffDates: [...(prev.oneTimeOffDates || []), newOneTimeOffDate] }));
-        setNewOneTimeOffDate('');
-      } catch (error) {
-        toast({title: "Lỗi định dạng ngày", description: "Vui lòng nhập ngày theo định dạng YYYY-MM-DD", variant: "destructive"});
+      if (!isValidDateFns(parse(newOneTimeOffDate, 'yyyy-MM-dd', new Date()))) {
+        toast({ title: "Lỗi định dạng ngày", description: "Vui lòng nhập ngày hợp lệ theo định dạng YYYY-MM-DD", variant: "destructive" });
+        return;
       }
+      setSettings(prev => ({ ...prev, oneTimeOffDates: [...(prev.oneTimeOffDates || []), newOneTimeOffDate] }));
+      setNewOneTimeOffDate('');
     }
   };
 
   const handleRemoveOneTimeOffDate = (dateToRemove: string) => {
     setSettings(prev => ({ ...prev, oneTimeOffDates: (prev.oneTimeOffDates || []).filter(d => d !== dateToRemove) }));
   };
-  
+
   const handleAddSpecificRule = () => {
     if (!newSpecificRuleDate) {
-        toast({title: "Thiếu thông tin", description: "Vui lòng chọn ngày cho quy tắc cụ thể.", variant: "destructive"});
-        return;
+      toast({ title: "Thiếu thông tin", description: "Vui lòng chọn ngày cho quy tắc cụ thể.", variant: "destructive" });
+      return;
     }
-     try {
-        if (!isValidDateFns(parse(newSpecificRuleDate, 'yyyy-MM-dd', new Date()))) {
-            toast({title: "Lỗi định dạng ngày", description: "Ngày quy tắc cụ thể không hợp lệ. Phải là YYYY-MM-DD", variant: "destructive"});
-            return;
-        }
-    } catch (error) {
-        toast({title: "Lỗi định dạng ngày", description: "Ngày quy tắc cụ thể không hợp lệ. Phải là YYYY-MM-DD", variant: "destructive"});
-        return;
+    if (!isValidDateFns(parse(newSpecificRuleDate, 'yyyy-MM-dd', new Date()))) {
+      toast({ title: "Lỗi định dạng ngày", description: "Ngày quy tắc cụ thể không hợp lệ. Phải là YYYY-MM-DD", variant: "destructive" });
+      return;
     }
 
-    const parsedStaff = newSpecificRuleStaff !== '' ? parseFloat(newSpecificRuleStaff) : undefined;
-    const parsedDuration = newSpecificRuleDuration !== '' ? parseFloat(newSpecificRuleDuration) : undefined;
+    const parsedStaff = newSpecificRuleStaff.trim() !== '' ? parseFloat(newSpecificRuleStaff) : undefined;
+    const parsedDuration = newSpecificRuleDuration.trim() !== '' ? parseFloat(newSpecificRuleDuration) : undefined;
 
     const rule: SpecificDayRule = {
-      id: new Date().getTime().toString(), 
+      id: new Date().getTime().toString() + Math.random(),
       date: newSpecificRuleDate,
       isOff: newSpecificRuleIsOff,
       workingHours: newSpecificRuleWorkingHours.split(',').map(h => h.trim()).filter(h => /^[0-2][0-9]:[0-5][0-9]$/.test(h)).length > 0 ? newSpecificRuleWorkingHours.split(',').map(h => h.trim()).filter(h => /^[0-2][0-9]:[0-5][0-9]$/.test(h)) : undefined,
@@ -219,7 +210,7 @@ export default function AdminSettingsPage() {
   };
 
   const handleRemoveSpecificRule = (idToRemove: string) => {
-    setSettings(prev => ({ ...prev, specificDayRules: (prev.specificDayRules || []).filter(rule => rule.id !== idToRemove)}));
+    setSettings(prev => ({ ...prev, specificDayRules: (prev.specificDayRules || []).filter(rule => rule.id !== idToRemove) }));
   };
 
   const handleLogoFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -235,11 +226,10 @@ export default function AdminSettingsPage() {
         if (logoInputRef.current) logoInputRef.current.value = "";
         return;
       }
-
       const reader = new FileReader();
       reader.onloadend = () => {
         const dataUri = reader.result as string;
-        setSettings(prev => ({ ...prev, logoDataUri: dataUri, logoUrl: '' })); 
+        setSettings(prev => ({ ...prev, logoDataUri: dataUri, logoUrl: '' }));
         setLogoPreview(dataUri);
       };
       reader.readAsDataURL(file);
@@ -247,29 +237,43 @@ export default function AdminSettingsPage() {
   };
 
   const handleRemoveLogo = () => {
-    setSettings(prev => ({ ...prev, logoDataUri: undefined, logoUrl: '' })); 
+    setSettings(prev => ({ ...prev, logoDataUri: undefined, logoUrl: '' }));
     setLogoPreview(null);
     if (logoInputRef.current) {
-      logoInputRef.current.value = ""; 
+      logoInputRef.current.value = "";
     }
   };
-
 
   const handleSaveSettings = async () => {
     setIsSubmitting(true);
     try {
-      const { id, updatedAt, ...settingsToSave } = settings;
-      const finalSettingsToSave = {
-          ...settingsToSave,
-          specificDayRules: (settingsToSave.specificDayRules || []).filter(rule => rule.date && rule.date.trim() !== '')
-             .map(rule => {
-                 const { id: ruleId, ...restOfRule } = rule; 
-                 return restOfRule;
-             }),
+      // Ensure all array fields are at least empty arrays before saving
+      const settingsToSave: Partial<Omit<AppSettings, 'id' | 'updatedAt'>> = {
+        ...settings,
+        id: undefined, // id should not be sent for update, MongoDB handles it
+        updatedAt: undefined, // updatedAt should not be sent
+        suggestedQuestions: settings.suggestedQuestions || [],
+        metaKeywords: settings.metaKeywords || [],
+        workingHours: settings.workingHours || [],
+        weeklyOffDays: settings.weeklyOffDays || [],
+        oneTimeOffDates: settings.oneTimeOffDates || [],
+        specificDayRules: (settings.specificDayRules || []).map(rule => {
+          const { id: ruleId, ...restOfRule } = rule; // Remove client-side temporary ID
+          return restOfRule;
+        }),
+        officeDays: settings.officeDays || [],
       };
-      await updateAppSettings(finalSettingsToSave as Omit<AppSettings, 'id' | 'updatedAt'>);
+      
+      // Remove undefined fields explicitly as some MongoDB drivers might interpret undefined differently
+      Object.keys(settingsToSave).forEach(key => {
+        if (settingsToSave[key as keyof typeof settingsToSave] === undefined) {
+          delete settingsToSave[key as keyof typeof settingsToSave];
+        }
+      });
+
+      await updateAppSettings(settingsToSave);
       toast({ title: "Thành công", description: "Cài đặt đã được lưu." });
-      fetchSettings(); 
+      fetchSettings();
     } catch (error: any) {
       toast({ title: "Lỗi", description: error.message || "Không thể lưu cài đặt.", variant: "destructive" });
     } finally {
@@ -305,11 +309,11 @@ export default function AdminSettingsPage() {
                 </div>
               )}
               <div className="flex-grow space-y-2">
-                <Input 
-                  id="logoUpload" 
-                  type="file" 
-                  accept="image/*" 
-                  onChange={handleLogoFileChange} 
+                <Input
+                  id="logoUpload"
+                  type="file"
+                  accept="image/*"
+                  onChange={handleLogoFileChange}
                   ref={logoInputRef}
                   className="block w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20"
                   disabled={isSubmitting}
@@ -325,7 +329,7 @@ export default function AdminSettingsPage() {
           </div>
           <div className="space-y-2">
             <Label htmlFor="logoUrl">Hoặc URL Logo bên ngoài</Label>
-            <Input id="logoUrl" name="logoUrl" type="url" placeholder="https://example.com/logo.png" value={settings.logoUrl || ''} onChange={(e) => { handleInputChange(e); if (e.target.value) setLogoPreview(e.target.value);}} disabled={isSubmitting} />
+            <Input id="logoUrl" name="logoUrl" type="url" placeholder="https://example.com/logo.png" value={settings.logoUrl || ''} onChange={(e) => { handleInputChange(e); if (e.target.value) { setLogoPreview(e.target.value); setSettings(prev => ({...prev, logoDataUri: undefined}));} }} disabled={isSubmitting} />
              <p className="text-xs text-muted-foreground">Nếu bạn tải lên logo, trường này sẽ bị bỏ qua.</p>
           </div>
            <div className="space-y-2">
@@ -334,7 +338,7 @@ export default function AdminSettingsPage() {
           </div>
         </CardContent>
       </Card>
-      
+
       {/* Greeting and Initial Interaction Settings */}
       <Card>
         <CardHeader>
@@ -406,7 +410,7 @@ export default function AdminSettingsPage() {
           )}
         </CardContent>
       </Card>
-      
+
       {/* SEO Settings */}
       <Card>
         <CardHeader>
@@ -439,7 +443,7 @@ export default function AdminSettingsPage() {
           </div>
         </CardContent>
       </Card>
-      
+
       {/* Appointment Scheduling Rules */}
       <Card>
         <CardHeader>
@@ -480,10 +484,10 @@ export default function AdminSettingsPage() {
           <div className="space-y-2">
             <Label><CalendarDays className="inline mr-1 h-4 w-4" />Ngày nghỉ Lễ/Đặc biệt (chung)</Label>
             <div className="flex gap-2 items-center">
-              <Input 
-                type="date" 
-                value={newOneTimeOffDate} 
-                onChange={e => setNewOneTimeOffDate(e.target.value)} 
+              <Input
+                type="date"
+                value={newOneTimeOffDate}
+                onChange={e => setNewOneTimeOffDate(e.target.value)}
                 disabled={isSubmitting}
                 className="max-w-xs"
               />
@@ -518,8 +522,8 @@ export default function AdminSettingsPage() {
 
             {(settings.specificDayRules || []).length > 0 && (
               <div className="space-y-2">
-                {(settings.specificDayRules || []).map((rule, index) => (
-                  <Card key={rule.id || index} className="p-3 bg-muted/30">
+                {(settings.specificDayRules || []).map((rule) => (
+                  <Card key={rule.id} className="p-3 bg-muted/30">
                     <div className="flex justify-between items-start mb-2">
                         <p className="font-semibold text-sm">Ngày: {isValidDateFns(parse(rule.date, 'yyyy-MM-dd', new Date())) ? format(parse(rule.date, 'yyyy-MM-dd', new Date()), 'dd/MM/yyyy') : 'Ngày không hợp lệ'}</p>
                         <Button variant="ghost" size="icon" onClick={() => handleRemoveSpecificRule(rule.id!)} className="h-6 w-6">
@@ -557,4 +561,3 @@ export default function AdminSettingsPage() {
     </div>
   );
 }
-    
