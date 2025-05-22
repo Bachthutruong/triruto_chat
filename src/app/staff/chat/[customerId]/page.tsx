@@ -10,7 +10,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Send, Paperclip, Smile, UserCircle, Edit2, Tag, Clock, Phone, Info, X, StickyNote, PlusCircle, Trash2, UserPlus, LogOutIcon, UserCheck, Users, Pin, PinOff, Edit, Image as ImageIcon, ExternalLink, FileText, Download, Zap } from 'lucide-react';
+import { Send, Paperclip, Smile, UserCircle, Edit2, Tag, Clock, Phone, Info, X, StickyNote, PlusCircle, Trash2, UserPlus, LogOutIcon, UserCheck, Users, Pin, PinOff, Edit, Image as ImageIcon, ExternalLink, FileText, Download, Zap, MoreVertical } from 'lucide-react';
 import type { CustomerProfile, Message, AppointmentDetails, UserSession, Note, MessageEditState, Conversation, QuickReplyType } from '@/lib/types';
 import { 
   getCustomerDetails, 
@@ -30,7 +30,7 @@ import {
   markCustomerInteractionAsReadByStaff,
   deleteStaffMessage,
   editStaffMessage,
-  getConversationHistory, 
+  // getConversationHistory, // Replaced by socket updates
   getQuickReplies 
 } from '@/app/actions';
 import { Textarea } from '@/components/ui/textarea'; 
@@ -40,7 +40,7 @@ import { vi } from 'date-fns/locale';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Dialog, DialogHeader, DialogFooter, DialogContent, DialogTitle, DialogDescription, DialogClose } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ChatWindow } from '@/components/chat/ChatWindow'; 
+import { ChatInterface } from '@/components/chat/ChatInterface'; // Changed from ChatWindow
 import { Label } from '@/components/ui/label';
 import Link from 'next/link'; 
 import { Loader2 } from 'lucide-react';
@@ -70,8 +70,7 @@ export default function StaffIndividualChatPage() {
   const [pinnedMessages, setPinnedMessages] = useState<Message[]>([]); 
   const [appointments, setAppointments] = useState<AppointmentDetails[]>([]);
   const [notes, setNotes] = useState<Note[]>([]);
-  const [conversations, setConversations] = useState<Conversation[]>([]); 
-  const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
+  const [activeConversation, setActiveConversation] = useState<Conversation | null>(null); 
 
   const [isLoading, setIsLoading] = useState(true);
   const [isSendingMessage, setIsSendingMessage] = useState(false);
@@ -94,12 +93,32 @@ export default function StaffIndividualChatPage() {
   const editFileInputRef = useRef<HTMLInputElement>(null);
   
   const [quickReplies, setQuickReplies] = useState<QuickReplyType[]>([]); 
-  const [typingUsers, setTypingUsers] = useState<Record<string, string>>({}); 
   
-  // For Socket.IO
   const { socket, isConnected } = useSocket();
   const usersTypingMapRef = useRef<Record<string, string>>({});
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const [typingUsers, setTypingUsers] = useState<Record<string, string>>({});
+
+
+  const fetchPinnedMessagesForConversation = useCallback(async (conversationId: string | null) => {
+    if (!conversationId) {
+        setPinnedMessages([]);
+        return;
+    }
+    const conversation = activeConversation?.id === conversationId ? activeConversation : null; // Or fetch again if needed
+    if (conversation && conversation.pinnedMessageIds && conversation.pinnedMessageIds.length > 0) {
+        try {
+            const fetchedPinned = await getMessagesByIds(conversation.pinnedMessageIds);
+            setPinnedMessages(fetchedPinned);
+        } catch (error) {
+            console.error("Error fetching pinned messages for staff:", error);
+            setPinnedMessages([]);
+        }
+    } else {
+        setPinnedMessages([]);
+    }
+  }, [activeConversation]);
+
 
   const fetchChatData = useCallback(async () => {
     if (customerId && staffSession) { 
@@ -115,39 +134,33 @@ export default function StaffIndividualChatPage() {
           messages: fetchedMessages, 
           appointments: fetchedAppointments, 
           notes: fetchedNotes,
-          conversations: fetchedConversations 
+          conversations: fetchedConversations // This is an array
         } = details;
         
         setCustomer(fetchedCustomer);
         setAppointments(fetchedAppointments || []);
         setNotes(fetchedNotes || []);
-        setConversations(fetchedConversations || []);
-        setQuickReplies(fetchedQuickReplies || []);
-
+        
         if (fetchedCustomer?.internalName) {
           setInternalNameInput(fetchedCustomer.internalName);
         } else if (fetchedCustomer) {
           setInternalNameInput(''); 
         }
 
-        const currentActiveConvId = fetchedConversations && fetchedConversations.length > 0 ? fetchedConversations[0].id : null;
-        setActiveConversationId(currentActiveConvId);
+        // For staff, assume the first conversation is the active one for this customer.
+        // This might need adjustment if a customer can have multiple conversations visible to staff.
+        const currentActiveConv = fetchedConversations && fetchedConversations.length > 0 ? fetchedConversations[0] : null;
+        setActiveConversation(currentActiveConv);
 
-        if (currentActiveConvId) {
+        if (currentActiveConv) {
           setMessages(fetchedMessages || []); 
-          const activeConvPinnedIds = fetchedConversations[0].pinnedMessageIds || [];
-          if (activeConvPinnedIds.length > 0) {
-            const fetchedPinned = await getMessagesByIds(activeConvPinnedIds);
-            setPinnedMessages(fetchedPinned.map(m => ({...m, isPinned: true})));
-          } else {
-            setPinnedMessages([]);
-          }
+          fetchPinnedMessagesForConversation(currentActiveConv.id);
         } else {
           setMessages([]);
           setPinnedMessages([]);
         }
 
-        if (fetchedCustomer && fetchedCustomer.interactionStatus === 'unread') {
+        if (fetchedCustomer && fetchedCustomer.interactionStatus === 'unread' && staffSession.role !== 'customer') {
           await markCustomerInteractionAsReadByStaff(customerId, staffSession.id);
           setCustomer(prev => prev ? {...prev, interactionStatus: 'read'} : null);
         }
@@ -158,12 +171,12 @@ export default function StaffIndividualChatPage() {
         setCustomer(null); 
         setMessages([]);
         setPinnedMessages([]);
-        setActiveConversationId(null);
+        setActiveConversation(null);
       } finally {
         setIsLoading(false);
       }
     }
-  }, [customerId, toast, staffSession]); 
+  }, [customerId, toast, staffSession, fetchPinnedMessagesForConversation]); 
 
   useEffect(() => {
     const sessionString = sessionStorage.getItem('aetherChatUserSession');
@@ -189,79 +202,104 @@ export default function StaffIndividualChatPage() {
 
 
   useEffect(() => {
-    if (staffSession) { // Ensure staffSession is loaded before fetching data
+    if (staffSession) { 
       fetchChatData();
     }
   }, [fetchChatData, staffSession]); 
 
   useEffect(() => {
-    if (!socket || !isConnected || !activeConversationId || !staffSession) return;
+    if (!socket || !isConnected || !activeConversation?.id || !staffSession) return;
 
-    console.log(`Staff/Admin joining room: ${activeConversationId}`);
-    socket.emit('joinRoom', activeConversationId);
+    console.log(`Staff/Admin ${staffSession.id} joining room: ${activeConversation.id}`);
+    socket.emit('joinRoom', activeConversation.id);
 
     const handleNewMessage = (newMessage: Message) => {
       console.log('Staff/Admin received new message:', newMessage);
-      if (newMessage.conversationId === activeConversationId && newMessage.userId !== staffSession?.id) {
+      if (newMessage.conversationId === activeConversation?.id && newMessage.userId !== staffSession?.id) {
         setMessages(prev => {
             if (prev.find(m => m.id === newMessage.id)) return prev;
             return [...prev, newMessage];
         });
-        const currentConv = conversations.find(c => c.id === activeConversationId);
-        if (currentConv?.pinnedMessageIds) {
-            getMessagesByIds(currentConv.pinnedMessageIds).then(newlyPinned => {
-                setPinnedMessages(newlyPinned.map(m => ({...m, isPinned: true})));
-            });
-        } else {
-            setPinnedMessages([]);
-        }
       }
     };
     
     const handleUserTyping = ({ userId, userName, conversationId: incomingConvId }: { userId: string, userName: string, conversationId: string }) => {
-      if (incomingConvId === activeConversationId && userId !== socket.id) { // Check if typing user is not self
+      if (incomingConvId === activeConversation?.id && userId !== socket.id) { 
         usersTypingMapRef.current[userId] = userName;
         setTypingUsers({ ...usersTypingMapRef.current });
       }
     };
 
     const handleUserStopTyping = ({ userId, conversationId: incomingConvId }: { userId: string, conversationId: string }) => {
-      if (incomingConvId === activeConversationId && userId !== socket.id) { // Check if typing user is not self
+      if (incomingConvId === activeConversation?.id && userId !== socket.id) { 
         delete usersTypingMapRef.current[userId];
         setTypingUsers({ ...usersTypingMapRef.current });
       }
     };
 
+    const handlePinnedMessagesUpdated = ({ conversationId: updatedConvId, pinnedMessageIds: newPinnedIds }: { conversationId: string, pinnedMessageIds: string[] }) => {
+        if (updatedConvId === activeConversation?.id) {
+          setActiveConversation(prev => prev ? { ...prev, pinnedMessageIds: newPinnedIds } : null);
+          // fetchPinnedMessagesForConversation will be called by its own useEffect
+        }
+    };
+    
+    const handleMessageDeleted = ({ messageId: deletedMessageId }: { messageId: string }) => {
+      setMessages(prev => prev.filter(m => m.id !== deletedMessageId));
+      setPinnedMessages(prev => prev.filter(pm => pm.id !== deletedMessageId));
+    };
+
+    const handleMessageEdited = ({ message: editedMessage }: { message: Message }) => {
+      setMessages(prev => prev.map(m => m.id === editedMessage.id ? editedMessage : m));
+      setPinnedMessages(prev => prev.map(pm => pm.id === editedMessage.id ? editedMessage : pm));
+    };
+
     socket.on('newMessage', handleNewMessage);
     socket.on('userTyping', handleUserTyping);
     socket.on('userStopTyping', handleUserStopTyping);
+    socket.on('pinnedMessagesUpdated', handlePinnedMessagesUpdated);
+    socket.on('messageDeleted', handleMessageDeleted);
+    socket.on('messageEdited', handleMessageEdited);
+
 
     return () => {
-      if (socket && activeConversationId) {
-        console.log(`Staff/Admin leaving room: ${activeConversationId}`);
-        socket.emit('leaveRoom', activeConversationId);
+      if (socket && activeConversation?.id) {
+        console.log(`Staff/Admin ${staffSession.id} leaving room: ${activeConversation.id}`);
+        socket.emit('leaveRoom', activeConversation.id);
         socket.off('newMessage', handleNewMessage);
         socket.off('userTyping', handleUserTyping);
         socket.off('userStopTyping', handleUserStopTyping);
+        socket.off('pinnedMessagesUpdated', handlePinnedMessagesUpdated);
+        socket.off('messageDeleted', handleMessageDeleted);
+        socket.off('messageEdited', handleMessageEdited);
       }
     };
-  }, [socket, isConnected, activeConversationId, staffSession, conversations]);
+  }, [socket, isConnected, activeConversation, staffSession, fetchPinnedMessagesForConversation]); // Added fetchPinnedMessagesForConversation
+
+  useEffect(() => {
+    if (activeConversation?.id) {
+        fetchPinnedMessagesForConversation(activeConversation.id);
+    }
+  }, [activeConversation?.id, activeConversation?.pinnedMessageIds, fetchPinnedMessagesForConversation]);
 
 
   const handleSendMessage = async (messageContent: string) => {
-    if (!messageContent.trim() || !customer || !staffSession || !activeConversationId) {
+    if (!messageContent.trim() || !customer || !staffSession || !activeConversation?.id) {
         toast({ title: "Lỗi", description: "Không thể gửi tin nhắn. Thiếu thông tin khách hàng, phiên làm việc hoặc cuộc trò chuyện.", variant: "destructive" });
         return;
     }
     setIsSendingMessage(true);
-    if (socket && isConnected) socket.emit('stopTyping', { conversationId: activeConversationId, userId: socket.id });
+    if (socket && isConnected && onTyping) onTyping(false); // Stop typing before sending
+    if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+
     try {
-      const sentMessage = await sendStaffMessage(staffSession, customer.id, activeConversationId, messageContent);
+      const sentMessage = await sendStaffMessage(staffSession, customer.id, activeConversation.id, messageContent);
       setMessages(prev => [...prev, sentMessage]);
       setCustomer(prev => prev ? { ...prev, interactionStatus: 'replied_by_staff', lastMessagePreview: messageContent.substring(0,100), lastMessageTimestamp: new Date() } : null);
+      setActiveConversation(prev => prev ? { ...prev, lastMessagePreview: messageContent.substring(0,100), lastMessageTimestamp: new Date() } : null);
       
       if (socket && isConnected) {
-        socket.emit('sendMessage', { message: sentMessage, conversationId: activeConversationId });
+        socket.emit('sendMessage', { message: sentMessage, conversationId: activeConversation.id });
       }
     } catch (error: any) {
       toast({ title: "Lỗi gửi tin nhắn", description: error.message, variant: "destructive"});
@@ -270,15 +308,15 @@ export default function StaffIndividualChatPage() {
     }
   };
 
-  const handleTyping = (isTyping: boolean) => {
-    if (!socket || !isConnected || !activeConversationId || !staffSession) return;
-    if (isTyping) {
-      socket.emit('typing', { conversationId: activeConversationId, userName: staffSession.name || 'Nhân viên' });
+  const onTyping = (isTypingStatus: boolean) => {
+    if (!socket || !isConnected || !activeConversation?.id || !staffSession) return;
+    if (isTypingStatus) {
+      socket.emit('typing', { conversationId: activeConversation.id, userName: staffSession.name || 'Nhân viên' });
       if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
     } else {
       if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
       typingTimeoutRef.current = setTimeout(() => {
-        if (socket && isConnected) socket.emit('stopTyping', { conversationId: activeConversationId, userId: socket.id });
+        if (socket && isConnected) socket.emit('stopTyping', { conversationId: activeConversation?.id, userId: socket.id });
       }, 1500); 
     }
   };
@@ -307,7 +345,7 @@ export default function StaffIndividualChatPage() {
   };
 
   const handleSaveEditedMessage = async () => {
-    if (!messageEditState || !staffSession || !activeConversationId) return;
+    if (!messageEditState || !staffSession || !activeConversation?.id) return;
     setIsSendingMessage(true); 
     
     let finalContent = editTextContent.trim();
@@ -329,9 +367,9 @@ export default function StaffIndividualChatPage() {
       const updatedMessage = await editStaffMessage(messageEditState.messageId, finalContent, staffSession);
       if (updatedMessage) {
         setMessages(prev => prev.map(m => m.id === updatedMessage.id ? updatedMessage : m));
-        setPinnedMessages(prev => prev.map(pm => pm.id === updatedMessage.id ? updatedMessage : pm));
+        fetchPinnedMessagesForConversation(activeConversation.id); // Re-fetch pinned messages
         if (socket && isConnected) {
-          socket.emit('sendMessage', { message: updatedMessage, conversationId: activeConversationId, isEdit: true });
+          socket.emit('editMessage', { message: updatedMessage, conversationId: activeConversation.id });
         }
         toast({ title: "Thành công", description: "Đã sửa tin nhắn." });
       }
@@ -367,17 +405,17 @@ export default function StaffIndividualChatPage() {
   };
 
   const handleDeleteMessage = async (messageId: string) => {
-    if (!staffSession || !activeConversationId) return;
+    if (!staffSession || !activeConversation?.id) return;
     try {
       const result = await deleteStaffMessage(messageId, staffSession);
       if (result.success) {
         setMessages(prev => prev.filter(m => m.id !== messageId));
-        setPinnedMessages(prev => prev.filter(pm => pm.id !== messageId));
+        fetchPinnedMessagesForConversation(activeConversation.id); // Re-fetch pinned messages
         if (socket && isConnected) {
-          socket.emit('deleteMessage', { messageId, conversationId: activeConversationId });
+          socket.emit('deleteMessage', { messageId, conversationId: activeConversation.id });
         }
         toast({ title: "Thành công", description: "Đã xóa tin nhắn." });
-        if (result.conversationId === activeConversationId && customer?.lastMessagePreview && messages.find(m=>m.id === messageId)?.content.startsWith(customer.lastMessagePreview)) {
+        if (result.conversationId === activeConversation.id && customer?.lastMessagePreview && messages.find(m=>m.id === messageId)?.content.startsWith(customer.lastMessagePreview)) {
             fetchChatData(); 
         }
       }
@@ -386,45 +424,32 @@ export default function StaffIndividualChatPage() {
     }
   };
 
-  const handlePinMessage = async (messageId: string) => {
-    if (!customer || !staffSession || !activeConversationId) return;
-    try {
-      const updatedConversation = await pinMessageToConversation(activeConversationId, messageId, staffSession);
-      if (updatedConversation) {
-        setConversations(prev => prev.map(c => c.id === activeConversationId ? updatedConversation : c));
-        const messageToPin = messages.find(m => m.id === messageId);
-        if (messageToPin) {
-          setPinnedMessages(prev => {
-            const newPinned = [...prev.filter(p => p.id !== messageId), {...messageToPin, isPinned: true}];
-            return newPinned.slice(-3); 
-          });
-        }
-        setMessages(prev => prev.map(m => m.id === messageId ? {...m, isPinned: true} : m));
-        if (socket && isConnected) {
-           socket.emit('pinMessage', { messageId, conversationId: activeConversationId, isPinned: true });
-        }
-        toast({title: "Thành công", description: "Đã ghim tin nhắn."});
-      }
-    } catch (error: any) {
-      toast({title: "Lỗi", description: error.message, variant: "destructive"});
-    }
+  const handlePinRequested = (messageId: string) => {
+    if (!socket || !isConnected || !activeConversation?.id || !staffSession) return;
+    socket.emit('pinMessageRequested', { 
+        conversationId: activeConversation.id, 
+        messageId,
+        staffSessionJsonString: JSON.stringify(staffSession) 
+    });
   };
 
-  const handleUnpinMessage = async (messageId: string) => {
-    if (!customer || !staffSession || !activeConversationId) return;
-    try {
-      const updatedConversation = await unpinMessageFromConversation(activeConversationId, messageId, staffSession);
-      if (updatedConversation) {
-        setConversations(prev => prev.map(c => c.id === activeConversationId ? updatedConversation : c));
-        setPinnedMessages(prev => prev.filter(m => m.id !== messageId));
-        setMessages(prev => prev.map(m => m.id === messageId ? {...m, isPinned: false} : m));
-        if (socket && isConnected) {
-           socket.emit('unpinMessage', { messageId, conversationId: activeConversationId, isPinned: false });
-        }
-        toast({title: "Thành công", description: "Đã bỏ ghim tin nhắn."});
-      }
-    } catch (error: any) {
-      toast({title: "Lỗi", description: error.message, variant: "destructive"});
+  const handleUnpinRequested = (messageId: string) => {
+    if (!socket || !isConnected || !activeConversation?.id || !staffSession) return;
+    socket.emit('unpinMessageRequested', { 
+        conversationId: activeConversation.id, 
+        messageId,
+        staffSessionJsonString: JSON.stringify(staffSession)
+    });
+  };
+  
+  const handleScrollToMessage = (messageId: string) => {
+    const element = document.getElementById(messageId);
+    if (element) {
+      element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      element.classList.add('bg-yellow-200', 'transition-all', 'duration-1000');
+      setTimeout(() => {
+        element.classList.remove('bg-yellow-200');
+      }, 2000);
     }
   };
 
@@ -569,10 +594,10 @@ export default function StaffIndividualChatPage() {
     return <div className="flex items-center justify-center h-full"><p>Không tìm thấy phiên làm việc. Vui lòng đăng nhập lại.</p></div>;
   }
   if (!customer) {
-    return <div className="flex flex-col items-center justify-center h-full"><Loader2 className="h-8 w-8 animate-spin text-primary mb-2" /><p>Đang tải thông tin khách hàng...</p><p className="text-xs text-muted-foreground">Nếu lỗi tiếp diễn, vui lòng chọn lại khách hàng từ danh sách.</p></div>;
+    return <div className="flex flex-col items-center justify-center h-full"><Loader2 className="h-8 w-8 animate-spin text-primary mb-2" /><p>Không tìm thấy thông tin khách hàng.</p><p className="text-xs text-muted-foreground">Vui lòng chọn lại khách hàng từ danh sách.</p></div>;
   }
-  if (!activeConversationId) {
-     return <div className="flex flex-col items-center justify-center h-full"><Loader2 className="h-8 w-8 animate-spin text-primary mb-2" /><p>Không tìm thấy cuộc trò chuyện cho khách hàng này. Vui lòng thử làm mới hoặc chọn lại khách hàng.</p></div>;
+  if (!activeConversation) {
+     return <div className="flex flex-col items-center justify-center h-full"><Loader2 className="h-8 w-8 animate-spin text-primary mb-2" /><p>Không tìm thấy cuộc trò chuyện cho khách hàng này.</p><p className="text-xs text-muted-foreground">Có thể khách hàng này chưa có cuộc trò chuyện nào.</p></div>;
   }
 
 
@@ -630,14 +655,17 @@ export default function StaffIndividualChatPage() {
           onSuggestedReplyClick={() => {}} 
           isLoading={isSendingMessage || isLoading}
           viewerRole={staffSession.role} 
-          onPinMessage={handlePinMessage}
-          onUnpinMessage={handleUnpinMessage}
+          onPinRequested={handlePinRequested}
+          onUnpinRequested={handleUnpinRequested}
           onDeleteMessage={handleDeleteMessage}
           onEditMessage={handleEditMessage}
           currentStaffSessionId={staffSession.id}
           quickReplies={quickReplies} 
           typingUsers={typingUsers} 
-          onTyping={handleTyping} 
+          onTyping={onTyping} 
+          onScrollToMessage={handleScrollToMessage}
+          activeConversationId={activeConversation?.id}
+          activeConversationPinnedMessageIds={activeConversation?.pinnedMessageIds || []}
         />
       </Card>
 

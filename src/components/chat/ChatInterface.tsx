@@ -1,10 +1,11 @@
+
 // src/components/chat/ChatInterface.tsx
 'use client';
 
 import type { ReactNode } from 'react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Button } from '@/components/ui/button';
-import { PlusCircle, Edit3, Trash2, Pin, PinOff } from 'lucide-react';
+import { PlusCircle, Edit3, Trash2, Pin, PinOff, MoreVertical } from 'lucide-react'; // Added MoreVertical
 import { ChatWindow } from './ChatWindow';
 import type { Conversation, Message, UserSession, MessageViewerRole } from '@/lib/types';
 import { format, formatDistanceToNowStrict } from 'date-fns';
@@ -20,6 +21,12 @@ import {
   DialogTrigger,
   DialogClose,
 } from '@/components/ui/dialog';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import React, { useState } from 'react';
@@ -27,7 +34,7 @@ import React, { useState } from 'react';
 type ChatInterfaceProps = {
   userSession: UserSession | null;
   conversations: Conversation[];
-  activeConversationId: string | null;
+  activeConversation: Conversation | null; // Changed from activeConversationId
   messages: Message[];
   pinnedMessages?: Message[];
   suggestedReplies: string[];
@@ -39,18 +46,19 @@ type ChatInterfaceProps = {
   onUpdateConversationTitle?: (conversationId: string, newTitle: string) => void;
   onPinConversation?: (conversationId: string) => void;
   onUnpinConversation?: (conversationId: string) => void;
-  onPinMessage?: (messageId: string) => void;
-  onUnpinMessage?: (messageId: string) => void;
+  onPinRequested?: (messageId: string) => void;
+  onUnpinRequested?: (messageId: string) => void;
   onDeleteMessage?: (messageId: string) => void;
   onEditMessage?: (messageId: string, currentContent: string) => void;
   currentStaffSessionId?: string;
   onBookAppointmentClick?: () => void;
+  onScrollToMessage?: (messageId: string) => void;
 };
 
 export function ChatInterface({
   userSession,
   conversations,
-  activeConversationId,
+  activeConversation, // Changed from activeConversationId
   messages,
   pinnedMessages,
   suggestedReplies,
@@ -62,12 +70,13 @@ export function ChatInterface({
   onUpdateConversationTitle,
   onPinConversation,
   onUnpinConversation,
-  onPinMessage,
-  onUnpinMessage,
+  onPinRequested,
+  onUnpinRequested,
   onDeleteMessage,
   onEditMessage,
   currentStaffSessionId,
   onBookAppointmentClick,
+  onScrollToMessage,
 }: ChatInterfaceProps) {
   const [isTitleModalOpen, setIsTitleModalOpen] = useState(false);
   const [editingConversationId, setEditingConversationId] = useState<string | null>(null);
@@ -100,17 +109,17 @@ export function ChatInterface({
     return <div className="flex-grow flex items-center justify-center p-4"><p>Không tìm thấy phiên làm việc.</p></div>;
   }
 
-  // For customer view, we hide the conversation sidebar.
   const shouldShowConversationSidebar = viewerRole !== 'customer_view';
+  const activeConversationId = activeConversation?.id || null;
 
   return (
     <div className={cn(
       "flex h-full w-full bg-background text-foreground",
       !shouldShowConversationSidebar && "flex-col"
     )}>
-      <div className="w-full max-w-[1000px] mx-auto h-[calc(100%-2rem)] my-4 flex border border-border rounded-lg shadow-lg">
+      <div className="w-full max-w-[1200px] mx-auto h-[calc(100vh-6rem)] my-0 flex border-none rounded-none shadow-none">
         {shouldShowConversationSidebar && onCreateNewConversation && (
-          <div className="w-full md:w-72 lg:w-80 border-r border-border flex flex-col h-full bg-card flex-shrink-0 shadow-none rounded-l-lg">
+          <div className="w-full md:w-72 lg:w-80 border-r border-border flex flex-col h-full bg-card flex-shrink-0 shadow-none rounded-none">
             <div className="p-3 border-b border-border">
               <Button
                 variant="outline"
@@ -132,50 +141,59 @@ export function ChatInterface({
               <ul>
                 {sortedConversations.map((conv) => (
                   <li key={conv.id} className={cn(activeConversationId === conv.id && "bg-accent text-accent-foreground")}>
-                    <button
-                      className="w-full text-left p-3 hover:bg-accent/50 transition-colors duration-150 flex flex-col gap-0.5"
-                      onClick={() => onSelectConversation(conv.id)}
-                      disabled={isChatLoading}
-                    >
-                      <div className="flex justify-between items-center w-full">
-                        <span className="text-sm font-medium truncate flex-grow pr-2" title={conv.title || `Cuộc trò chuyện ${conv.id.slice(-4)}`}>
-                          {conv.isPinned && <Pin className="h-3 w-3 inline-block mr-1 text-amber-500" />}
-                          {conv.title || `Cuộc trò chuyện ${conv.id.slice(-4)}`}
-                        </span>
-                        <div className="flex items-center gap-1">
-                          {onUpdateConversationTitle && (
-                            <Button variant="ghost" size="icon" className="h-5 w-5 p-0" onClick={(e) => { e.stopPropagation(); handleOpenTitleModal(conv); }} title="Sửa tiêu đề">
-                              <Edit3 className="h-3 w-3" />
-                            </Button>
-                          )}
-                          {conv.isPinned && onUnpinConversation && (
-                            <Button variant="ghost" size="icon" className="h-5 w-5 p-0" onClick={(e) => { e.stopPropagation(); onUnpinConversation(conv.id); }} title="Bỏ ghim">
-                              <PinOff className="h-3 w-3 text-amber-600" />
-                            </Button>
-                          )}
-                          {!conv.isPinned && onPinConversation && (
-                            <Button variant="ghost" size="icon" className="h-5 w-5 p-0" onClick={(e) => { e.stopPropagation(); onPinConversation(conv.id); }} title="Ghim">
-                              <Pin className="h-3 w-3" />
-                            </Button>
-                          )}
-                        </div>
-                      </div>
-                      {conv.lastMessagePreview && (
-                        <p className="text-xs text-muted-foreground truncate">
-                          {conv.lastMessagePreview}
-                        </p>
-                      )}
-                      <p className="text-xs text-muted-foreground/70">
-                        {conv.lastMessageTimestamp ? formatDistanceToNowStrict(new Date(conv.lastMessageTimestamp), { addSuffix: true, locale: vi }) : 'Chưa có tin nhắn'}
-                      </p>
-                    </button>
+                    <div className="w-full text-left p-3 hover:bg-accent/50 transition-colors duration-150 flex items-center justify-between">
+                        <button
+                            className="flex-grow text-left flex flex-col gap-0.5 overflow-hidden"
+                            onClick={() => onSelectConversation(conv.id)}
+                            disabled={isChatLoading}
+                        >
+                            <span className="text-sm font-medium truncate flex items-center" title={conv.title || `Cuộc trò chuyện ${conv.id.slice(-4)}`}>
+                            {conv.isPinned && <Pin className="h-3 w-3 inline-block mr-1 text-amber-500 shrink-0" />}
+                            {conv.title || `Cuộc trò chuyện ${conv.id.slice(-4)}`}
+                            </span>
+                            {conv.lastMessagePreview && (
+                                <p className="text-xs text-muted-foreground truncate">
+                                {conv.lastMessagePreview}
+                                </p>
+                            )}
+                            <p className="text-xs text-muted-foreground/70">
+                                {conv.lastMessageTimestamp ? formatDistanceToNowStrict(new Date(conv.lastMessageTimestamp), { addSuffix: true, locale: vi }) : 'Chưa có tin nhắn'}
+                            </p>
+                        </button>
+                         {(onUpdateConversationTitle || onPinConversation || onUnpinConversation) && (
+                            <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                <Button variant="ghost" size="icon" className="h-6 w-6 p-0 shrink-0 ml-1" onClick={e => e.stopPropagation()}>
+                                    <MoreVertical className="h-4 w-4" />
+                                </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end" onClick={e => e.stopPropagation()}>
+                                {onUpdateConversationTitle && (
+                                    <DropdownMenuItem onClick={() => handleOpenTitleModal(conv)}>
+                                    <Edit3 className="mr-2 h-4 w-4" /> Sửa tiêu đề
+                                    </DropdownMenuItem>
+                                )}
+                                {conv.isPinned && onUnpinConversation && (
+                                    <DropdownMenuItem onClick={() => onUnpinConversation(conv.id)}>
+                                    <PinOff className="mr-2 h-4 w-4 text-amber-600" /> Bỏ ghim cuộc trò chuyện
+                                    </DropdownMenuItem>
+                                )}
+                                {!conv.isPinned && onPinConversation && (
+                                    <DropdownMenuItem onClick={() => onPinConversation(conv.id)}>
+                                    <Pin className="mr-2 h-4 w-4" /> Ghim cuộc trò chuyện
+                                    </DropdownMenuItem>
+                                )}
+                                </DropdownMenuContent>
+                            </DropdownMenu>
+                         )}
+                    </div>
                   </li>
                 ))}
               </ul>
             </ScrollArea>
           </div>
         )}
-        <div className="flex-grow h-full rounded-r-lg">
+        <div className="flex-grow h-full rounded-none">
           {(activeConversationId || viewerRole === 'customer_view') ? (
             <ChatWindow
               userSession={userSession}
@@ -186,12 +204,15 @@ export function ChatInterface({
               onSuggestedReplyClick={onSendMessage}
               isLoading={isChatLoading}
               viewerRole={viewerRole}
-              onPinMessage={onPinMessage}
-              onUnpinMessage={onUnpinMessage}
+              onPinRequested={onPinRequested}
+              onUnpinRequested={onUnpinRequested}
               onDeleteMessage={onDeleteMessage}
               onEditMessage={onEditMessage}
               currentStaffSessionId={currentStaffSessionId}
               onBookAppointmentClick={onBookAppointmentClick}
+              onScrollToMessage={onScrollToMessage}
+              activeConversationId={activeConversationId}
+              activeConversationPinnedMessageIds={activeConversation?.pinnedMessageIds || []}
             />
           ) : (
             !shouldShowConversationSidebar ? null :

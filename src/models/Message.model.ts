@@ -1,24 +1,24 @@
+
 // src/models/Message.model.ts
 import type { Message } from '@/lib/types';
 import mongoose, { Schema, Document, models, Model } from 'mongoose';
 
-export interface IMessage extends Document, Omit<Message, 'id'> {
-  customerId?: Schema.Types.ObjectId; // Link to the customer this message belongs to
-  userId?: Schema.Types.ObjectId; // Link to the user (customer/staff/admin) who sent/received if applicable
-  // For staff messages, this will be the staff's ID.
-  isPinned?: boolean;
-  updatedAt?: Date; // For edited messages
+// Remove isPinned from IMessage, as it's managed by Conversation.pinnedMessageIds
+export interface IMessage extends Document, Omit<Message, 'id' > {
+  customerId?: Schema.Types.ObjectId; 
+  userId?: Schema.Types.ObjectId; 
+  updatedAt?: Date; 
 }
 
 const MessageSchema: Schema<IMessage> = new Schema({
   sender: { type: String, enum: ['user', 'ai', 'system'], required: true },
   content: { type: String, required: true },
   timestamp: { type: Date, default: Date.now },
-  name: { type: String }, // For 'ai' sender, this can be Staff/Admin name or "AI Assistant"
+  name: { type: String }, 
   customerId: { type: Schema.Types.ObjectId, ref: 'Customer', index: true },
   userId: { type: Schema.Types.ObjectId, ref: 'User', index: true },
-  isPinned: { type: Boolean, default: false },
-}, { timestamps: true }); // createdAt and updatedAt will be automatically managed by Mongoose
+  // isPinned: { type: Boolean, default: false }, // Removed
+}, { timestamps: true }); 
 
 MessageSchema.index({ customerId: 1, timestamp: 1 });
 

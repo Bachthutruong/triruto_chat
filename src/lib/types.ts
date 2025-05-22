@@ -6,7 +6,7 @@ export type Message = {
   timestamp: Date;
   name?: string; // Optional: display name for sender
   userId?: string; // ID of the actual user who sent (if staff/admin sent as 'ai')
-  isPinned?: boolean;
+  // isPinned?: boolean; // Removed - this will be a derived property on the client
   updatedAt?: Date; // For edited messages
   conversationId?: string; // To associate message with a conversation for Socket.IO
 };
@@ -66,7 +66,7 @@ export type CustomerProfile = {
   appointmentIds: string[];
   productIds: string[];
   noteIds: string[];
-  pinnedMessageIds?: string[];
+  // pinnedMessageIds?: string[]; // This will now be part of Conversation type
   tags?: string[];
   assignedStaffId?: string;
   assignedStaffName?: string;
@@ -76,8 +76,8 @@ export type CustomerProfile = {
   lastMessagePreview?: string;
   lastMessageTimestamp?: Date;
   timezone?: string;
-  pinnedConversationIds?: string[];
-  messagePinningAllowedConversationIds?: string[];
+  pinnedConversationIds?: string[]; // For user-specific pinning of conversations
+  messagePinningAllowedConversationIds?: string[]; // No longer primary, use Conversation.pinnedMessageIds
 };
 
 export type UserSession = {
@@ -237,8 +237,8 @@ export type ProductItem = {
   category: string;
   imageUrl?: string;
   isActive: boolean;
-  isSchedulable?: boolean; // New: Can this product be scheduled?
-  schedulingRules?: ProductSchedulingRules; // New: Specific rules for this product
+  isSchedulable?: boolean; 
+  schedulingRules?: ProductSchedulingRules; 
   createdAt: Date;
   updatedAt: Date;
 };
@@ -281,8 +281,8 @@ export type Conversation = {
     phoneNumber?: string;
   }>;
   messageIds: string[];
-  pinnedMessageIds?: string[];
-  isPinned?: boolean;
+  pinnedMessageIds?: string[]; // Added for pinned messages within a conversation
+  isPinned?: boolean; // For user-specific pinning of conversations in their list
   createdAt: Date;
   updatedAt: Date;
   lastMessageTimestamp?: Date;
@@ -291,7 +291,7 @@ export type Conversation = {
 
 export type AppointmentBookingFormData = {
   service: string; 
-  productId: string; // Changed to productId
+  productId: string; 
   date: string; // YYYY-MM-DD
   time: string; // HH:MM
   customerId: string;

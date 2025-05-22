@@ -2,13 +2,15 @@
 // src/components/chat/ChatWindow.tsx
 'use client';
 
-import type { Message, UserSession, MessageViewerRole, QuickReplyType } from '@/lib/types'; // Added QuickReplyType
+import type { Message, UserSession, MessageViewerRole, QuickReplyType } from '@/lib/types';
 import { MessageBubble } from './MessageBubble';
 import { MessageInputForm } from './MessageInputForm';
 import { SuggestedReplies } from './SuggestedReplies';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import React, { useRef, useEffect } from 'react';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Pin } from 'lucide-react'; // For pinned message icon
+import { Button } from '@/components/ui/button'; // For clickable pinned messages
 
 type ChatWindowProps = {
   userSession: UserSession | null;
@@ -19,15 +21,18 @@ type ChatWindowProps = {
   onSuggestedReplyClick: (reply: string) => void;
   isLoading: boolean;
   viewerRole: MessageViewerRole;
-  onPinMessage?: (messageId: string) => void;
-  onUnpinMessage?: (messageId: string) => void;
+  onPinRequested?: (messageId: string) => void; // Changed from onPinMessage
+  onUnpinRequested?: (messageId: string) => void; // Changed from onUnpinMessage
   onDeleteMessage?: (messageId: string) => void;
   onEditMessage?: (messageId: string, currentContent: string) => void;
   currentStaffSessionId?: string;
   onBookAppointmentClick?: () => void;
-  quickReplies?: QuickReplyType[]; // Added
-  typingUsers?: Record<string, string>; // Added
-  onTyping?: (isTyping: boolean) => void; // Added
+  quickReplies?: QuickReplyType[]; 
+  typingUsers?: Record<string, string>; 
+  onTyping?: (isTyping: boolean) => void; 
+  onScrollToMessage?: (messageId: string) => void; // New prop
+  activeConversationId?: string | null; // To get pinned message IDs for this conversation
+  activeConversationPinnedMessageIds?: string[]; // Specifically the IDs
 };
 
 const TypingIndicator = ({ users }: { users: Record<string, string> }) => {
@@ -52,15 +57,17 @@ export function ChatWindow({
   onSuggestedReplyClick,
   isLoading,
   viewerRole,
-  onPinMessage,
-  onUnpinMessage,
+  onPinRequested,
+  onUnpinRequested,
   onDeleteMessage,
   onEditMessage,
   currentStaffSessionId,
   onBookAppointmentClick,
-  quickReplies, // Destructure
-  typingUsers = {}, // Destructure with default
-  onTyping, // Destructure
+  quickReplies,
+  typingUsers = {}, 
+  onTyping, 
+  onScrollToMessage,
+  activeConversationPinnedMessageIds = [],
 }: ChatWindowProps) {
   const scrollAreaRef = useRef<HTMLDivElement>(null);
 
@@ -71,7 +78,7 @@ export function ChatWindow({
         viewport.scrollTop = viewport.scrollHeight;
       }
     }
-  }, [messages, typingUsers]); // Added typingUsers to re-scroll when indicator appears/disappears
+  }, [messages, typingUsers]); 
 
   if (!userSession) {
     return (
@@ -94,39 +101,49 @@ export function ChatWindow({
     <div className="flex-grow flex flex-col bg-background overflow-hidden h-full border-none shadow-none">
       {pinnedMessages.length > 0 && (
         <div className="p-2 border-b bg-amber-50 max-h-36 overflow-y-auto"> 
-          <h4 className="text-xs font-semibold text-amber-700 mb-1 sticky top-0 bg-amber-50 py-1 z-10">Tin nhắn đã ghim:</h4>
+          <h4 className="text-xs font-semibold text-amber-700 mb-1 sticky top-0 bg-amber-50 py-1 z-10 flex items-center">
+            <Pin className="h-3 w-3 mr-1 text-amber-600" /> Tin nhắn đã ghim:
+          </h4>
           {pinnedMessages.filter(Boolean).map((msg) => (
             msg && msg.id ? (
-              <MessageBubble
-                key={`pinned-${msg.id}`}
-                message={{...msg, isPinned: true}}
-                viewerRole={viewerRole}
-                onPinMessage={onPinMessage}
-                onUnpinMessage={onUnpinMessage}
-                onDeleteMessage={onDeleteMessage}
-                onEditMessage={onEditMessage}
-                currentStaffSessionId={currentStaffSessionId}
-              />
+              <Button 
+                variant="ghost" 
+                key={`pinned-display-${msg.id}`} 
+                className="block w-full h-auto p-1.5 text-left mb-1 rounded-md hover:bg-amber-100"
+                onClick={() => onScrollToMessage && onScrollToMessage(msg.id)}
+                title="Nhấn để cuộn đến tin nhắn gốc"
+              >
+                <p className="text-xs text-amber-800 truncate leading-snug">
+                  <span className="font-medium">{msg.name || (msg.sender === 'user' ? 'Khách' : 'Hệ thống')}:</span> {msg.content.split('\n')[0]} {/* Show first line */}
+                </p>
+              </Button>
             ) : null
           ))}
         </div>
       )}
       <ScrollArea className="p-4 h-[calc(100vh-16rem)]" ref={scrollAreaRef}> 
         <div className="space-y-2">
-          {messages.filter(Boolean).map((msg) => (
-             msg && msg.id ? (
-              <MessageBubble
-                key={msg.id}
-                message={msg}
-                viewerRole={viewerRole}
-                onPinMessage={onPinMessage}
-                onUnpinMessage={onUnpinMessage}
-                onDeleteMessage={onDeleteMessage}
-                onEditMessage={onEditMessage}
-                currentStaffSessionId={currentStaffSessionId}
-              />
-            ) : null
-          ))}
+          {messages.filter(Boolean).map((msg) => {
+             if (!msg || !msg.id) return null;
+             const isCurrentlyPinned = activeConversationPinnedMessageIds.includes(msg.id);
+             const canPinMore = activeConversationPinnedMessageIds.length < 3 || isCurrentlyPinned;
+
+             return (
+                <MessageBubble
+                  key={msg.id}
+                  message={msg}
+                  viewerRole={viewerRole}
+                  onPinRequested={onPinRequested}
+                  onUnpinRequested={onUnpinRequested}
+                  onDeleteMessage={onDeleteMessage}
+                  onEditMessage={onEditMessage}
+                  currentStaffSessionId={currentStaffSessionId}
+                  isCurrentlyPinned={isCurrentlyPinned}
+                  canPinMore={canPinMore}
+                />
+              );
+            }
+          )}
           {isLoading && messages.length > 0 && messages[messages.length-1]?.sender === 'user' && <AILoadingIndicator />}
         </div>
       </ScrollArea>
@@ -140,8 +157,8 @@ export function ChatWindow({
         onSubmit={onSendMessage}
         isLoading={isLoading}
         onBookAppointmentClick={onBookAppointmentClick}
-        quickReplies={quickReplies} // Pass quick replies
-        onTyping={onTyping} // Pass typing handler
+        quickReplies={quickReplies} 
+        onTyping={onTyping} 
       />
     </div>
   );

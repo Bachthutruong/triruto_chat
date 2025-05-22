@@ -5,8 +5,10 @@ import { parse } from 'url';
 import next from 'next';
 import { Server as SocketIOServer, Socket } from 'socket.io';
 import dotenv from 'dotenv';
+import { pinMessageToConversation, unpinMessageFromConversation } from './app/actions'; // Assuming UserSession might be needed
+import type { UserSession } from './lib/types'; // Import UserSession
 
-dotenv.config(); // Ensure environment variables are loaded
+dotenv.config();
 
 const dev = process.env.NODE_ENV !== 'production';
 const hostname = process.env.HOSTNAME || 'localhost';
@@ -31,13 +33,13 @@ app.prepare().then(() => {
 
   console.log("Socket.IO Server: Attempting to initialize Socket.IO server...");
   const io = new SocketIOServer(httpServer, {
-    path: '/socket.io/', // Explicit path, must match client
+    path: '/socket.io/',
     cors: {
-      origin: "*", // Allow all origins for development
+      origin: "*", 
       methods: ["GET", "POST"],
       credentials: true
     },
-    transports: ['websocket', 'polling'] // Explicitly allow both, though websocket is preferred
+    transports: ['websocket', 'polling'] 
   });
   console.log("Socket.IO Server: > Socket.IO server initialized successfully on path: /socket.io/");
 
@@ -55,34 +57,69 @@ app.prepare().then(() => {
     });
 
     socket.on('sendMessage', ({ message, conversationId }) => {
-      // Broadcast to all clients in the room except the sender
       socket.to(conversationId).emit('newMessage', message);
-      console.log(`Socket.IO Server: > Message sent in room ${conversationId} by ${socket.id}:`, message.content.substring(0, 50) + "...");
+      console.log(`Socket.IO Server: > Message sent in room ${conversationId} by ${socket.id}:`, message.content?.substring(0, 50) + "...");
     });
     
     socket.on('typing', ({ conversationId, userName }) => {
       socket.to(conversationId).emit('userTyping', { userId: socket.id, userName, conversationId });
-      // console.log(`Socket.IO Server: > User ${userName} (${socket.id}) is typing in room ${conversationId}`);
     });
 
-    socket.on('stopTyping', ({ conversationId }) => {
-      socket.to(conversationId).emit('userStopTyping', { userId: socket.id, conversationId });
-      // console.log(`Socket.IO Server: > User ${socket.id} stopped typing in room ${conversationId}`);
+    socket.on('stopTyping', ({ conversationId, userId }) => { // userId here is of the client who stopped typing
+      socket.to(conversationId).emit('userStopTyping', { userId, conversationId });
     });
     
-    socket.on('pinMessage', ({ messageId, conversationId, isPinned }) => {
-        socket.to(conversationId).emit('messagePinned', { messageId, isPinned });
-        console.log(`Socket.IO Server: > Message ${messageId} pinned status ${isPinned} in room ${conversationId}`);
+    socket.on('pinMessageRequested', async ({ conversationId, messageId, staffSessionJsonString }) => {
+      try {
+        const staffSession: UserSession = JSON.parse(staffSessionJsonString);
+        if (!staffSession || (staffSession.role !== 'admin' && staffSession.role !== 'staff')) {
+          console.warn(`Socket.IO Server: Unauthorized pin attempt by socket ${socket.id} for message ${messageId}`);
+          return; // Or emit an error back to the client
+        }
+        const updatedConversation = await pinMessageToConversation(conversationId, messageId, staffSession);
+        if (updatedConversation) {
+          io.to(conversationId).emit('pinnedMessagesUpdated', { 
+            conversationId, 
+            pinnedMessageIds: updatedConversation.pinnedMessageIds || [] 
+          });
+          console.log(`Socket.IO Server: > Message ${messageId} pinned in room ${conversationId} by ${staffSession.name}`);
+        }
+      } catch (error) {
+        console.error(`Socket.IO Server: Error pinning message ${messageId} in room ${conversationId}:`, error);
+        // Optionally emit an error back to the requesting client
+        socket.emit('pinMessageError', { messageId, error: (error as Error).message });
+      }
     });
 
-    socket.on('unpinMessage', ({ messageId, conversationId, isPinned }) => {
-        socket.to(conversationId).emit('messageUnpinned', { messageId, isPinned }); // Or use a generic 'messagePinUpdate'
-        console.log(`Socket.IO Server: > Message ${messageId} unpinned status ${isPinned} in room ${conversationId}`);
+    socket.on('unpinMessageRequested', async ({ conversationId, messageId, staffSessionJsonString }) => {
+      try {
+        const staffSession: UserSession = JSON.parse(staffSessionJsonString);
+         if (!staffSession || (staffSession.role !== 'admin' && staffSession.role !== 'staff')) {
+          console.warn(`Socket.IO Server: Unauthorized unpin attempt by socket ${socket.id} for message ${messageId}`);
+          return; 
+        }
+        const updatedConversation = await unpinMessageFromConversation(conversationId, messageId, staffSession);
+        if (updatedConversation) {
+          io.to(conversationId).emit('pinnedMessagesUpdated', { 
+            conversationId, 
+            pinnedMessageIds: updatedConversation.pinnedMessageIds || []
+          });
+          console.log(`Socket.IO Server: > Message ${messageId} unpinned in room ${conversationId} by ${staffSession.name}`);
+        }
+      } catch (error) {
+        console.error(`Socket.IO Server: Error unpinning message ${messageId} in room ${conversationId}:`, error);
+        socket.emit('unpinMessageError', { messageId, error: (error as Error).message });
+      }
     });
     
-    socket.on('deleteMessage', ({ messageId, conversationId }) => {
+    socket.on('deleteMessage', ({ messageId, conversationId }) => { // Assuming client sends this
         socket.to(conversationId).emit('messageDeleted', { messageId });
-        console.log(`Socket.IO Server: > Message ${messageId} deleted in room ${conversationId}`);
+        console.log(`Socket.IO Server: > Message ${messageId} deletion broadcast in room ${conversationId}`);
+    });
+
+    socket.on('editMessage', ({ message, conversationId }) => { // Assuming client sends updated message
+        socket.to(conversationId).emit('messageEdited', { message });
+        console.log(`Socket.IO Server: > Message ${message.id} edit broadcast in room ${conversationId}`);
     });
 
 
