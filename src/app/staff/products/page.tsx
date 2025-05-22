@@ -2,7 +2,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { usePathname } from 'next/navigation'; // Changed from useRouter
+// Removed usePathname as isAdminRoute check is being removed
 import Link from 'next/link';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -33,14 +33,14 @@ export default function ProductsManagementPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const { toast } = useToast();
-  const pathname = usePathname();
-  const [isAdminRoute, setIsAdminRoute] = useState(false);
+  // const pathname = usePathname(); // Removed
+  // const [isAdminRoute, setIsAdminRoute] = useState(false); // Removed
 
-  useEffect(() => {
-    if (pathname) {
-      setIsAdminRoute(pathname.startsWith('/admin'));
-    }
-  }, [pathname]);
+  // useEffect(() => { // Removed useEffect for isAdminRoute
+  //   if (pathname) {
+  //     setIsAdminRoute(pathname.startsWith('/admin'));
+  //   }
+  // }, [pathname]);
 
   const fetchProducts = useCallback(async () => {
     try {
@@ -84,7 +84,6 @@ export default function ProductsManagementPage() {
       const result = await deleteProduct(productId);
       if (result.success) {
         setProducts((prevProducts) => prevProducts.filter((p) => p.id !== productId));
-        // Also update filteredProducts to reflect the deletion immediately
         setFilteredProducts((prevFiltered) => prevFiltered.filter((p) => p.id !== productId));
         toast({ title: 'Thành công', description: 'Sản phẩm đã được xóa.' });
       } else {
@@ -108,14 +107,15 @@ export default function ProductsManagementPage() {
     }
   };
 
-  const formatPrice = (price: number) => { // Ensure parameter name is 'price'
+  const formatPrice = (price: number) => {
     return new Intl.NumberFormat('vi-VN', {
       style: 'currency',
       currency: 'VND',
-    }).format(price); // And used as 'price' here
+    }).format(price);
   };
 
-  const basePath = isAdminRoute ? '/admin' : '/staff';
+  // const basePath = isAdminRoute ? '/admin' : '/staff'; // basePath will default to /admin for links as this page is also used by admin
+  const basePath = '/admin'; // Assuming admin owns the primary product CRUD routes
 
   return (
     <div className="space-y-6">
@@ -124,13 +124,12 @@ export default function ProductsManagementPage() {
           <h1 className="text-2xl sm:text-3xl font-bold">Quản lý Sản phẩm/Dịch vụ</h1>
           <p className="text-muted-foreground text-sm sm:text-base">Xem và quản lý danh sách sản phẩm và dịch vụ.</p>
         </div>
-        {isAdminRoute && ( 
-          <Button className="w-full sm:w-auto" asChild>
-            <Link href={`${basePath}/products/add`}>
-              <PlusCircle className="mr-2 h-4 w-4" /> Thêm Sản phẩm Mới
-            </Link>
-          </Button>
-        )}
+        {/* "Thêm Sản phẩm Mới" button is now always visible */}
+        <Button className="w-full sm:w-auto" asChild>
+          <Link href={`${basePath}/products/add`}>
+            <PlusCircle className="mr-2 h-4 w-4" /> Thêm Sản phẩm Mới
+          </Link>
+        </Button>
       </div>
 
       <div className="flex flex-col sm:flex-row gap-4 items-center">
@@ -175,7 +174,8 @@ export default function ProductsManagementPage() {
                     <TableHead className="hidden md:table-cell">Ngày tạo</TableHead>
                     <TableHead>Trạng thái</TableHead>
                     <TableHead>Đặt lịch?</TableHead>
-                    {isAdminRoute && <TableHead className="text-right">Hành động</TableHead>}
+                    {/* "Hành động" column is now always visible */}
+                    <TableHead className="text-right">Hành động</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -195,48 +195,47 @@ export default function ProductsManagementPage() {
                           {product.isSchedulable ? 'Có thể' : 'Không'}
                         </Badge>
                       </TableCell>
-                      {isAdminRoute && (
-                        <TableCell className="text-right">
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="mr-2"
-                            asChild
-                          >
-                            <Link href={`${basePath}/products/edit/${product.id}`}>
-                              <Edit className="h-4 w-4" />
-                            </Link>
-                          </Button>
-                          <AlertDialog>
-                            <AlertDialogTrigger asChild>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="text-destructive hover:text-destructive"
+                      {/* Action buttons are now always visible */}
+                      <TableCell className="text-right">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="mr-2"
+                          asChild
+                        >
+                          <Link href={`${basePath}/products/edit/${product.id}`}>
+                            <Edit className="h-4 w-4" />
+                          </Link>
+                        </Button>
+                        <AlertDialog>
+                          <AlertDialogTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="text-destructive hover:text-destructive"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent>
+                            <AlertDialogHeader>
+                              <AlertDialogTitle>Bạn có chắc chắn muốn xóa?</AlertDialogTitle>
+                              <AlertDialogDescription>
+                                Hành động này không thể hoàn tác. Sản phẩm "{product.name}" sẽ bị xóa vĩnh viễn.
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel>Hủy</AlertDialogCancel>
+                              <AlertDialogAction
+                                onClick={() => handleDeleteProduct(product.id)}
+                                className="bg-destructive hover:bg-destructive/90"
                               >
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
-                            </AlertDialogTrigger>
-                            <AlertDialogContent>
-                              <AlertDialogHeader>
-                                <AlertDialogTitle>Bạn có chắc chắn muốn xóa?</AlertDialogTitle>
-                                <AlertDialogDescription>
-                                  Hành động này không thể hoàn tác. Sản phẩm "{product.name}" sẽ bị xóa vĩnh viễn.
-                                </AlertDialogDescription>
-                              </AlertDialogHeader>
-                              <AlertDialogFooter>
-                                <AlertDialogCancel>Hủy</AlertDialogCancel>
-                                <AlertDialogAction
-                                  onClick={() => handleDeleteProduct(product.id)}
-                                  className="bg-destructive hover:bg-destructive/90"
-                                >
-                                  Xóa
-                                </AlertDialogAction>
-                              </AlertDialogFooter>
-                            </AlertDialogContent>
-                          </AlertDialog>
-                        </TableCell>
-                      )}
+                                Xóa
+                              </AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
+                      </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
