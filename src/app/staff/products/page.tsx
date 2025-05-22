@@ -1,7 +1,7 @@
 
 'use client';
 
-import { useState, useEffect, Fragment } from 'react';
+import { useState, useEffect, Fragment, useCallback } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
@@ -79,27 +79,27 @@ export default function StaffProductsPage() {
   const [tempProductOneTimeOffDate, setTempProductOneTimeOffDate] = useState('');
 
 
-  useEffect(() => {
-    const fetchProducts = async () => {
-      try {
-        setIsLoading(true);
-        const data = await getAllProducts();
-        setProducts(data);
-        setFilteredProducts(data);
-      } catch (error) {
-        console.error('Error fetching products:', error);
-        toast({
-          title: 'Lỗi',
-          description: 'Không thể tải danh sách sản phẩm.',
-          variant: 'destructive',
-        });
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    fetchProducts();
+  const fetchProducts = useCallback(async () => {
+    try {
+      setIsLoading(true);
+      const data = await getAllProducts();
+      setProducts(data);
+      setFilteredProducts(data);
+    } catch (error) {
+      console.error('Error fetching products:', error);
+      toast({
+        title: 'Lỗi',
+        description: 'Không thể tải danh sách sản phẩm.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsLoading(false);
+    }
   }, [toast]);
+
+  useEffect(() => {
+    fetchProducts();
+  }, [fetchProducts]);
 
   useEffect(() => {
     if (searchQuery.trim() === '') {
@@ -147,7 +147,15 @@ export default function StaffProductsPage() {
       setImageUrl(product.imageUrl || '');
       setIsActive(product.isActive);
       setIsSchedulable(product.isSchedulable ?? true); 
-      setProductSchedulingRules(product.schedulingRules || {});
+      // Ensure specificDayRules have temporary client-side IDs if they don't have one from DB
+      const initialSchedulingRules = product.schedulingRules || {};
+      if (initialSchedulingRules.specificDayRules) {
+        initialSchedulingRules.specificDayRules = initialSchedulingRules.specificDayRules.map(rule => ({
+          ...rule,
+          id: rule.id || `client-${Date.now()}-${Math.random()}` // Assign temporary ID if missing
+        }));
+      }
+      setProductSchedulingRules(initialSchedulingRules);
     } else {
       setIsSchedulable(true); 
       setProductSchedulingRules({});
@@ -194,7 +202,7 @@ export default function StaffProductsPage() {
       return;
     }
     const newRule: SpecificDayRule = { 
-      id: Date.now().toString(), 
+      id: `client-${Date.now()}-${Math.random()}`, // Client-side temporary ID
       date: tempProductSpecRuleDate,
       isOff: tempProductSpecRuleIsOff,
       workingHours: tempProductSpecRuleHours.split(',').map(h => h.trim()).filter(h => /^[0-2][0-9]:[0-5][0-9]$/.test(h)).length > 0 ? tempProductSpecRuleHours.split(',').map(h => h.trim()).filter(h => /^[0-2][0-9]:[0-5][0-9]$/.test(h)) : undefined,
@@ -231,7 +239,7 @@ export default function StaffProductsPage() {
             workingHours: (productSchedulingRules.workingHours && Array.isArray(productSchedulingRules.workingHours) && productSchedulingRules.workingHours.length > 0) ? productSchedulingRules.workingHours : undefined,
             weeklyOffDays: (productSchedulingRules.weeklyOffDays && Array.isArray(productSchedulingRules.weeklyOffDays) && productSchedulingRules.weeklyOffDays.length > 0) ? productSchedulingRules.weeklyOffDays : undefined,
             oneTimeOffDates: (productSchedulingRules.oneTimeOffDates && Array.isArray(productSchedulingRules.oneTimeOffDates) && productSchedulingRules.oneTimeOffDates.length > 0) ? productSchedulingRules.oneTimeOffDates : undefined,
-            specificDayRules: (productSchedulingRules.specificDayRules || []).map(r => { const { id, ...rest } = r; return rest; }), 
+            specificDayRules: (productSchedulingRules.specificDayRules || []).map(r => { const { id, ...rest } = r; return rest; }), // Remove client-side temp ID
         } : undefined,
       };
       
@@ -272,6 +280,7 @@ export default function StaffProductsPage() {
 
       resetForm();
       setIsModalOpen(false);
+      fetchProducts(); // Re-fetch products to update the list
     } catch (error: any) {
       toast({
         title: 'Lỗi',
@@ -535,7 +544,7 @@ export default function StaffProductsPage() {
                                     <Input value={tempProductSpecRuleHours} onChange={e => setTempProductSpecRuleHours(e.target.value)} placeholder="Giờ làm (HH:MM,)" className="h-8 text-xs"/>
                                     <Input type="number" value={tempProductSpecRuleStaff} onChange={e => setTempProductSpecRuleStaff(e.target.value)} placeholder="Số NV" className="h-8 text-xs"/>
                                     <Input type="number" value={tempProductSpecRuleDuration} onChange={e => setTempProductSpecRuleDuration(e.target.value)} placeholder="TG DV (phút)" className="h-8 text-xs"/>
-                                    <div className="flex items-center space-x-2"><Checkbox id="tempProdSpecRuleIsOff" checked={tempProductSpecRuleIsOff} onCheckedChange={checked => setTempProductSpecRuleIsOff(!!checked)} /><Label htmlFor="tempProdSpecRuleIsOff" className="text-xs">Ngày nghỉ</Label></div>
+                                    <div className="flex items-center space-x-2"><Checkbox id="tempProdSpecRuleIsOff" checked={tempProductSpecRuleIsOff} onCheckedChange={checked => setIsSchedulable(!!checked)} /><Label htmlFor="tempProdSpecRuleIsOff" className="text-xs">Ngày nghỉ</Label></div>
                                     <Button type="button" onClick={handleAddProductSpecificDayRule} size="xs" className="h-8 text-xs"><PlusCircle className="mr-1 h-3 w-3"/>Thêm</Button>
                                 </div>
                                 <div className="space-y-1 max-h-40 overflow-y-auto">
