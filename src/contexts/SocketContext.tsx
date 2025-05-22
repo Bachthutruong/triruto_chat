@@ -29,57 +29,60 @@ export function SocketProvider({ children }: SocketProviderProps) {
   const [isConnected, setIsConnected] = useState(false);
 
   useEffect(() => {
-    // Ensure this code only runs on the client-side
+    console.log('SocketProvider: Attempting to initialize Socket.IO client...');
     if (typeof window !== 'undefined') {
       let newSocketInstance: Socket | null = null;
       try {
         if (typeof ioClient === 'function') {
           newSocketInstance = ioClient(window.location.origin, {
-            path: '/socket.io/', // Explicit path
+            path: '/socket.io/', // Explicit path, must match server
             transports: ['websocket'], 
             // autoConnect: true, // Default is true
           });
 
           if (newSocketInstance) {
+            console.log('SocketProvider: Socket.IO client instance created.');
             setSocket(newSocketInstance);
 
             newSocketInstance.on('connect', () => {
-              console.log('Socket connected:', newSocketInstance?.id);
+              console.log('SocketProvider: Socket connected successfully, ID:', newSocketInstance?.id);
               setIsConnected(true);
             });
 
             newSocketInstance.on('disconnect', (reason) => {
-              console.log('Socket disconnected:', reason);
+              console.log('SocketProvider: Socket disconnected. Reason:', reason);
               setIsConnected(false);
             });
 
             newSocketInstance.on('connect_error', (err) => {
               // Log the entire error object for more details
-              console.error('Socket connection error (connect_error event):', err);
+              console.error('SocketProvider: Socket connection error (connect_error event):', err);
               setIsConnected(false);
             });
             
-            // If using autoConnect: false, you would call newSocketInstance.connect(); here
           } else {
-             console.error('Socket.IO client (ioClient) did not return an instance.');
+             console.error('SocketProvider: Socket.IO client (ioClient) did not return an instance.');
           }
         } else {
-          console.error('Socket.IO client (ioClient) is not a function. Ensure socket.io-client is installed correctly.');
+          console.error('SocketProvider: Socket.IO client (ioClient) is not a function. Ensure socket.io-client is installed correctly.');
         }
       } catch (error) {
-        console.error('Failed to initialize Socket.IO client in try-catch:', error);
+        console.error('SocketProvider: Error during Socket.IO client initialization:', error);
       }
 
       // Cleanup on component unmount
       return () => {
         if (newSocketInstance) {
-          console.log('Cleaning up socket connection on component unmount...');
+          console.log('SocketProvider: Cleaning up socket connection on component unmount...');
           newSocketInstance.disconnect();
           setSocket(null);
           setIsConnected(false);
         }
       };
+    } else {
+      console.log('SocketProvider: Not in a browser environment, skipping Socket.IO client initialization.');
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // Empty dependency array ensures this runs only once on mount and unmount
 
   return (
@@ -88,4 +91,3 @@ export function SocketProvider({ children }: SocketProviderProps) {
     </SocketContext.Provider>
   );
 }
-
