@@ -1,3 +1,4 @@
+
 // src/contexts/SocketContext.tsx
 'use client';
 
@@ -32,12 +33,11 @@ export function SocketProvider({ children }: SocketProviderProps) {
     if (typeof window !== 'undefined') {
       let newSocketInstance: Socket | null = null;
       try {
-        // The "ioClient" is the function imported from 'socket.io-client'
         if (typeof ioClient === 'function') {
           newSocketInstance = ioClient(window.location.origin, {
-            path: '/socket.io/', // Ensure this matches the server path
-            transports: ['websocket'], // Prefer WebSocket
-            // autoConnect: false, // Consider autoConnect: false if you want to connect manually
+            path: '/socket.io/', // Explicit path
+            transports: ['websocket'], 
+            // autoConnect: true, // Default is true
           });
 
           if (newSocketInstance) {
@@ -54,25 +54,26 @@ export function SocketProvider({ children }: SocketProviderProps) {
             });
 
             newSocketInstance.on('connect_error', (err) => {
-              console.error('Socket connection error:', err.message, err.cause);
+              // Log the entire error object for more details
+              console.error('Socket connection error (connect_error event):', err);
               setIsConnected(false);
             });
             
-            // newSocketInstance.connect(); // Call connect() if autoConnect is false
+            // If using autoConnect: false, you would call newSocketInstance.connect(); here
           } else {
              console.error('Socket.IO client (ioClient) did not return an instance.');
           }
         } else {
-          console.error('Socket.IO client (ioClient) is not a function. Check installation.');
+          console.error('Socket.IO client (ioClient) is not a function. Ensure socket.io-client is installed correctly.');
         }
       } catch (error) {
-        console.error('Failed to initialize Socket.IO client:', error);
+        console.error('Failed to initialize Socket.IO client in try-catch:', error);
       }
 
       // Cleanup on component unmount
       return () => {
         if (newSocketInstance) {
-          console.log('Cleaning up socket connection...');
+          console.log('Cleaning up socket connection on component unmount...');
           newSocketInstance.disconnect();
           setSocket(null);
           setIsConnected(false);
@@ -87,3 +88,4 @@ export function SocketProvider({ children }: SocketProviderProps) {
     </SocketContext.Provider>
   );
 }
+
