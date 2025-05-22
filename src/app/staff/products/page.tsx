@@ -511,7 +511,7 @@ export default function StaffProductsPage() {
                                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 mt-1">
                                 {daysOfWeek.map(day => (
                                     <div key={`prodOffDay-${day.id}`} className="flex items-center space-x-2">
-                                    <Checkbox id={`prodOffDay-${day.id}`} checked={(productSchedulingRules.weeklyOffDays || []).includes(day.id)} onCheckedChange={(checked) => handleProductWeeklyOffDayChange(day.id, checked)} disabled={isSubmitting}/>
+                                    <Checkbox id={`prodOffDay-${day.id}`} checked={(productSchedulingRules.weeklyOffDays || []).includes(day.id)} onCheckedChange={(checked) => handleProductWeeklyOffDayChange(day.id, !!checked)} disabled={isSubmitting}/>
                                     <Label htmlFor={`prodOffDay-${day.id}`} className="font-normal text-sm">{day.label}</Label>
                                     </div>
                                 ))}
@@ -541,10 +541,10 @@ export default function StaffProductsPage() {
                                  <p className="text-xs text-muted-foreground mb-2">Ghi đè các quy tắc riêng của dịch vụ này cho một ngày nhất định. Nếu không có quy tắc ngày cụ thể ở đây, sẽ áp dụng quy tắc ngày cụ thể chung (nếu có), sau đó mới đến các quy tắc chung/riêng khác của dịch vụ.</p>
                                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2 p-2 border rounded-md mb-3 items-end">
                                     <Input type="date" value={tempProductSpecRuleDate} onChange={e => setTempProductSpecRuleDate(e.target.value)} placeholder="Ngày" className="h-8 text-xs"/>
-                                    <Input value={tempProductSpecRuleHours} onChange={e => setTempProductSpecRuleHours(e.target.value)} placeholder="Giờ làm (HH:MM,)" className="h-8 text-xs"/>
+                                    <Input value={tempProductSpecRuleHours} onChange={e => setTempProductSpecRuleHours(e.target.value)} placeholder="Giờ làm việc (HH:MM,)" className="h-8 text-xs"/>
                                     <Input type="number" value={tempProductSpecRuleStaff} onChange={e => setTempProductSpecRuleStaff(e.target.value)} placeholder="Số NV" className="h-8 text-xs"/>
                                     <Input type="number" value={tempProductSpecRuleDuration} onChange={e => setTempProductSpecRuleDuration(e.target.value)} placeholder="TG DV (phút)" className="h-8 text-xs"/>
-                                    <div className="flex items-center space-x-2"><Checkbox id="tempProdSpecRuleIsOff" checked={tempProductSpecRuleIsOff} onCheckedChange={checked => setIsSchedulable(!!checked)} /><Label htmlFor="tempProdSpecRuleIsOff" className="text-xs">Ngày nghỉ</Label></div>
+                                    <div className="flex items-center space-x-2"><Checkbox id="tempProdSpecRuleIsOff" checked={tempProductSpecRuleIsOff} onCheckedChange={(checked) => setTempProductSpecRuleIsOff(!!checked)} /><Label htmlFor="tempProdSpecRuleIsOff" className="text-xs">Ngày nghỉ</Label></div>
                                     <Button type="button" onClick={handleAddProductSpecificDayRule} size="xs" className="h-8 text-xs"><PlusCircle className="mr-1 h-3 w-3"/>Thêm</Button>
                                 </div>
                                 <div className="space-y-1 max-h-40 overflow-y-auto">
@@ -590,4 +590,3 @@ export default function StaffProductsPage() {
     </div>
   );
 }
-
