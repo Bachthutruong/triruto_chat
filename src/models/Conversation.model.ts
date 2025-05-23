@@ -23,7 +23,7 @@ export interface IConversation extends Document, Omit<Conversation, 'id' | 'part
   staffId?: Types.ObjectId;
   participants: Types.DocumentArray<IParticipant>;
   messageIds: Types.ObjectId[];
-  pinnedMessageIds: Types.ObjectId[]; // Changed to be required and default to empty array
+  pinnedMessageIds: Types.ObjectId[]; 
 }
 
 const ConversationSchema: Schema<IConversation> = new Schema({
@@ -32,7 +32,7 @@ const ConversationSchema: Schema<IConversation> = new Schema({
   title: { type: String },
   participants: [ParticipantSchema], 
   messageIds: [{ type: Schema.Types.ObjectId, ref: 'Message', default: [] }],
-  pinnedMessageIds: [{ type: Schema.Types.ObjectId, ref: 'Message', default: [] }], // Default to empty array
+  pinnedMessageIds: [{ type: Schema.Types.ObjectId, ref: 'Message', default: [] }], 
   isPinned: { type: Boolean, default: false }, 
   lastMessageTimestamp: { type: Date, default: Date.now, index: true },
   lastMessagePreview: { type: String, maxlength: 100 },

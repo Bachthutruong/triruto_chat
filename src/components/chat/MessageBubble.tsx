@@ -22,9 +22,10 @@ import {
 type MessageBubbleProps = {
   message: Message;
   viewerRole: MessageViewerRole;
-  currentStaffSessionId?: string;
-  onPinRequested?: (messageId: string) => void;      // Changed from onPinMessage
-  onUnpinRequested?: (messageId: string) => void;  // Changed from onUnpinMessage
+  currentStaffSessionId?: string; // For staff/admin to identify their own messages
+  currentUserSessionId?: string; // For customer to identify their own messages (or for staff viewing as customer)
+  onPinRequested?: (messageId: string) => void;
+  onUnpinRequested?: (messageId: string) => void;
   onDeleteMessage?: (messageId: string) => void;
   onEditMessage?: (messageId: string, currentContent: string) => void;
   isCurrentlyPinned: boolean;
@@ -45,6 +46,7 @@ export function MessageBubble({
     message,
     viewerRole,
     currentStaffSessionId,
+    currentUserSessionId,
     onPinRequested,
     onUnpinRequested,
     onDeleteMessage,
@@ -78,27 +80,33 @@ export function MessageBubble({
   let displayName = 'Hệ thống';
   let avatarIcon = <Bot className="h-5 w-5" />;
   let avatarFallbackText = 'AI';
+  let isOwnMessage = false;
 
   if (isUserSender) {
     avatarIcon = <User className="h-5 w-5" />;
     if (viewerRole === 'customer_view') {
       displayName = 'Bạn';
       avatarFallbackText = 'B';
-    } else {
+      isOwnMessage = true;
+    } else { // Staff or Admin viewing
       displayName = message.name || `Người dùng ${message.userId?.slice(-4) || 'ẩn danh'}`;
       avatarFallbackText = displayName.charAt(0).toUpperCase() || 'K';
+      isOwnMessage = message.userId === currentUserSessionId; // If staff is viewing a customer message
     }
-  } else if (isAISender) {
-    if (viewerRole === 'customer_view') {
-      displayName = `${brandName} AI`;
+  } else if (isAISender) { // Message sent by staff/admin or true AI
+    if (message.userId) { // Sent by a specific staff/admin
+      avatarIcon = <User className="h-5 w-5" />;
+      displayName = message.name || (viewerRole === 'customer_view' ? `${brandName} AI` : `Nhân viên ${message.userId.slice(-4)}`);
+      avatarFallbackText = displayName.charAt(0).toUpperCase();
+      isOwnMessage = message.userId === currentStaffSessionId || message.userId === currentUserSessionId;
+    } else { // True AI message
       avatarIcon = <Bot className="h-5 w-5" />;
+      displayName = `${brandName} AI`;
       avatarFallbackText = 'AI';
-    } else {
-      displayName = message.name || `${brandName} AI`;
-      avatarIcon = message.userId ? <User className="h-5 w-5" /> : <Brain className="h-5 w-5" />;
-      avatarFallbackText = displayName.charAt(0).toUpperCase() || 'S';
+      isOwnMessage = false; // True AI messages are not "owned" by the viewer for editing
     }
   }
+
 
   if (isSystemSender) {
     return (
@@ -185,8 +193,8 @@ export function MessageBubble({
     return <p className="text-sm whitespace-pre-wrap">{message.content}</p>;
   };
 
-  const canBeModified = (viewerRole === 'staff' || viewerRole === 'admin') && message.userId === currentStaffSessionId && message.sender === 'ai';
-  const canBePinned = (viewerRole === 'staff' || viewerRole === 'admin') && onPinRequested && onUnpinRequested && message.id !== 'msg_system_greeting' && !message.id.startsWith('msg_local_user_');
+  const canBeModifiedByStaff = (viewerRole === 'staff' || viewerRole === 'admin') && message.sender === 'ai' && message.userId === currentStaffSessionId;
+  const canBePinned = onPinRequested && onUnpinRequested && message.id !== 'msg_system_greeting' && !message.id.startsWith('msg_local_user_');
 
 
   return (
@@ -195,8 +203,8 @@ export function MessageBubble({
         <Avatar className="h-8 w-8">
           <AvatarFallback className={cn(
             'bg-accent text-accent-foreground',
-            viewerRole !== 'customer_view' && isAISender && message.userId && 'bg-teal-500 text-white',
-            viewerRole !== 'customer_view' && isAISender && !message.userId && 'bg-purple-500 text-white'
+            viewerRole !== 'customer_view' && isAISender && message.userId && 'bg-teal-500 text-white', // Staff message
+            viewerRole !== 'customer_view' && isAISender && !message.userId && 'bg-purple-500 text-white' // True AI message
           )}>
             {avatarIcon}
           </AvatarFallback>
@@ -210,8 +218,8 @@ export function MessageBubble({
             : viewerRole === 'customer_view' ? 'bg-accent text-accent-foreground rounded-bl-none' : 'bg-card border rounded-bl-none'
         )}
       >
-        {(viewerRole !== 'customer_view' || !isUserSender) && (
-          <p className="text-xs font-semibold mb-1">{displayName}</p>
+        {(!isUserSender || viewerRole !== 'customer_view') && ( // Show name if not user sender OR if staff/admin is viewing
+            <p className="text-xs font-semibold mb-1">{displayName}</p>
         )}
         {renderContent()}
         <div className="flex items-center justify-end text-xs mt-1">
@@ -231,7 +239,7 @@ export function MessageBubble({
         </Avatar>
       )}
 
-      {(canBeModified || canBePinned) && (
+      {(canBeModifiedByStaff || canBePinned) && (
         <div className={cn("absolute opacity-0 group-hover:opacity-100 transition-opacity duration-150 flex items-center", isUserSender ? "left-0 -translate-x-full mr-1" : "right-0 translate-x-full ml-1")} style={{ top: '50%', transform: isUserSender ? 'translate(-100%, -50%)' : 'translate(100%, -50%)' }}>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -248,11 +256,11 @@ export function MessageBubble({
                 ) : (
                   <DropdownMenuItem onClick={() => onPinRequested && onPinRequested(message.id)} disabled={!canPinMore}>
                     <Pin className="mr-2 h-4 w-4" /> Ghim tin nhắn
-                    {!canPinMore && <span className="text-xs text-muted-foreground ml-1">(Đã đủ 3 ghim)</span>}
+                    {!canPinMore && <span className="text-xs text-muted-foreground ml-1">(Tối đa 3)</span>}
                   </DropdownMenuItem>
                 )
               )}
-              {canBeModified && onDeleteMessage && onEditMessage && (
+              {canBeModifiedByStaff && onDeleteMessage && onEditMessage && (
                 <>
                   {canBePinned && <DropdownMenuSeparator />}
                   <DropdownMenuItem onClick={() => onEditMessage(message.id, message.content)}>

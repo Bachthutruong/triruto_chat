@@ -80,7 +80,7 @@ function transformConversationDoc(doc: IConversation | null): Conversation | nul
       phoneNumber: p.phoneNumber,
     })).filter(p => p.userId), 
     messageIds: (doc.messageIds as Types.ObjectId[] || []).map(id => id.toString()),
-    pinnedMessageIds: (doc.pinnedMessageIds || []).map(id => id.toString()), // Ensure this is mapped
+    pinnedMessageIds: (doc.pinnedMessageIds || []).map(id => id.toString()),
     isPinned: doc.isPinned,
     createdAt: new Date(doc.createdAt as Date),
     updatedAt: new Date(doc.updatedAt as Date),
@@ -135,7 +135,6 @@ function transformCustomerToSession(customerDoc: ICustomer, conversationId?: str
     name: customerDoc.name || `Người dùng ${customerDoc.phoneNumber}`,
     currentConversationId: conversationId,
     pinnedConversationIds: (customerDoc.pinnedConversationIds || []).map(id => id.toString()),
-    messagePinningAllowedConversationIds: (customerDoc.messagePinningAllowedConversationIds || []).map(id => id.toString()),
   };
 }
 
@@ -156,7 +155,6 @@ function transformMessageDocToMessage(msgDoc: IMessage): Message {
     timestamp: new Date(msgDoc.timestamp),
     name: msgDoc.name,
     userId: msgDoc.userId?.toString(),
-    // isPinned is derived client-side based on conversation's pinnedMessageIds
     updatedAt: msgDoc.updatedAt ? new Date(msgDoc.updatedAt) : undefined,
     conversationId: (msgDoc as any).conversationId?.toString(),
   };
@@ -409,6 +407,7 @@ export async function handleCustomerAccess(phoneNumber: string): Promise<{
   activeConversationId: string;
   conversations: Conversation[];
 }> {
+  console.log("[ACTIONS] handleCustomerAccess started for phoneNumber:", phoneNumber);
   await dbConnect();
   if (!validatePhoneNumber(phoneNumber)) {
     throw new Error("Số điện thoại không hợp lệ.");
@@ -416,6 +415,7 @@ export async function handleCustomerAccess(phoneNumber: string): Promise<{
   let customer = await CustomerModel.findOne({ phoneNumber });
   let isNewCustomer = false;
   if (!customer) {
+    console.log("[ACTIONS] New customer, creating profile for:", phoneNumber);
     customer = new CustomerModel({
       phoneNumber,
       name: `Người dùng ${phoneNumber}`,
@@ -426,20 +426,17 @@ export async function handleCustomerAccess(phoneNumber: string): Promise<{
       appointmentIds: [],
       productIds: [],
       noteIds: [],
-      // pinnedMessageIds: [], // This is per conversation now
-      messagePinningAllowedConversationIds: [],
       pinnedConversationIds: [],
       tags: [],
     });
     await customer.save();
     isNewCustomer = true;
   } else {
+    console.log("[ACTIONS] Returning customer found:", customer.id);
     customer.conversationIds = customer.conversationIds || [];
     customer.appointmentIds = customer.appointmentIds || [];
     customer.productIds = customer.productIds || [];
     customer.noteIds = customer.noteIds || [];
-    // customer.pinnedMessageIds = customer.pinnedMessageIds || [];
-    customer.messagePinningAllowedConversationIds = customer.messagePinningAllowedConversationIds || [];
     customer.pinnedConversationIds = customer.pinnedConversationIds || [];
     customer.tags = customer.tags || [];
   }
@@ -451,16 +448,19 @@ export async function handleCustomerAccess(phoneNumber: string): Promise<{
           path: 'messageIds',
           options: { sort: { timestamp: 1 }, limit: 50 } 
       });
+    if (activeConversation) console.log("[ACTIONS] Found existing active conversation:", activeConversation.id);
   }
 
   if (!activeConversation) {
+    console.log("[ACTIONS] No active conversation found, creating new one for customer:", customer.id);
     const newConvDocFromAction = await createNewConversationForUser(customer._id!.toString(), `Trò chuyện chính với ${customer.name || customer.phoneNumber}`);
     if (!newConvDocFromAction || !newConvDocFromAction.id) throw new Error("Không thể tạo cuộc trò chuyện mới.");
     activeConversation = await ConversationModel.findById(newConvDocFromAction.id).populate({
         path: 'messageIds',
         options: { sort: { timestamp: 1 }, limit: 50 }
     });
-     if (activeConversation) {
+    if (activeConversation) {
+      console.log("[ACTIONS] New conversation created and fetched:", activeConversation.id);
       const updatedCustomer = await CustomerModel.findByIdAndUpdate(
         customer._id,
         { $addToSet: { conversationIds: activeConversation._id } },
@@ -471,11 +471,13 @@ export async function handleCustomerAccess(phoneNumber: string): Promise<{
   }
 
   if (!activeConversation) {
+    console.error("[ACTIONS] CRITICAL: Failed to find or create an active conversation for customer:", customer.id);
     throw new Error("Không thể tìm hoặc tạo cuộc trò chuyện cho khách hàng.");
   }
 
   const userSession = transformCustomerToSession(customer, (activeConversation._id as Types.ObjectId).toString());
   const appSettings = await getAppSettings();
+  console.log("[ACTIONS] AppSettings fetched for greeting logic:", appSettings ? "Loaded" : "Not loaded");
   
   let initialSystemMessageContent = appSettings?.greetingMessage || 'Tôi có thể giúp gì cho bạn hôm nay?';
   const ultimateDefaultGreeting = 'Tôi có thể giúp gì cho bạn hôm nay?';
@@ -483,16 +485,21 @@ export async function handleCustomerAccess(phoneNumber: string): Promise<{
   if (appSettings) {
     if (appSettings.outOfOfficeResponseEnabled && isOutOfOffice(appSettings)) {
       initialSystemMessageContent = (appSettings.outOfOfficeMessage?.trim() || ultimateDefaultGreeting).trim();
+       console.log("[ACTIONS] Out of office message selected:", initialSystemMessageContent);
     } else if (isNewCustomer && appSettings.greetingMessageNewCustomer && appSettings.greetingMessageNewCustomer.trim() !== "") {
       initialSystemMessageContent = appSettings.greetingMessageNewCustomer.trim();
+      console.log("[ACTIONS] New customer greeting selected:", initialSystemMessageContent);
     } else if (!isNewCustomer && appSettings.greetingMessageReturningCustomer && appSettings.greetingMessageReturningCustomer.trim() !== "") {
       initialSystemMessageContent = appSettings.greetingMessageReturningCustomer.trim();
+      console.log("[ACTIONS] Returning customer greeting selected:", initialSystemMessageContent);
     } else if (appSettings.greetingMessage && appSettings.greetingMessage.trim() !== "") {
       initialSystemMessageContent = appSettings.greetingMessage.trim();
+      console.log("[ACTIONS] General greeting selected:", initialSystemMessageContent);
     }
   }
   if (initialSystemMessageContent.trim() === "") {
     initialSystemMessageContent = ultimateDefaultGreeting;
+     console.log("[ACTIONS] Fallback to ultimate default greeting:", initialSystemMessageContent);
   }
   
   let finalInitialMessages: Message[] = [];
@@ -524,7 +531,7 @@ export async function handleCustomerAccess(phoneNumber: string): Promise<{
   if (finalInitialMessages.length <= 1 && appSettings?.suggestedQuestions && appSettings.suggestedQuestions.length > 0) {
     configuredSuggestedQuestions = appSettings.suggestedQuestions;
   }
-
+  console.log("[ACTIONS] handleCustomerAccess completed. Returning initial messages count:", finalInitialMessages.length);
   return {
     userSession,
     initialMessages: finalInitialMessages,
@@ -595,6 +602,7 @@ export async function getConversationHistory(conversationId: string): Promise<Me
   }
   const conversation = await ConversationModel.findById(conversationId).populate({
       path: 'messageIds',
+      model: MessageModel, // Explicitly state the model for population
       options: { sort: { timestamp: 1 } } 
   });
   if (!conversation || !conversation.messageIds || conversation.messageIds.length === 0) {
@@ -750,7 +758,7 @@ export async function processUserMessage(
       aiResponseContent = `Xin lỗi, dịch vụ "${serviceName}" hiện không thể đặt lịch hoặc không tồn tại.`;
       scheduleOutputFromAI.intent = 'clarification_needed';
       processedAppointmentDB = null;
-    } else if (!isValid(targetDate)) {
+    } else if (!isValidDateFns(targetDate)) {
       const promptInputForClarification: ScheduleAppointmentInput = {
         ...( { userInput: textForAI, phoneNumber: currentUserSession.phoneNumber, userId: customerId, currentDateTime: new Date().toISOString() } as any),
         userInput: `Ngày ${scheduleOutputFromAI.appointmentDetails.date} không hợp lệ. Yêu cầu người dùng cung cấp lại ngày.`,
@@ -916,7 +924,7 @@ export async function processUserMessage(
           chatHistory: formattedHistory,
           mediaDataUri: mediaDataUriForAI,
           relevantTrainingData: relevantTrainingData.length > 0 ? relevantTrainingData : undefined,
-          products: allProducts.map(p => ({ name: p.name, description: p.description, price: p.price, category: p.category, isSchedulable: p.isSchedulable, schedulingRules: p.schedulingRules })),
+          products: allProducts.map(p => ({ name: p.name, description: p.description, price: p.price, category: p.category })),
         });
         aiResponseContent = answerResult.answer;
       } catch (error) {
@@ -988,7 +996,7 @@ export async function handleBookAppointmentFromForm(formData: AppointmentBooking
 
   try {
     const targetDate = dateFnsParseISO(formData.date);
-    if (!isValid(targetDate)) {
+    if (!isValidDateFns(targetDate)) {
       return { success: false, message: "Ngày không hợp lệ." };
     }
     
@@ -1113,7 +1121,6 @@ export async function getCustomersForStaffView(
     productIds: (doc.productIds || []).map(id => id.toString()),
     noteIds: (doc.noteIds || []).map(id => id.toString()),
     pinnedConversationIds: (doc.pinnedConversationIds || []).map(id => id.toString()),
-    messagePinningAllowedConversationIds: (doc.messagePinningAllowedConversationIds || []).map(id => id.toString()),
     tags: doc.tags || [],
     assignedStaffId: doc.assignedStaffId?._id?.toString(),
     assignedStaffName: (doc.assignedStaffId as IUser)?.name,
@@ -1185,9 +1192,7 @@ export async function getCustomerDetails(customerId: string): Promise<{ customer
     appointmentIds: (customerDoc.appointmentIds || []).map(id => id.toString()),
     productIds: (customerDoc.productIds || []).map(id => id.toString()),
     noteIds: (customerDoc.noteIds || []).map(id => id.toString()),
-    // pinnedMessageIds removed as it's per conversation
     pinnedConversationIds: (customerDoc.pinnedConversationIds || []).map(id => id.toString()),
-    messagePinningAllowedConversationIds: (customerDoc.messagePinningAllowedConversationIds || []).map(id => id.toString()),
     tags: customerDoc.tags || [],
     assignedStaffId: customerDoc.assignedStaffId?._id?.toString(),
     assignedStaffName: (customerDoc.assignedStaffId as IUser)?.name,
@@ -1292,7 +1297,6 @@ export async function assignStaffToCustomer(customerId: string, staffId: string)
     productIds: (updatedCustomerDoc.productIds || []).map(id => id.toString()),
     noteIds: (updatedCustomerDoc.noteIds || []).map(id => id.toString()),
     pinnedConversationIds: (updatedCustomerDoc.pinnedConversationIds || []).map(id => id.toString()),
-    messagePinningAllowedConversationIds: (updatedCustomerDoc.messagePinningAllowedConversationIds || []).map(id => id.toString()),
     tags: updatedCustomerDoc.tags || [],
     assignedStaffId: updatedCustomerDoc.assignedStaffId?._id?.toString(),
     assignedStaffName: (updatedCustomerDoc.assignedStaffId as IUser)?.name,
@@ -1326,7 +1330,6 @@ export async function unassignStaffFromCustomer(customerId: string): Promise<Cus
     productIds: (updatedCustomerDoc.productIds || []).map(id => id.toString()),
     noteIds: (updatedCustomerDoc.noteIds || []).map(id => id.toString()),
     pinnedConversationIds: (updatedCustomerDoc.pinnedConversationIds || []).map(id => id.toString()),
-    messagePinningAllowedConversationIds: (updatedCustomerDoc.messagePinningAllowedConversationIds || []).map(id => id.toString()),
     tags: updatedCustomerDoc.tags || [],
     assignedStaffId: updatedCustomerDoc.assignedStaffId ? (updatedCustomerDoc.assignedStaffId as any)._id?.toString() : undefined,
     assignedStaffName: undefined, 
@@ -1362,7 +1365,6 @@ export async function addTagToCustomer(customerId: string, tag: string): Promise
     productIds: (customer.productIds || []).map(id => id.toString()),
     noteIds: (customer.noteIds || []).map(id => id.toString()),
     pinnedConversationIds: (customer.pinnedConversationIds || []).map(id => id.toString()),
-    messagePinningAllowedConversationIds: (customer.messagePinningAllowedConversationIds || []).map(id => id.toString()),
     tags: customer.tags || [],
     assignedStaffId: customer.assignedStaffId?._id?.toString(),
     assignedStaffName: (customer.assignedStaffId as IUser)?.name,
@@ -1392,7 +1394,6 @@ export async function removeTagFromCustomer(customerId: string, tagToRemove: str
     productIds: (customer.productIds || []).map(id => id.toString()),
     noteIds: (customer.noteIds || []).map(id => id.toString()),
     pinnedConversationIds: (customer.pinnedConversationIds || []).map(id => id.toString()),
-    messagePinningAllowedConversationIds: (customer.messagePinningAllowedConversationIds || []).map(id => id.toString()),
     tags: customer.tags || [],
     assignedStaffId: customer.assignedStaffId?._id?.toString(),
     assignedStaffName: (customer.assignedStaffId as IUser)?.name,
@@ -1411,6 +1412,7 @@ export async function sendStaffMessage(
   conversationId: string,
   messageContent: string
 ): Promise<Message> {
+  console.log("Action: sendStaffMessage received:", { staffSessionId: staffSession.id, customerId, conversationId, messageContent: messageContent.substring(0,50) + "..."});
   await dbConnect();
   if (staffSession.role !== 'staff' && staffSession.role !== 'admin') {
     throw new Error("Không được phép gửi tin nhắn.");
@@ -1440,8 +1442,11 @@ export async function sendStaffMessage(
     userId: new mongoose.Types.ObjectId(staffSession.id) as any,
     conversationId: new mongoose.Types.ObjectId(conversationId),
   };
+  console.log("Action: staffMessageData to be saved:", JSON.stringify(staffMessageData));
   const savedStaffMessageDoc = await new MessageModel(staffMessageData).save();
+  console.log("Action: savedStaffMessageDoc from DB:", JSON.stringify(savedStaffMessageDoc));
   const savedMessageWithConvId = { ...transformMessageDocToMessage(savedStaffMessageDoc), conversationId };
+  console.log("Action: savedMessageWithConvId to be returned:", JSON.stringify(savedMessageWithConvId));
 
 
   await CustomerModel.findByIdAndUpdate(customerId, {
@@ -1480,12 +1485,11 @@ export async function editStaffMessage(
   message.updatedAt = new Date();
   await message.save();
 
-  let conversationIdString: string | undefined;
-  const conversation = await ConversationModel.findOne({ messageIds: new mongoose.Types.ObjectId(messageId) as any });
-
-  if (conversation) {
-      conversationIdString = conversation._id.toString();
-      if(conversation.lastMessageTimestamp && conversation.lastMessageTimestamp.getTime() <= message.timestamp.getTime()){ 
+  let conversationIdString: string | undefined = message.conversationId?.toString();
+  
+  if (conversationIdString) {
+      const conversation = await ConversationModel.findById(conversationIdString);
+      if(conversation && conversation.lastMessageTimestamp && conversation.lastMessageTimestamp.getTime() <= message.timestamp.getTime()){ 
          const lastMessageInConv = await MessageModel.findOne({ conversationId: conversation._id }).sort({ timestamp: -1 });
          if (lastMessageInConv) {
              await ConversationModel.findByIdAndUpdate(conversation._id, {
@@ -1496,11 +1500,10 @@ export async function editStaffMessage(
       }
   }
   
-  
   if (message.customerId) {
       const customer = await CustomerModel.findById(message.customerId);
       if (customer && customer.lastMessageTimestamp && message.updatedAt && customer.lastMessageTimestamp.getTime() <= message.timestamp.getTime()) { 
-         const lastMessageForCustomer = await MessageModel.findOne({ customerId: customer._id, conversationId: conversation?._id }).sort({ timestamp: -1 });
+         const lastMessageForCustomer = await MessageModel.findOne({ customerId: customer._id, conversationId: conversationIdString ? new Types.ObjectId(conversationIdString) : undefined }).sort({ timestamp: -1 });
          if (lastMessageForCustomer) {
              await CustomerModel.findByIdAndUpdate(customer._id, {
                 lastMessagePreview: lastMessageForCustomer.content.substring(0, 100),
@@ -1528,13 +1531,10 @@ export async function deleteStaffMessage(
   }
 
   const customerIdString = message.customerId?.toString();
-  let conversationIdString: string | undefined = undefined;
-  const conversation = await ConversationModel.findOne({ messageIds: new mongoose.Types.ObjectId(messageId) as any });
+  let conversationIdString: string | undefined = message.conversationId?.toString();
 
 
-  if (conversation) {
-      conversationIdString = conversation._id.toString();
-      
+  if (conversationIdString) {
       await ConversationModel.findByIdAndUpdate(
           conversationIdString,
           { 
@@ -1547,6 +1547,7 @@ export async function deleteStaffMessage(
       
       const updatedConv = await ConversationModel.findById(conversationIdString).populate({
         path: 'messageIds',
+        model: MessageModel,
         options: { sort: { timestamp: -1 }, limit: 1 } 
       });
       if (updatedConv) {
@@ -1685,7 +1686,6 @@ export async function updateCustomerInternalName(customerId: string, internalNam
     productIds: (customer.productIds || []).map(id => id.toString()),
     noteIds: (customer.noteIds || []).map(id => id.toString()),
     pinnedConversationIds: (customer.pinnedConversationIds || []).map(id => id.toString()),
-    messagePinningAllowedConversationIds: (customer.messagePinningAllowedConversationIds || []).map(id => id.toString()),
     tags: customer.tags || [],
     assignedStaffId: customer.assignedStaffId?._id?.toString(),
     assignedStaffName: (customer.assignedStaffId as IUser)?.name,
@@ -1707,7 +1707,7 @@ export async function getAppointments(filters: GetAppointmentsFilters): Promise<
 
   if (filters.date) {
     const parsedDate = parse(filters.date, 'yyyy-MM-dd', new Date());
-    if (isValid(parsedDate)) {
+    if (isValidDateFns(parsedDate)) {
       query.date = filters.date;
     } else {
       console.warn(`[ACTIONS] Invalid date format received in getAppointments: ${filters.date}`);
@@ -1715,7 +1715,7 @@ export async function getAppointments(filters: GetAppointmentsFilters): Promise<
   } else if (filters.dates && Array.isArray(filters.dates) && filters.dates.length > 0) {
     const validDates = filters.dates.filter(d => {
       const pd = parse(d, 'yyyy-MM-dd', new Date());
-      return isValid(pd);
+      return isValidDateFns(pd);
     });
     if (validDates.length > 0) {
       query.date = { $in: validDates };
@@ -2304,10 +2304,8 @@ export async function getAllCustomerTags(): Promise<string[]> {
   }
 }
 
-export async function pinMessageToConversation(conversationId: string, messageId: string, staffSession: UserSession): Promise<Conversation | null> {
+export async function pinMessageToConversation(conversationId: string, messageId: string, userSession: UserSession): Promise<Conversation | null> {
   await dbConnect();
-  
-  if (staffSession.role === 'customer') throw new Error("Khách hàng không thể ghim tin nhắn.");
   
   if (!mongoose.Types.ObjectId.isValid(conversationId) || !mongoose.Types.ObjectId.isValid(messageId)) {
     throw new Error("Mã cuộc trò chuyện hoặc tin nhắn không hợp lệ.");
@@ -2316,36 +2314,31 @@ export async function pinMessageToConversation(conversationId: string, messageId
   const conversation = await ConversationModel.findById(conversationId);
   if (!conversation) throw new Error("Không tìm thấy cuộc trò chuyện.");
 
-  const message = await MessageModel.findById(messageId);
-  if (!message || !conversation.messageIds.map(id => id.toString()).includes(message._id.toString())) {
-    throw new Error("Không tìm thấy tin nhắn hoặc tin nhắn không thuộc về cuộc trò chuyện này.");
-  }
-  
-  const isParticipant = conversation.participants.some(p => p.userId?.toString() === staffSession.id);
-  if (!isParticipant && staffSession.role !== 'admin') {
+  // Permission check: User can pin in their own conversation, staff/admin can pin in any they have access to.
+  // For simplicity, if it's staff/admin, we assume they have access if they can view the chat.
+  // A customer can only pin if the conversation's customerId matches their own session.id.
+  if (userSession.role === 'customer' && conversation.customerId.toString() !== userSession.id) {
     throw new Error("Bạn không có quyền ghim tin nhắn trong cuộc trò chuyện này.");
   }
-  
-  let newPinnedMessageIds = [...(conversation.pinnedMessageIds || [])];
-  const messageObjectId = new mongoose.Types.ObjectId(messageId);
 
-  if (!newPinnedMessageIds.some(id => id.equals(messageObjectId))) {
+  const messageObjectId = new mongoose.Types.ObjectId(messageId);
+  let newPinnedMessageIds = [...(conversation.pinnedMessageIds || [])];
+
+  if (!newPinnedMessageIds.some(id => id.equals(messageObjectId))) { // If not already pinned
     if (newPinnedMessageIds.length >= 3) {
       newPinnedMessageIds.shift(); // Remove the oldest pinned message
     }
     newPinnedMessageIds.push(messageObjectId);
+    conversation.pinnedMessageIds = newPinnedMessageIds;
+    await conversation.save();
   }
-
-  conversation.pinnedMessageIds = newPinnedMessageIds;
-  await conversation.save();
-
+  
   const updatedConversation = await ConversationModel.findById(conversationId).populate({ path: 'messageIds', model: MessageModel, options: { sort: { timestamp: 1 }}});
   return transformConversationDoc(updatedConversation);
 }
 
-export async function unpinMessageFromConversation(conversationId: string, messageId: string, staffSession: UserSession): Promise<Conversation | null> {
+export async function unpinMessageFromConversation(conversationId: string, messageId: string, userSession: UserSession): Promise<Conversation | null> {
   await dbConnect();
-  if (staffSession.role === 'customer') throw new Error("Khách hàng không thể bỏ ghim tin nhắn.");
   
   if (!mongoose.Types.ObjectId.isValid(conversationId) || !mongoose.Types.ObjectId.isValid(messageId)) {
     throw new Error("Mã cuộc trò chuyện hoặc tin nhắn không hợp lệ.");
@@ -2354,8 +2347,7 @@ export async function unpinMessageFromConversation(conversationId: string, messa
   const conversation = await ConversationModel.findById(conversationId);
   if (!conversation) throw new Error("Không tìm thấy cuộc trò chuyện.");
 
-  const isParticipant = conversation.participants.some(p => p.userId?.toString() === staffSession.id);
-  if (!isParticipant && staffSession.role !== 'admin') {
+  if (userSession.role === 'customer' && conversation.customerId.toString() !== userSession.id) {
     throw new Error("Bạn không có quyền bỏ ghim tin nhắn trong cuộc trò chuyện này.");
   }
 
@@ -2463,7 +2455,6 @@ export async function pinConversationForUser(userId: string, conversationId: str
     productIds: (updatedCustomer.productIds || []).map(id => id.toString()),
     noteIds: (updatedCustomer.noteIds || []).map(id => id.toString()),
     pinnedConversationIds: (updatedCustomer.pinnedConversationIds || []).map(id => id.toString()),
-    messagePinningAllowedConversationIds: (updatedCustomer.messagePinningAllowedConversationIds || []).map(id => id.toString()),
     tags: updatedCustomer.tags || [],
     assignedStaffId: updatedCustomer.assignedStaffId?._id?.toString(),
     assignedStaffName: (updatedCustomer.assignedStaffId as IUser)?.name,
@@ -2498,7 +2489,6 @@ export async function unpinConversationForUser(userId: string, conversationId: s
     productIds: (updatedCustomer.productIds || []).map(id => id.toString()),
     noteIds: (updatedCustomer.noteIds || []).map(id => id.toString()),
     pinnedConversationIds: (updatedCustomer.pinnedConversationIds || []).map(id => id.toString()),
-    messagePinningAllowedConversationIds: (updatedCustomer.messagePinningAllowedConversationIds || []).map(id => id.toString()),
     tags: updatedCustomer.tags || [],
     assignedStaffId: updatedCustomer.assignedStaffId?._id?.toString(),
     assignedStaffName: (updatedCustomer.assignedStaffId as IUser)?.name,

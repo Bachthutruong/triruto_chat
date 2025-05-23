@@ -9,8 +9,8 @@ import { SuggestedReplies } from './SuggestedReplies';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import React, { useRef, useEffect } from 'react';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Pin } from 'lucide-react'; // For pinned message icon
-import { Button } from '@/components/ui/button'; // For clickable pinned messages
+import { Pin } from 'lucide-react'; 
+import { Button } from '@/components/ui/button'; 
 
 type ChatWindowProps = {
   userSession: UserSession | null;
@@ -21,8 +21,8 @@ type ChatWindowProps = {
   onSuggestedReplyClick: (reply: string) => void;
   isLoading: boolean;
   viewerRole: MessageViewerRole;
-  onPinRequested?: (messageId: string) => void; // Changed from onPinMessage
-  onUnpinRequested?: (messageId: string) => void; // Changed from onUnpinMessage
+  onPinRequested?: (messageId: string) => void;
+  onUnpinRequested?: (messageId: string) => void;
   onDeleteMessage?: (messageId: string) => void;
   onEditMessage?: (messageId: string, currentContent: string) => void;
   currentStaffSessionId?: string;
@@ -30,9 +30,8 @@ type ChatWindowProps = {
   quickReplies?: QuickReplyType[]; 
   typingUsers?: Record<string, string>; 
   onTyping?: (isTyping: boolean) => void; 
-  onScrollToMessage?: (messageId: string) => void; // New prop
-  activeConversationId?: string | null; // To get pinned message IDs for this conversation
-  activeConversationPinnedMessageIds?: string[]; // Specifically the IDs
+  onScrollToMessage?: (messageId: string) => void;
+  activeConversationPinnedMessageIds?: string[];
 };
 
 const TypingIndicator = ({ users }: { users: Record<string, string> }) => {
@@ -133,11 +132,12 @@ export function ChatWindow({
                   key={msg.id}
                   message={msg}
                   viewerRole={viewerRole}
+                  currentStaffSessionId={currentStaffSessionId}
+                  currentUserSessionId={userSession.id}
                   onPinRequested={onPinRequested}
                   onUnpinRequested={onUnpinRequested}
                   onDeleteMessage={onDeleteMessage}
                   onEditMessage={onEditMessage}
-                  currentStaffSessionId={currentStaffSessionId}
                   isCurrentlyPinned={isCurrentlyPinned}
                   canPinMore={canPinMore}
                 />

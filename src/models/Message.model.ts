@@ -3,11 +3,11 @@
 import type { Message } from '@/lib/types';
 import mongoose, { Schema, Document, models, Model } from 'mongoose';
 
-// Remove isPinned from IMessage, as it's managed by Conversation.pinnedMessageIds
 export interface IMessage extends Document, Omit<Message, 'id' > {
   customerId?: Schema.Types.ObjectId; 
   userId?: Schema.Types.ObjectId; 
   updatedAt?: Date; 
+  conversationId: Schema.Types.ObjectId; // Made required
 }
 
 const MessageSchema: Schema<IMessage> = new Schema({
@@ -17,10 +17,10 @@ const MessageSchema: Schema<IMessage> = new Schema({
   name: { type: String }, 
   customerId: { type: Schema.Types.ObjectId, ref: 'Customer', index: true },
   userId: { type: Schema.Types.ObjectId, ref: 'User', index: true },
-  // isPinned: { type: Boolean, default: false }, // Removed
+  conversationId: { type: Schema.Types.ObjectId, ref: 'Conversation', required: true, index: true },
 }, { timestamps: true }); 
 
-MessageSchema.index({ customerId: 1, timestamp: 1 });
+MessageSchema.index({ conversationId: 1, timestamp: 1 }); // Updated index
 
 const MessageModel = models.Message as Model<IMessage> || mongoose.model<IMessage>('Message', MessageSchema);
 

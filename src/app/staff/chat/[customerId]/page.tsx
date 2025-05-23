@@ -43,7 +43,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { ChatWindow } from '@/components/chat/ChatWindow';
 import { Label } from '@/components/ui/label';
 import Link from 'next/link';
-// import { Loader2 } from 'lucide-react'; // Already imported above
 import { useSocket } from '@/contexts/SocketContext';
 import { AppointmentBookingForm } from '@/components/chat/AppointmentBookingForm';
 
@@ -51,7 +50,7 @@ const MAX_FILE_SIZE_MB = 5;
 const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
 
 function getMimeTypeFromDataUri(dataUri: string): string | null {
-  const match = dataUri.match(/^data:([A-Za-z-+\/]+);base64,/);
+  const match = dataUri.match(/^data:[^;]+;base64,/);
   return match ? match[1] : null;
 }
 
@@ -67,8 +66,8 @@ export default function StaffIndividualChatPage() {
   const [notes, setNotes] = useState<Note[]>([]);
   const [activeConversation, setActiveConversation] = useState<Conversation | null>(null);
 
-  const [isLoading, setIsLoading] = useState(true); // For initial page data loading
-  const [isSendingMessage, setIsSendingMessage] = useState(false); // Specifically for when a message send is in progress
+  const [isLoading, setIsLoading] = useState(true); 
+  const [isSendingMessage, setIsSendingMessage] = useState(false); 
   const [staffSession, setStaffSession] = useState<UserSession | null>(null);
   const [isAssigning, setIsAssigning] = useState(false);
   const [newTagName, setNewTagName] = useState('');
@@ -280,7 +279,7 @@ export default function StaffIndividualChatPage() {
     if (activeConversation?.id) {
         fetchPinnedMessagesForConversation(activeConversation.id);
     }
-  }, [activeConversation?.id, activeConversation?.pinnedMessageIds, fetchPinnedMessagesForConversation]);
+  }, [activeConversation, fetchPinnedMessagesForConversation]);
 
 
   const handleSendMessage = async (messageContent: string) => {
@@ -375,7 +374,7 @@ export default function StaffIndividualChatPage() {
 
     if (!finalContent && !fileToUse) {
       toast({ title: "Không có nội dung", description: "Tin nhắn không thể để trống.", variant: "destructive" });
-      setIsSendingMessage(false); // Reset here as well
+      setIsSendingMessage(false); 
       console.log("Staff: Setting isSendingMessage to false in edit (empty content)");
       return;
     }
@@ -444,19 +443,19 @@ export default function StaffIndividualChatPage() {
 
   const handlePinRequested = (messageId: string) => {
     if (!socket || !isConnected || !activeConversation?.id || !staffSession) return;
-    socket.emit('pinMessageRequested', {
+    socket.emit('requestPinMessage', {
         conversationId: activeConversation.id,
         messageId,
-        staffSessionJsonString: JSON.stringify(staffSession)
+        userSessionJsonString: JSON.stringify(staffSession) // Use staffSession here
     });
   };
 
   const handleUnpinRequested = (messageId: string) => {
     if (!socket || !isConnected || !activeConversation?.id || !staffSession) return;
-    socket.emit('unpinMessageRequested', {
+    socket.emit('requestUnpinMessage', {
         conversationId: activeConversation.id,
         messageId,
-        staffSessionJsonString: JSON.stringify(staffSession)
+        userSessionJsonString: JSON.stringify(staffSession) // Use staffSession here
     });
   };
 
@@ -606,7 +605,7 @@ export default function StaffIndividualChatPage() {
 
   const handleDirectBookAppointment = async (formData: AppointmentBookingFormData) => {
     if (!staffSession || !customer ) return;
-    setIsSendingMessage(true); // Use isSendingMessage to indicate form processing
+    setIsSendingMessage(true); 
     try {
       const result = await handleBookAppointmentFromForm({...formData, customerId: customer.id });
       toast({
@@ -725,6 +724,7 @@ export default function StaffIndividualChatPage() {
           onDeleteMessage={handleDeleteMessage}
           onEditMessage={handleEditMessage}
           currentStaffSessionId={staffSession.id}
+          currentUserSessionId={customer.id} // Pass customer ID for context in message bubble
           quickReplies={quickReplies}
           typingUsers={typingUsers}
           onTyping={onTyping}

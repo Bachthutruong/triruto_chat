@@ -6,7 +6,6 @@ export type Message = {
   timestamp: Date;
   name?: string; // Optional: display name for sender
   userId?: string; // ID of the actual user who sent (if staff/admin sent as 'ai')
-  // isPinned?: boolean; // Removed - this will be a derived property on the client
   updatedAt?: Date; // For edited messages
   conversationId?: string; // To associate message with a conversation for Socket.IO
 };
@@ -66,7 +65,6 @@ export type CustomerProfile = {
   appointmentIds: string[];
   productIds: string[];
   noteIds: string[];
-  // pinnedMessageIds?: string[]; // This will now be part of Conversation type
   tags?: string[];
   assignedStaffId?: string;
   assignedStaffName?: string;
@@ -77,7 +75,6 @@ export type CustomerProfile = {
   lastMessageTimestamp?: Date;
   timezone?: string;
   pinnedConversationIds?: string[]; // For user-specific pinning of conversations
-  messagePinningAllowedConversationIds?: string[]; // No longer primary, use Conversation.pinnedMessageIds
 };
 
 export type UserSession = {
@@ -85,9 +82,8 @@ export type UserSession = {
   phoneNumber: string;
   role: UserRole;
   name?: string;
-  currentConversationId?: string;
+  currentConversationId?: string; // For customers, this is their primary conversation
   pinnedConversationIds?: string[];
-  messagePinningAllowedConversationIds?: string[];
 };
 
 export type StaffDetails = {
@@ -221,12 +217,12 @@ export type StaffDashboardStats = {
 };
 
 export type ProductSchedulingRules = {
-  numberOfStaff?: number;
-  serviceDurationMinutes?: number;
-  workingHours?: string[];
-  weeklyOffDays?: number[];
-  oneTimeOffDates?: string[];
-  specificDayRules?: SpecificDayRule[];
+  numberOfStaff?: number; // Staff dedicated to *this* service
+  serviceDurationMinutes?: number; // Duration for *this* service
+  workingHours?: string[]; // Specific working hours for *this* service
+  weeklyOffDays?: number[]; // Specific off days for *this* service
+  oneTimeOffDates?: string[]; // Specific one-time off dates for *this* service
+  specificDayRules?: SpecificDayRule[]; // Daily overrides for *this* service
 };
 
 export type ProductItem = {
@@ -281,7 +277,7 @@ export type Conversation = {
     phoneNumber?: string;
   }>;
   messageIds: string[];
-  pinnedMessageIds?: string[]; // Added for pinned messages within a conversation
+  pinnedMessageIds?: string[]; // Array of message IDs that are pinned
   isPinned?: boolean; // For user-specific pinning of conversations in their list
   createdAt: Date;
   updatedAt: Date;
