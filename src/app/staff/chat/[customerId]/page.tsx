@@ -10,7 +10,7 @@ import { Card, CardHeader, CardTitle, CardContent, CardFooter } from '@/componen
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar'; // Removed AvatarImage
+import { Avatar, AvatarFallback } from '@/components/ui/avatar'; 
 import { Send, Paperclip, Smile, UserCircle, Edit2, Tag, Clock, Phone, Info, X, StickyNote, PlusCircle, Trash2, UserPlus, LogOutIcon, UserCheck, Users, Pin, PinOff, Edit, Image as ImageIconLucide, ExternalLink, FileText, Download, Zap, MoreVertical, CalendarPlus, Loader2 } from 'lucide-react';
 import type { CustomerProfile, Message, AppointmentDetails, UserSession, Note, MessageEditState, Conversation, QuickReplyType, AppointmentBookingFormData } from '@/lib/types';
 import {
@@ -317,38 +317,39 @@ export default function StaffIndividualChatPage() {
 
 
   const handleSendMessage = async (messageContent: string) => {
-    console.log("Staff: handleSendMessage called. Initial isSendingMessage:", isSendingMessage);
+    console.log("Staff: handleSendMessage called with content:", messageContent.substring(0,50) + "...");
     if (!messageContent.trim() || !customer || !staffSession || !activeConversation?.id) {
         toast({ title: "Lỗi", description: "Không thể gửi tin nhắn. Thiếu thông tin khách hàng, phiên làm việc hoặc cuộc trò chuyện.", variant: "destructive" });
+        console.error("Staff: Send message precondition failed.", {customer, staffSession, activeConversationId: activeConversation?.id, messageContent});
         return;
     }
-    console.log("Staff: Setting isSendingMessage to true");
     setIsSendingMessage(true);
+    console.log("Staff: Variables before calling sendStaffMessage:", {staffSessionId: staffSession.id, customerId: customer.id, conversationId: activeConversation.id});
+
     if (socket && isConnected && onTyping) onTyping(false);
     if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
-
-    console.log("Staff: Sending message with content:", messageContent);
 
     try {
       const sentMessage = await sendStaffMessage(staffSession!, customer!.id, activeConversation!.id, messageContent);
       console.log("Staff: Message object received from action to add to state:", sentMessage);
       if (sentMessage && sentMessage.id) {
         setMessages(prev => [...prev, {...sentMessage, timestamp: new Date(sentMessage.timestamp)}]);
+        // Optimistically update customer/conversation for UI responsiveness
         setCustomer(prev => prev ? { ...prev, interactionStatus: 'replied_by_staff', lastMessagePreview: messageContent.substring(0,100), lastMessageTimestamp: new Date(sentMessage.timestamp) } : null);
         setActiveConversation(prev => prev ? { ...prev, lastMessagePreview: messageContent.substring(0,100), lastMessageTimestamp: new Date(sentMessage.timestamp) } : null);
+
         if (socket && isConnected) {
           socket.emit('sendMessage', { message: sentMessage, conversationId: activeConversation.id });
           console.log("Staff: Emitting sendMessage via socket:", sentMessage, activeConversation.id);
         }
       } else {
-        console.error("Staff: sendStaffMessage action did not return a valid message object.");
+        console.error("Staff: sendStaffMessage action did not return a valid message object. Returned:", sentMessage);
         toast({ title: "Lỗi", description: "Không thể gửi tin nhắn. Phản hồi từ server không hợp lệ.", variant: "destructive" });
       }
     } catch (error: any) {
       console.error("Staff: Error sending message:", error);
-      toast({ title: "Lỗi gửi tin nhắn", description: error.message, variant: "destructive"});
+      toast({ title: "Lỗi gửi tin nhắn", description: error.message || "Có lỗi xảy ra khi gửi tin nhắn.", variant: "destructive"});
     } finally {
-      console.log("Staff: Setting isSendingMessage to false in finally block");
       setIsSendingMessage(false);
     }
   };
@@ -392,10 +393,8 @@ export default function StaffIndividualChatPage() {
   };
 
   const handleSaveEditedMessage = async () => {
-    console.log("Staff: handleSaveEditedMessage called. Initial isSendingMessage:", isSendingMessage);
     if (!messageEditState || !staffSession || !activeConversation?.id) return;
-    console.log("Staff: Setting isSendingMessage to true for edit");
-    setIsSendingMessage(true);
+    setIsSendingMessage(true); // Use isSendingMessage to disable input during edit save
 
     let finalContent = editTextContent.trim();
     const fileToUse = stagedEditFile || currentAttachmentInEdit;
@@ -409,7 +408,6 @@ export default function StaffIndividualChatPage() {
     if (!finalContent && !fileToUse) {
       toast({ title: "Không có nội dung", description: "Tin nhắn không thể để trống.", variant: "destructive" });
       setIsSendingMessage(false);
-      console.log("Staff: Setting isSendingMessage to false in edit (empty content)");
       return;
     }
 
@@ -417,6 +415,7 @@ export default function StaffIndividualChatPage() {
       const updatedMessage = await editStaffMessage(messageEditState.messageId, finalContent, staffSession);
       if (updatedMessage) {
         setMessages(prev => prev.map(m => m.id === updatedMessage.id ? {...updatedMessage, timestamp: new Date(updatedMessage.timestamp)} : m));
+        setPinnedMessages(prev => prev.map(pm => pm.id === updatedMessage.id ? {...updatedMessage, timestamp: new Date(updatedMessage.timestamp)} : pm));
         if (socket && isConnected) {
           socket.emit('editMessage', { message: updatedMessage, conversationId: activeConversation.id });
         }
@@ -429,7 +428,6 @@ export default function StaffIndividualChatPage() {
     } catch (error: any) {
       toast({ title: "Lỗi sửa tin nhắn", description: error.message, variant: "destructive" });
     } finally {
-      console.log("Staff: Setting isSendingMessage to false in edit finally block");
       setIsSendingMessage(false);
     }
   };
@@ -460,10 +458,12 @@ export default function StaffIndividualChatPage() {
       const result = await deleteStaffMessage(messageId, staffSession);
       if (result.success) {
         setMessages(prev => prev.filter(m => m.id !== messageId));
+        setPinnedMessages(prev => prev.filter(pm => pm.id !== messageId));
         if (socket && isConnected) {
           socket.emit('deleteMessage', { messageId, conversationId: activeConversation.id });
         }
         toast({ title: "Thành công", description: "Đã xóa tin nhắn." });
+        // If deleted message was the last one, refetch to update preview
         if (result.conversationId === activeConversation.id && customer?.lastMessagePreview && messages.find(m=>m.id === messageId)?.content.startsWith(customer.lastMessagePreview)) {
             fetchChatData();
         }
@@ -475,6 +475,7 @@ export default function StaffIndividualChatPage() {
 
   const handlePinRequested = (messageId: string) => {
     if (!socket || !isConnected || !activeConversation?.id || !staffSession) return;
+    console.log(`Staff: Requesting to pin message ${messageId} in conv ${activeConversation.id}`);
     socket.emit('pinMessageRequested', { 
         conversationId: activeConversation.id, 
         messageId,
@@ -484,6 +485,7 @@ export default function StaffIndividualChatPage() {
 
   const handleUnpinRequested = (messageId: string) => {
     if (!socket || !isConnected || !activeConversation?.id || !staffSession) return;
+    console.log(`Staff: Requesting to unpin message ${messageId} in conv ${activeConversation.id}`);
     socket.emit('unpinMessageRequested', { 
         conversationId: activeConversation.id, 
         messageId,
@@ -678,8 +680,8 @@ export default function StaffIndividualChatPage() {
         editingNote.id, 
         staffSession.id, 
         editingNoteContent.trim(),
-        editingNoteImageDataUri, // Can be string (new/existing URI) or null (to remove)
-        editingNoteImageDataUri ? editingNoteImageFileName : undefined // Send filename only if URI exists
+        editingNoteImageDataUri, 
+        editingNoteImageDataUri ? editingNoteImageFileName : undefined 
         );
       if (updatedNote) {
         setNotes(prevNotes => prevNotes.map(n => n.id === updatedNote.id ? updatedNote : n));
@@ -750,7 +752,11 @@ export default function StaffIndividualChatPage() {
   };
 
   if (isLoading && !customer && !staffSession) {
-    return <div className="flex items-center justify-center h-full"><Loader2 className="h-8 w-8 animate-spin text-primary"/> <p className="ml-2">Đang tải dữ liệu...</p></div>;
+    return (
+        <div className="flex items-center justify-center h-full">
+            <Loader2 className="h-8 w-8 animate-spin text-primary"/> <p className="ml-2">Đang tải dữ liệu...</p>
+        </div>
+    );
   }
 
   if (!staffSession) {
@@ -759,9 +765,22 @@ export default function StaffIndividualChatPage() {
   if (isLoading && !customer) {
      return <div className="flex items-center justify-center h-full"><Loader2 className="h-8 w-8 animate-spin text-primary"/> <p className="ml-2">Đang tải thông tin khách hàng...</p></div>;
   }
+  
   if (!customer) {
-    return <div className="flex flex-col items-center justify-center h-full"><p>Không tìm thấy thông tin khách hàng cho ID: {customerId}.</p></div>;
+    // Ensure this condition doesn't prematurely return if there's just a brief moment where customer is null during load
+    if (!isLoading) {
+      return (
+        <div className="flex flex-col items-center justify-center h-full text-center p-4">
+          <p>Không tìm thấy thông tin khách hàng cho ID: {customerId}.</p>
+          <p className="text-sm text-muted-foreground">
+            Có thể khách hàng đã bị xóa hoặc ID không chính xác.
+          </p>
+        </div>
+      );
+    }
+    // If still loading, the initial Loader2 above should cover it.
   }
+  
   if (!activeConversation) {
      return (
       <div className="flex flex-col items-center justify-center h-full text-center p-4">
@@ -794,27 +813,28 @@ export default function StaffIndividualChatPage() {
 
 
   return (
-    <div className="flex flex-col md:flex-row h-full gap-0 md:gap-0 md:max-w-screen-lg md:mx-auto">
+    <div className="flex flex-col md:flex-row h-full gap-0 md:gap-0">
       <Card className="flex-grow h-full flex flex-col rounded-none md:rounded-none border-none md:border-none">
         <CardHeader className="flex flex-row items-center justify-between border-b p-4">
           <div className="flex items-center gap-3">
             <Avatar>
-              <AvatarFallback>{(customer.internalName || customer.name || customer.phoneNumber).charAt(0)}</AvatarFallback>
+              <AvatarFallback>{(customer?.internalName || customer?.name || customer?.phoneNumber || 'K').charAt(0)}</AvatarFallback>
             </Avatar>
             <div>
-              <CardTitle className="text-lg">{customer.internalName || customer.name || `Người dùng ${customer.phoneNumber}`}</CardTitle>
-              <p className="text-xs text-muted-foreground">Hoạt động cuối: {format(new Date(customer.lastInteractionAt), 'HH:mm dd/MM/yy', { locale: vi })}
-                {customer.assignedStaffId ? ` (Giao cho: ${customer.assignedStaffId === staffSession?.id ? 'Bạn' : customer.assignedStaffName || 'NV khác'})` : "(Chưa giao)"}
+              <CardTitle className="text-lg">{customer?.internalName || customer?.name || `Người dùng ${customer?.phoneNumber}`}</CardTitle>
+              <p className="text-xs text-muted-foreground">
+                {customer && `Hoạt động cuối: ${format(new Date(customer.lastInteractionAt), 'HH:mm dd/MM/yy', { locale: vi })}`}
+                {customer?.assignedStaffId ? ` (Giao cho: ${customer.assignedStaffId === staffSession?.id ? 'Bạn' : customer.assignedStaffName || 'NV khác'})` : "(Chưa giao)"}
               </p>
             </div>
           </div>
           <div className="flex gap-2">
-            {staffSession?.role === 'staff' && !customer.assignedStaffId && (
+            {staffSession?.role === 'staff' && !customer?.assignedStaffId && (
               <Button variant="outline" size="sm" onClick={handleAssignToSelf} disabled={isAssigning}>
                 <UserCheck className="mr-1 h-4 w-4"/> {isAssigning ? "Đang nhận..." : "Nhận xử lý"}
               </Button>
             )}
-             {staffSession?.role === 'staff' && customer.assignedStaffId === staffSession?.id && (
+             {staffSession?.role === 'staff' && customer?.assignedStaffId === staffSession?.id && (
                  <Button variant="outline" size="sm" onClick={handleUnassign} disabled={isAssigning}>
                      <LogOutIcon className="mr-1 h-4 w-4"/> {isAssigning ? "Đang trả..." : "Trả về hàng đợi"}
                  </Button>
@@ -829,14 +849,14 @@ export default function StaffIndividualChatPage() {
           suggestedReplies={[]}
           onSendMessage={handleSendMessage}
           onSuggestedReplyClick={() => {}}
-          isLoading={isSendingMessage}
-          viewerRole={staffSession.role}
+          isLoading={isSendingMessage} // Only disable input when actively sending
+          viewerRole={staffSession.role as MessageViewerRole}
           onPinRequested={handlePinRequested}
           onUnpinRequested={handleUnpinRequested}
           onDeleteMessage={handleDeleteMessage}
           onEditMessage={handleEditMessage}
           currentStaffSessionId={staffSession.id}
-          currentUserSessionId={customer.id}
+          currentUserSessionId={customer?.id} // For MessageBubble to know who "user" is
           quickReplies={quickReplies}
           typingUsers={typingUsers}
           onTyping={onTyping}
@@ -856,7 +876,7 @@ export default function StaffIndividualChatPage() {
             {staffSession?.role === 'admin' && (
               <div className="border-b pb-3 mb-3">
                 <h4 className="font-semibold text-sm flex items-center mb-1"><Users className="mr-2 h-4 w-4 text-primary" />Phân công</h4>
-                {customer.assignedStaffId ? (
+                {customer?.assignedStaffId ? (
                   <div className="flex items-center justify-between text-xs">
                     <span>Đang xử lý: {customer.assignedStaffName || customer.assignedStaffId}</span>
                      <Button variant="outline" size="xs" onClick={handleUnassign} disabled={isAssigning}>
@@ -884,7 +904,7 @@ export default function StaffIndividualChatPage() {
 
             <div>
               <h4 className="font-semibold text-sm flex items-center mb-1"><UserCircle className="mr-2 h-4 w-4 text-primary" />Chi tiết</h4>
-              <p className="text-xs"><span className="text-muted-foreground">Điện thoại:</span> {customer.phoneNumber}</p>
+              <p className="text-xs"><span className="text-muted-foreground">Điện thoại:</span> {customer?.phoneNumber}</p>
               <div className="text-xs flex items-center">
                 <span className="text-muted-foreground mr-1">Tên nội bộ:</span>
                 {editingInternalName ? (
@@ -897,14 +917,14 @@ export default function StaffIndividualChatPage() {
                         autoFocus
                     />
                 ) : (
-                    <span className="truncate max-w-[150px]">{customer.internalName || 'Chưa có'}</span>
+                    <span className="truncate max-w-[150px]">{customer?.internalName || 'Chưa có'}</span>
                 )}
                  <Button variant="ghost" size="icon" className="h-5 w-5 ml-1 shrink-0" onClick={() => setEditingInternalName(!editingInternalName)}><Edit2 className="h-3 w-3"/></Button>
               </div>
               <div>
                 <h5 className="font-semibold text-xs mt-2 mb-1 flex items-center"><Tag className="mr-2 h-3 w-3 text-primary" />Nhãn</h5>
                 <div className="flex flex-wrap gap-1 mb-2">
-                    {(customer.tags || []).map(tag => (
+                    {(customer?.tags || []).map(tag => (
                         <span key={tag} className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full flex items-center">
                             {tag}
                             <Button variant="ghost" size="icon" className="h-4 w-4 ml-1 p-0 hover:bg-blue-200" onClick={() => handleRemoveTag(tag)}>
@@ -912,7 +932,7 @@ export default function StaffIndividualChatPage() {
                             </Button>
                         </span>
                     ))}
-                     {customer.tags?.includes(`Admin:${staffSession?.name}`) && staffSession?.role === 'admin' && (
+                     {customer?.tags?.includes(`Admin:${staffSession?.name}`) && staffSession?.role === 'admin' && (
                         <span className="text-xs bg-yellow-100 text-yellow-700 px-2 py-0.5 rounded-full">Đã mời Admin</span>
                     )}
                 </div>
@@ -1175,4 +1195,3 @@ export default function StaffIndividualChatPage() {
     </div>
   );
 }
-```
