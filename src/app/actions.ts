@@ -3,7 +3,7 @@
 'use server';
 
 import type { Message, UserSession, AppointmentDetails, Product, Note, CustomerProfile, UserRole, KeywordMapping, TrainingData, TrainingDataStatus, AppSettings, GetAppointmentsFilters, AdminDashboardStats, StaffDashboardStats, ProductItem, Reminder, ReminderStatus, ReminderPriority, SpecificDayRule, CustomerInteractionStatus, Conversation, AppointmentBookingFormData, Branch, BranchSpecificDayRule, QuickReplyType, ProductSchedulingRules, EffectiveSchedulingRules } from '@/lib/types';
-import type { AppointmentRule as LibAppointmentRuleType, Conversation as LibConversationType } from '@/lib/types'; 
+import type { AppointmentRule as LibAppointmentRuleType, Conversation as LibConversationType } from '@/lib/types';
 import { answerUserQuestion } from '@/ai/flows/answer-user-question';
 import { scheduleAppointment as scheduleAppointmentAIFlow, checkRealAvailability as checkRealAvailabilityAIFlow, scheduleAppointmentPrompt } from '@/ai/flows/schedule-appointment';
 import type { ScheduleAppointmentOutput, AppointmentRule as AIAppointmentRuleType, AppointmentDetailsSchema as AIAppointmentDetails, ScheduleAppointmentInput } from '@/ai/schemas/schedule-appointment-schemas';
@@ -43,8 +43,8 @@ import AppointmentRuleModel from '@/models/AppointmentRule.model';
 import NoteModel from '@/models/Note.model';
 import ProductModel from '@/models/Product.model';
 import ReminderModel from '@/models/Reminder.model';
-import ConversationModel from '@/models/Conversation.model'; 
-import type { IConversation } from '@/models/Conversation.model'; 
+import ConversationModel from '@/models/Conversation.model';
+import type { IConversation } from '@/models/Conversation.model';
 import BranchModel from '@/models/Branch.model';
 import QuickReplyModel from '@/models/QuickReply.model';
 
@@ -60,6 +60,7 @@ import type { IProduct } from '@/models/Product.model';
 import type { IReminder } from '@/models/Reminder.model';
 import type { IBranch } from '@/models/Branch.model';
 import type { IQuickReply } from '@/models/QuickReply.model';
+import { vi } from 'date-fns/locale';
 
 
 interface IMessageWithConversation extends IMessage {
@@ -78,7 +79,7 @@ function transformConversationDoc(doc: IConversation | null): Conversation | nul
       role: p.role,
       name: p.name,
       phoneNumber: p.phoneNumber,
-    })).filter(p => p.userId), 
+    })).filter(p => p.userId),
     messageIds: (doc.messageIds as Types.ObjectId[] || []).map(id => id.toString()),
     pinnedMessageIds: (doc.pinnedMessageIds || []).map(id => id.toString()),
     isPinned: doc.isPinned,
@@ -178,7 +179,7 @@ function transformAppointmentDocToDetails(apptDoc: any): AppointmentDetails {
     createdAt: new Date(apptDoc.createdAt as Date),
     updatedAt: new Date(apptDoc.updatedAt as Date),
     staffId: typeof apptDoc.staffId === 'string' ? apptDoc.staffId : staffIdObj?._id?.toString(),
-    customerName: customerIdObj?.name || `Người dùng ${customerIdObj?.phoneNumber}`,
+    customerName: customerIdObj?.name,
     customerPhoneNumber: customerIdObj?.phoneNumber,
     staffName: staffIdObj?.name,
     packageType: apptDoc.packageType,
@@ -228,6 +229,8 @@ function transformNoteDocToNote(noteDoc: any): Note {
     staffId: noteDoc.staffId.toString(),
     staffName: (noteDoc.staffId as any)?.name,
     content: noteDoc.content,
+    imageDataUri: noteDoc.imageDataUri,
+    imageFileName: noteDoc.imageFileName,
     createdAt: new Date(noteDoc.createdAt as Date),
     updatedAt: new Date(noteDoc.updatedAt as Date),
   };
@@ -237,13 +240,14 @@ function transformNoteDocToNote(noteDoc: any): Note {
 function transformAppSettingsDoc(doc: IAppSettings | null): AppSettings | null {
   if (!doc) return null;
   const defaultBrandName = 'AetherChat';
-  const initialDefaultSettings: AppSettings = { 
-    id: '', 
+  const initialDefaultSettings: AppSettings = {
+    id: '',
+    brandName: defaultBrandName,
     greetingMessage: 'Tôi là trợ lý AI của bạn. Tôi có thể giúp gì cho bạn hôm nay?',
     greetingMessageNewCustomer: 'Chào mừng bạn lần đầu đến với chúng tôi! Bạn cần hỗ trợ gì ạ?',
     greetingMessageReturningCustomer: 'Chào mừng bạn quay trở lại! Rất vui được gặp lại bạn.',
     suggestedQuestions: ['Các dịch vụ của bạn?', 'Đặt lịch hẹn', 'Địa chỉ của bạn ở đâu?'],
-    brandName: defaultBrandName,
+    successfulBookingMessageTemplate: "Lịch hẹn của bạn cho {{service}} vào lúc {{time}} ngày {{date}}{{#if branch}} tại {{branch}}{{/if}} đã được đặt thành công! Chúng tôi sẽ gửi tin nhắn xác nhận chi tiết cho bạn.",
     footerText: `© ${new Date().getFullYear()} ${defaultBrandName}. Đã đăng ký Bản quyền.`,
     metaTitle: `${defaultBrandName} - Live Chat Thông Minh`,
     metaDescription: 'Live chat tích hợp AI cho giao tiếp khách hàng liền mạch.',
@@ -258,14 +262,14 @@ function transformAppSettingsDoc(doc: IAppSettings | null): AppSettings | null {
     outOfOfficeMessage: 'Cảm ơn bạn đã liên hệ! Hiện tại chúng tôi đang ngoài giờ làm việc. Vui lòng để lại lời nhắn và chúng tôi sẽ phản hồi sớm nhất có thể.',
     officeHoursStart: "09:00",
     officeHoursEnd: "17:00",
-    officeDays: [1, 2, 3, 4, 5],
+    officeDays: [1, 2, 3, 4, 5], // Mon-Fri
   };
 
   const specificDayRulesPlain = doc.specificDayRules?.map(rule => {
     const plainRule: SpecificDayRule = {
       id: (rule as any)._id ? (rule as any)._id.toString() : rule.id || new mongoose.Types.ObjectId().toString(),
       date: rule.date,
-      isOff: rule.isOff || false, 
+      isOff: rule.isOff || false,
       workingHours: rule.workingHours || [],
       numberOfStaff: rule.numberOfStaff,
       serviceDurationMinutes: rule.serviceDurationMinutes,
@@ -280,21 +284,22 @@ function transformAppSettingsDoc(doc: IAppSettings | null): AppSettings | null {
     greetingMessageNewCustomer: doc.greetingMessageNewCustomer || initialDefaultSettings.greetingMessageNewCustomer,
     greetingMessageReturningCustomer: doc.greetingMessageReturningCustomer || initialDefaultSettings.greetingMessageReturningCustomer,
     suggestedQuestions: doc.suggestedQuestions && doc.suggestedQuestions.length > 0 ? doc.suggestedQuestions : initialDefaultSettings.suggestedQuestions!,
+    successfulBookingMessageTemplate: doc.successfulBookingMessageTemplate || initialDefaultSettings.successfulBookingMessageTemplate,
     brandName: doc.brandName || initialDefaultSettings.brandName,
     logoUrl: doc.logoUrl,
     logoDataUri: doc.logoDataUri,
     footerText: doc.footerText || initialDefaultSettings.footerText,
     metaTitle: doc.metaTitle || initialDefaultSettings.metaTitle,
     metaDescription: doc.metaDescription || initialDefaultSettings.metaDescription,
-    metaKeywords: doc.metaKeywords || initialDefaultSettings.metaKeywords!,
+    metaKeywords: doc.metaKeywords && doc.metaKeywords.length > 0 ? doc.metaKeywords : initialDefaultSettings.metaKeywords!,
     openGraphImageUrl: doc.openGraphImageUrl,
     robotsTxtContent: doc.robotsTxtContent,
     sitemapXmlContent: doc.sitemapXmlContent,
     numberOfStaff: doc.numberOfStaff ?? initialDefaultSettings.numberOfStaff,
     defaultServiceDurationMinutes: doc.defaultServiceDurationMinutes ?? initialDefaultSettings.defaultServiceDurationMinutes,
     workingHours: doc.workingHours && doc.workingHours.length > 0 ? doc.workingHours : initialDefaultSettings.workingHours!,
-    weeklyOffDays: doc.weeklyOffDays || initialDefaultSettings.weeklyOffDays!,
-    oneTimeOffDates: doc.oneTimeOffDates || initialDefaultSettings.oneTimeOffDates!,
+    weeklyOffDays: doc.weeklyOffDays || initialDefaultSettings.weeklyOffDays || [],
+    oneTimeOffDates: doc.oneTimeOffDates || initialDefaultSettings.oneTimeOffDates || [],
     specificDayRules: specificDayRulesPlain,
     outOfOfficeResponseEnabled: doc.outOfOfficeResponseEnabled ?? initialDefaultSettings.outOfOfficeResponseEnabled,
     outOfOfficeMessage: doc.outOfOfficeMessage || initialDefaultSettings.outOfOfficeMessage,
@@ -317,8 +322,8 @@ export async function updateAppSettings(settings: Partial<Omit<AppSettings, 'id'
   const processedSettings = { ...settings };
   if (processedSettings.specificDayRules) {
     processedSettings.specificDayRules = processedSettings.specificDayRules.map(rule => {
-      const { id, ...restOfRule } = rule; 
-      return restOfRule as Omit<SpecificDayRule, 'id'>; 
+      const { id, ...restOfRule } = rule;
+      return restOfRule as Omit<SpecificDayRule, 'id'>;
     });
   }
 
@@ -363,8 +368,8 @@ export async function createNewConversationForUser(userId: string, title?: strin
   console.log("[ACTIONS] createNewConversationForUser: Saved conversation:", savedConversation);
 
 
-  if (user) { 
-      user.conversationIds = user.conversationIds || []; 
+  if (user) {
+      user.conversationIds = user.conversationIds || [];
       user.conversationIds.push(savedConversation._id);
       await user.save();
       console.log("[ACTIONS] createNewConversationForUser: Updated customer with new conversation ID.");
@@ -382,12 +387,12 @@ function isOutOfOffice(appSettings: AppSettings): boolean {
   }
 
   const now = new Date();
-  const currentDay = now.getDay(); 
+  const currentDay = now.getDay();
   const currentHour = getHours(now);
   const currentMinute = getMinutes(now);
 
   if (!appSettings.officeDays.includes(currentDay)) {
-    return true; 
+    return true;
   }
 
   const [startHour, startMinute] = appSettings.officeHoursStart.split(':').map(Number);
@@ -398,7 +403,7 @@ function isOutOfOffice(appSettings: AppSettings): boolean {
   const officeEndTimeInMinutes = endHour * 60 + endMinute;
 
   if (currentTimeInMinutes < officeStartTimeInMinutes || currentTimeInMinutes >= officeEndTimeInMinutes) {
-    return true; 
+    return true;
   }
 
   return false;
@@ -451,7 +456,7 @@ export async function handleCustomerAccess(phoneNumber: string): Promise<{
     activeConversation = await ConversationModel.findById(customer.conversationIds[0])
       .populate({
           path: 'messageIds',
-          options: { sort: { timestamp: 1 }, limit: 50 } 
+          options: { sort: { timestamp: 1 }, limit: 50 }
       });
     if (activeConversation) console.log("[ACTIONS] Found existing active conversation:", activeConversation.id);
   }
@@ -483,7 +488,7 @@ export async function handleCustomerAccess(phoneNumber: string): Promise<{
   const userSession = transformCustomerToSession(customer, (activeConversation._id as Types.ObjectId).toString());
   const appSettings = await getAppSettings();
   console.log("[ACTIONS] AppSettings fetched for greeting logic:", appSettings ? "Loaded" : "Not loaded");
-  
+
   let initialSystemMessageContent = appSettings?.greetingMessage || 'Tôi có thể giúp gì cho bạn hôm nay?';
   const ultimateDefaultGreeting = 'Tôi có thể giúp gì cho bạn hôm nay?';
 
@@ -506,9 +511,9 @@ export async function handleCustomerAccess(phoneNumber: string): Promise<{
     initialSystemMessageContent = ultimateDefaultGreeting;
      console.log("[ACTIONS] Fallback to ultimate default greeting:", initialSystemMessageContent);
   }
-  
+
   let finalInitialMessages: Message[] = [];
-  
+
   if (initialSystemMessageContent.trim() !== "") {
     const systemGreetingMessage: Message = {
         id: `msg_system_greeting_${Date.now()}`,
@@ -520,7 +525,7 @@ export async function handleCustomerAccess(phoneNumber: string): Promise<{
     };
     finalInitialMessages.push(systemGreetingMessage);
   }
-  
+
   if (activeConversation.messageIds && activeConversation.messageIds.length > 0) {
      const firstMessageId = activeConversation.messageIds[0];
      if (typeof firstMessageId === 'object' && firstMessageId !== null && '_id' in firstMessageId) {
@@ -563,7 +568,7 @@ export async function registerUser(name: string, phoneNumber: string, password: 
   const newUserDoc = new UserModel({
     name,
     phoneNumber,
-    password, 
+    password,
     role,
   });
   await newUserDoc.save();
@@ -607,8 +612,8 @@ export async function getConversationHistory(conversationId: string): Promise<Me
   }
   const conversation = await ConversationModel.findById(conversationId).populate({
       path: 'messageIds',
-      model: MessageModel, // Explicitly state the model for population
-      options: { sort: { timestamp: 1 } } 
+      model: MessageModel,
+      options: { sort: { timestamp: 1 } }
   });
   if (!conversation || !conversation.messageIds || conversation.messageIds.length === 0) {
     return [];
@@ -621,8 +626,8 @@ export async function getUserConversations(userId: string): Promise<Conversation
     await dbConnect();
     const customer = await CustomerModel.findById(userId).populate({
         path: 'conversationIds',
-        model: ConversationModel, 
-        options: { sort: { lastMessageTimestamp: -1 } } 
+        model: ConversationModel,
+        options: { sort: { lastMessageTimestamp: -1 } }
     });
     if (!customer || !customer.conversationIds || customer.conversationIds.length === 0) {
         return [];
@@ -630,11 +635,27 @@ export async function getUserConversations(userId: string): Promise<Conversation
     return (customer.conversationIds as unknown as IConversation[]).map(doc => transformConversationDoc(doc)).filter(Boolean) as Conversation[];
 }
 
+function formatBookingConfirmation(template: string, details: AppointmentDetails): string {
+    let message = template;
+    message = message.replace(/{{service}}/g, details.service);
+    message = message.replace(/{{date}}/g, dateFnsFormat(new Date(details.date), 'dd/MM/yyyy', { locale: vi }));
+    message = message.replace(/{{time}}/g, details.time);
+    message = message.replace(/{{branch}}/g, details.branch || '');
+    // Remove conditional block if branch is not present
+    if (!details.branch) {
+        message = message.replace(/{{#if branch}}.*?{{\/if}}/g, '');
+    } else {
+        message = message.replace(/{{#if branch}}/g, '').replace(/{{\/if}}/g, '');
+    }
+    return message.trim();
+}
+
+
 export async function processUserMessage(
   userMessageContent: string,
   currentUserSession: UserSession,
   currentConversationId: string,
-  currentChatHistory: Message[] 
+  currentChatHistory: Message[]
 ): Promise<{ userMessage: Message, aiMessage: Message; newSuggestedReplies: string[]; updatedAppointment?: AppointmentDetails }> {
   await dbConnect();
 
@@ -668,7 +689,7 @@ export async function processUserMessage(
 
   const userMessageData: Partial<IMessage> = {
     sender: 'user',
-    content: userMessageContent, 
+    content: userMessageContent,
     timestamp: new Date(),
     name: currentUserSession.name || `Người dùng ${currentUserSession.phoneNumber}`,
     customerId: new mongoose.Types.ObjectId(customerId),
@@ -680,8 +701,8 @@ export async function processUserMessage(
 
   await CustomerModel.findByIdAndUpdate(customerId, {
     lastInteractionAt: new Date(),
-    interactionStatus: currentUserSession.role === 'customer' ? 'unread' : 'replied_by_staff', 
-    lastMessagePreview: textForAI.substring(0, 100), 
+    interactionStatus: currentUserSession.role === 'customer' ? 'unread' : 'replied_by_staff',
+    lastMessagePreview: textForAI.substring(0, 100),
     lastMessageTimestamp: userMessage.timestamp,
   });
 
@@ -702,33 +723,30 @@ export async function processUserMessage(
   if (!appSettings) {
     throw new Error("Không thể tải cài đặt ứng dụng. Không thể xử lý tin nhắn.");
   }
-  // --- Out of Office Check ---
+
   if (isOutOfOffice(appSettings) && appSettings.outOfOfficeResponseEnabled && appSettings.outOfOfficeMessage) {
     const lastAiMessage = currentChatHistory.slice().reverse().find(m => m.sender === 'ai' || m.sender === 'system');
     if (lastAiMessage && lastAiMessage.content === appSettings.outOfOfficeMessage) {
-      // Already sent OOO, send a brief follow-up or nothing
       aiResponseContent = "Chúng tôi vẫn đang ngoài giờ làm việc. Xin cảm ơn sự kiên nhẫn của bạn.";
-      const aiMessageData: Partial<IMessage> = {
-        sender: 'ai',
-        content: aiResponseContent,
-        timestamp: new Date(),
-        name: `${appSettings.brandName || 'AI Assistant'}`,
-        customerId: new mongoose.Types.ObjectId(customerId),
-        conversationId: new mongoose.Types.ObjectId(currentConversationId),
-      };
-      const savedAiMessageDoc = await new MessageModel(aiMessageData).save();
-      finalAiMessage = transformMessageDocToMessage(savedAiMessageDoc);
-       await ConversationModel.findByIdAndUpdate(currentConversationId, {
-        $push: { messageIds: savedAiMessageDoc._id },
-        lastMessageTimestamp: savedAiMessageDoc.timestamp,
-        lastMessagePreview: savedAiMessageDoc.content.substring(0, 100),
-      });
-      return { userMessage: userMessage, aiMessage: finalAiMessage, newSuggestedReplies: [] };
+    } else {
+       aiResponseContent = appSettings.outOfOfficeMessage; // Send OOO again if it wasn't the last message.
     }
-    // If OOO is active but this is the first message from user during OOO, the main greeting logic in handleCustomerAccess would have already sent the OOO message.
-    // However, if user sends another message *after* OOO message, this block catches it.
+    // Do not proceed with further AI processing if out of office
+    const aiMessageData: Partial<IMessage> = {
+      sender: 'ai', content: aiResponseContent, timestamp: new Date(),
+      name: `${appSettings.brandName || 'AI Assistant'}`,
+      customerId: new mongoose.Types.ObjectId(customerId),
+      conversationId: new mongoose.Types.ObjectId(currentConversationId),
+    };
+    const savedAiMessageDoc = await new MessageModel(aiMessageData).save();
+    finalAiMessage = transformMessageDocToMessage(savedAiMessageDoc);
+    await ConversationModel.findByIdAndUpdate(currentConversationId, {
+      $push: { messageIds: savedAiMessageDoc._id },
+      lastMessageTimestamp: savedAiMessageDoc.timestamp,
+      lastMessagePreview: savedAiMessageDoc.content.substring(0, 100),
+    });
+    return { userMessage: userMessage, aiMessage: finalAiMessage, newSuggestedReplies: [] };
   }
-  // --- End Out of Office Check ---
 
   const allProducts = await getAllProducts();
   const activeBranches = await getBranches(true);
@@ -741,11 +759,11 @@ export async function processUserMessage(
   }).populate('customerId staffId');
 
   const customerAppointmentsForAI = customerAppointmentsDocs.map(doc => ({
-    ...(transformAppointmentDocToDetails(doc) as AIAppointmentDetails), 
+    ...(transformAppointmentDocToDetails(doc) as AIAppointmentDetails),
     userId: (doc.customerId as any)?._id?.toString(),
     createdAt: doc.createdAt?.toISOString(),
     updatedAt: doc.updatedAt?.toISOString(),
-  })); 
+  }));
 
 
   const appointmentRulesFromDB: LibAppointmentRuleType[] = await getAppointmentRules();
@@ -778,11 +796,11 @@ export async function processUserMessage(
     scheduleOutputFromAI.appointmentDetails?.date && scheduleOutputFromAI.appointmentDetails?.time &&
     /^\d{4}-\d{2}-\d{2}$/.test(scheduleOutputFromAI.appointmentDetails.date) &&
     /^[0-2][0-9]:[0-5][0-9]$/.test(scheduleOutputFromAI.appointmentDetails.time) &&
-    scheduleOutputFromAI.appointmentDetails.service 
+    scheduleOutputFromAI.appointmentDetails.service
   ) {
     const targetDate = dateFnsParseISO(scheduleOutputFromAI.appointmentDetails.date);
     const targetTime = scheduleOutputFromAI.appointmentDetails.time;
-    const serviceName = scheduleOutputFromAI.appointmentDetails.service; 
+    const serviceName = scheduleOutputFromAI.appointmentDetails.service;
     const targetBranchId = activeBranches.find(b => b.name === scheduleOutputFromAI?.appointmentDetails?.branch)?.id;
 
     const productForService = await ProductModel.findOne({ name: serviceName });
@@ -801,7 +819,6 @@ export async function processUserMessage(
       scheduleOutputFromAI.intent = 'clarification_needed';
       processedAppointmentDB = null;
     } else {
-      
       const effectiveSchedulingRules: EffectiveSchedulingRules = {
         numberOfStaff: productForService.schedulingRules?.numberOfStaff ?? appSettings.numberOfStaff ?? 1,
         workingHours: productForService.schedulingRules?.workingHours?.length ? productForService.schedulingRules.workingHours : appSettings.workingHours ?? [],
@@ -810,15 +827,15 @@ export async function processUserMessage(
         specificDayRules: productForService.schedulingRules?.specificDayRules?.length ? productForService.schedulingRules.specificDayRules : appSettings.specificDayRules ?? [],
       };
       const serviceDuration = productForService.schedulingRules?.serviceDurationMinutes ?? appSettings.defaultServiceDurationMinutes ?? 60;
-      
+
       const availability = await checkRealAvailabilityAIFlow(
-        targetDate, 
-        targetTime, 
-        appSettings, 
-        serviceName, 
-        effectiveSchedulingRules, 
-        serviceDuration, 
-        targetBranchId 
+        targetDate,
+        targetTime,
+        appSettings,
+        serviceName,
+        effectiveSchedulingRules,
+        serviceDuration,
+        targetBranchId
       );
 
       if (availability.isAvailable) {
@@ -831,7 +848,7 @@ export async function processUserMessage(
               date: scheduleOutputFromAI.appointmentDetails.date,
               time: scheduleOutputFromAI.appointmentDetails.time,
               service: scheduleOutputFromAI.appointmentDetails.service,
-              branch: scheduleOutputFromAI.appointmentDetails.branch, 
+              branch: scheduleOutputFromAI.appointmentDetails.branch,
               durationMinutes: serviceDuration,
             },
             isStatusUnavailable: false,
@@ -869,7 +886,7 @@ export async function processUserMessage(
             aiResponseContent = "Đã xảy ra lỗi nghiêm trọng khi lưu lịch hẹn. Vui lòng thử lại sau.";
             processedAppointmentDB = null;
           }
-        } else { 
+        } else {
           if (!scheduleOutputFromAI.originalAppointmentIdToModify) {
             aiResponseContent = "Không xác định được lịch hẹn gốc để đổi. Vui lòng thử lại.";
             processedAppointmentDB = null;
@@ -890,7 +907,17 @@ export async function processUserMessage(
             }
           }
         }
-      } else { 
+        // After successful booking/rescheduling and DB save
+        if (processedAppointmentDB && appSettings.successfulBookingMessageTemplate) {
+            const detailsForTemplate = transformAppointmentDocToDetails(processedAppointmentDB);
+            aiResponseContent = formatBookingConfirmation(appSettings.successfulBookingMessageTemplate, detailsForTemplate);
+        } else if (!processedAppointmentDB) {
+            // If DB operation failed, use the AI's original error/clarification message
+            aiResponseContent = scheduleOutputFromAI.confirmationMessage;
+        }
+        // If template is not set, aiResponseContent already holds the AI's natural confirmation
+
+      } else {
         const promptInputForAlternatives: ScheduleAppointmentInput = {
           ...( { userInput: textForAI, phoneNumber: currentUserSession.phoneNumber, userId: customerId, currentDateTime: new Date().toISOString() } as any),
           userInput: "Lịch yêu cầu không trống. Hãy thông báo cho người dùng và đề xuất các khung giờ sau từ suggestedSlots.",
@@ -920,7 +947,7 @@ export async function processUserMessage(
         ).populate('customerId staffId');
 
         if (processedAppointmentDB) {
-          aiResponseContent = scheduleOutputFromAI.confirmationMessage; 
+          aiResponseContent = scheduleOutputFromAI.confirmationMessage;
         } else {
           aiResponseContent = "Không tìm thấy lịch hẹn bạn muốn hủy hoặc bạn không phải chủ sở hữu.";
           processedAppointmentDB = null;
@@ -932,7 +959,7 @@ export async function processUserMessage(
     }
   } else if (scheduleOutputFromAI.intent === 'no_action_needed' || scheduleOutputFromAI.intent === 'clarification_needed' || scheduleOutputFromAI.intent === 'error') {
     let keywordFound = false;
-    if (!mediaDataUriForAI) { 
+    if (!mediaDataUriForAI) {
       const keywordMappings = await getKeywordMappings();
       for (const mapping of keywordMappings) {
         if (mapping.keywords.some(kw => textForAI.toLowerCase().includes(kw.toLowerCase()))) {
@@ -966,9 +993,11 @@ export async function processUserMessage(
     } else if (!keywordFound && scheduleOutputFromAI.intent === 'clarification_needed') {
       aiResponseContent = scheduleOutputFromAI.confirmationMessage;
     } else if (!keywordFound && scheduleOutputFromAI.intent !== 'clarification_needed' && scheduleOutputFromAI.confirmationMessage) {
+      // Fallback to AI's message if no keyword match and it's not for clarification (might be error from AI)
       aiResponseContent = scheduleOutputFromAI.confirmationMessage;
     }
-  } else { 
+  } else {
+    // Fallback if AI NLU output intent is unexpected or crucial details are missing for any known intent path
     const promptInputForClarification: ScheduleAppointmentInput = {
       ...( { userInput: textForAI, phoneNumber: currentUserSession.phoneNumber, userId: customerId, currentDateTime: new Date().toISOString() } as any),
       userInput: `Người dùng nhập: "${textForAI}". Yêu cầu này chưa rõ ràng. Hãy hỏi thêm thông tin để đặt lịch.`,
@@ -985,7 +1014,7 @@ export async function processUserMessage(
     sender: 'ai',
     content: aiResponseContent,
     timestamp: new Date(),
-    name: `${brandNameForAI}`, 
+    name: `${brandNameForAI}`,
     customerId: new mongoose.Types.ObjectId(customerId),
     conversationId: new mongoose.Types.ObjectId(currentConversationId),
   };
@@ -1002,7 +1031,7 @@ export async function processUserMessage(
     lastMessagePreview: savedAiMessageDoc.content.substring(0, 100),
   });
 
-  const newSuggestedReplies: string[] = []; 
+  const newSuggestedReplies: string[] = [];
   const updatedAppointmentClient = processedAppointmentDB ? transformAppointmentDocToDetails(processedAppointmentDB) : undefined;
 
   return { userMessage: userMessage, aiMessage: finalAiMessage, newSuggestedReplies, updatedAppointment: updatedAppointmentClient };
@@ -1031,7 +1060,7 @@ export async function handleBookAppointmentFromForm(formData: AppointmentBooking
     if (!isValidDateFns(targetDate)) {
       return { success: false, message: "Ngày không hợp lệ." };
     }
-    
+
     const effectiveSchedulingRules: EffectiveSchedulingRules = {
       numberOfStaff: productForService.schedulingRules?.numberOfStaff ?? appSettings.numberOfStaff ?? 1,
       workingHours: productForService.schedulingRules?.workingHours?.length ? productForService.schedulingRules.workingHours : appSettings.workingHours ?? [],
@@ -1042,13 +1071,13 @@ export async function handleBookAppointmentFromForm(formData: AppointmentBooking
     const serviceDuration = productForService.schedulingRules?.serviceDurationMinutes ?? appSettings.defaultServiceDurationMinutes ?? 60;
 
     const availability = await checkRealAvailabilityAIFlow(
-      targetDate, 
-      formData.time, 
-      appSettings, 
-      formData.service, 
-      effectiveSchedulingRules, 
-      serviceDuration, 
-      formData.branchId 
+      targetDate,
+      formData.time,
+      appSettings,
+      formData.service,
+      effectiveSchedulingRules,
+      serviceDuration,
+      formData.branchId
     );
 
     if (availability.isAvailable) {
@@ -1071,15 +1100,20 @@ export async function handleBookAppointmentFromForm(formData: AppointmentBooking
         .populate<{ staffId: IUser }>('staffId', 'name');
       if (!populatedAppointment) throw new Error("Không thể tạo hoặc tìm lại lịch hẹn sau khi lưu.");
 
+      let successMessage = `Lịch hẹn cho dịch vụ "${formData.service}" vào lúc ${formData.time} ngày ${dateFnsFormat(targetDate, 'dd/MM/yyyy')} ${formData.branch ? `tại ${formData.branch}` : ''} đã được đặt thành công.`;
+      if (appSettings.successfulBookingMessageTemplate) {
+          successMessage = formatBookingConfirmation(appSettings.successfulBookingMessageTemplate, transformAppointmentDocToDetails(populatedAppointment));
+      }
+
       return {
         success: true,
-        message: `Lịch hẹn cho dịch vụ "${formData.service}" vào lúc ${formData.time} ngày ${dateFnsFormat(targetDate, 'dd/MM/yyyy')} ${formData.branch ? `tại ${formData.branch}` : ''} đã được đặt thành công.`,
+        message: successMessage,
         appointment: transformAppointmentDocToDetails(populatedAppointment),
       };
     } else {
       return {
         success: false,
-        message: `Rất tiếc, khung giờ bạn chọn (${formData.time} ngày ${dateFnsFormat(targetDate, 'dd/MM/yyyy')}) cho dịch vụ "${formData.service}" không còn trống.`,
+        message: `Rất tiếc, khung giờ bạn chọn (${formData.time} ngày ${dateFnsFormat(targetDate, 'dd/MM/yyyy')}) cho dịch vụ "${formData.service}" không còn trống. ${availability.reason || ''}`,
         reason: availability.reason,
         suggestedSlots: availability.suggestedSlots,
       };
@@ -1105,27 +1139,27 @@ export async function getCustomersForStaffView(
     query.$or = [
       { assignedStaffId: new mongoose.Types.ObjectId(requestingStaffId) as any },
       { assignedStaffId: { $exists: false } },
-      { tags: staffSpecificTag } 
+      { tags: staffSpecificTag }
     ];
   } else if (requestingStaffRole === 'admin') {
-    
+
     if (filterTags && filterTags.some(tag => tag.startsWith('admin:'))) {
-      
+
       query.tags = { $in: filterTags.filter(tag => tag.startsWith('admin:')) };
     }
   }
 
-  
+
   if (filterTags && filterTags.length > 0) {
     const generalTagsToFilter = filterTags.filter(tag => !tag.startsWith('staff:') && !tag.startsWith('admin:'));
     if (generalTagsToFilter.length > 0) {
       if (query.$or) {
-        
+
         query.$or = query.$or.map((condition: any) => ({
           $and: [condition, { tags: { $in: generalTagsToFilter } }]
         }));
       } else {
-        
+
         if (query.tags && query.tags.$in) {
           query.tags.$in = [...new Set([...query.tags.$in, ...generalTagsToFilter])];
         } else {
@@ -1134,14 +1168,14 @@ export async function getCustomersForStaffView(
       }
     }
   }
-  
-  
+
+
 
 
   const customerDocs = await CustomerModel.find(query)
     .populate<{ assignedStaffId: IUser }>('assignedStaffId', 'name')
     .sort({ lastMessageTimestamp: -1, lastInteractionAt: -1 })
-    .limit(100); 
+    .limit(100);
 
   return customerDocs.map(doc => ({
     id: (doc._id as Types.ObjectId).toString(),
@@ -1167,7 +1201,7 @@ export async function getCustomersForStaffView(
 export async function markCustomerInteractionAsReadByStaff(customerId: string, staffId: string): Promise<void> {
   await dbConnect();
   const customer = await CustomerModel.findById(customerId);
-  
+
   if (customer && customer.interactionStatus === 'unread') {
     await CustomerModel.findByIdAndUpdate(customerId, { interactionStatus: 'read' });
   }
@@ -1179,13 +1213,13 @@ export async function getCustomerDetails(customerId: string): Promise<{ customer
     const customerDoc = await CustomerModel.findById(customerId)
       .populate<{ assignedStaffId: IUser }>('assignedStaffId', 'name')
       .populate({
-          path: 'conversationIds', 
-          model: ConversationModel, 
+          path: 'conversationIds',
+          model: ConversationModel,
           options: { sort: { lastMessageTimestamp: -1 } },
-          populate: { 
+          populate: {
             path: 'messageIds',
             model: MessageModel,
-            options: { sort: { timestamp: 1 }, limit: 50 } 
+            options: { sort: { timestamp: 1 }, limit: 50 }
           }
       });
 
@@ -1194,7 +1228,7 @@ export async function getCustomerDetails(customerId: string): Promise<{ customer
   }
 
   const transformedConversations = (customerDoc.conversationIds || [])
-    .map(convDoc => transformConversationDoc(convDoc as unknown as IConversation)) 
+    .map(convDoc => transformConversationDoc(convDoc as unknown as IConversation))
     .filter(Boolean) as Conversation[];
 
   let messagesForActiveConversation: Message[] = [];
@@ -1212,7 +1246,7 @@ export async function getCustomerDetails(customerId: string): Promise<{ customer
     .sort({ date: -1, time: -1 });
 
   const noteDocs = await NoteModel.find({ customerId: customerDoc._id })
-    .populate<{ staffId: IUser }>('staffId', 'name') 
+    .populate<{ staffId: IUser }>('staffId', 'name')
     .sort({ createdAt: -1 });
 
   const customerProfile: CustomerProfile = {
@@ -1220,7 +1254,7 @@ export async function getCustomerDetails(customerId: string): Promise<{ customer
     phoneNumber: customerDoc.phoneNumber,
     name: customerDoc.name || `Người dùng ${customerDoc.phoneNumber}`,
     internalName: customerDoc.internalName,
-    conversationIds: transformedConversations.map(c => c.id), 
+    conversationIds: transformedConversations.map(c => c.id),
     appointmentIds: (customerDoc.appointmentIds || []).map(id => id.toString()),
     productIds: (customerDoc.productIds || []).map(id => id.toString()),
     noteIds: (customerDoc.noteIds || []).map(id => id.toString()),
@@ -1239,7 +1273,7 @@ export async function getCustomerDetails(customerId: string): Promise<{ customer
     customer: customerProfile,
     messages: messagesForActiveConversation,
     appointments: appointmentDocs.map(transformAppointmentDocToDetails),
-    notes: noteDocs.map(transformNoteDocToNote), 
+    notes: noteDocs.map(transformNoteDocToNote),
     conversations: transformedConversations,
   };
 }
@@ -1252,7 +1286,7 @@ export async function getAllUsers(roles: UserRole[] = ['staff', 'admin']): Promi
 
 export async function getStaffList(): Promise<{ id: string, name: string }[]> {
   await dbConnect();
-  const staffUsers = await UserModel.find({ role: { $in: ['staff', 'admin'] } }, 'name'); 
+  const staffUsers = await UserModel.find({ role: { $in: ['staff', 'admin'] } }, 'name');
   return staffUsers.map(user => ({
     id: (user._id as Types.ObjectId).toString(),
     name: user.name || `User ${(user._id as Types.ObjectId).toString().slice(-4)}`
@@ -1264,7 +1298,7 @@ export async function createStaffOrAdminUser(
   name: string,
   phoneNumber: string,
   role: 'staff' | 'admin',
-  password?: string 
+  password?: string
 ): Promise<UserSession | null> {
   await dbConnect();
   if (await UserModel.findOne({ phoneNumber })) {
@@ -1274,7 +1308,7 @@ export async function createStaffOrAdminUser(
     name,
     phoneNumber,
     role,
-    password: password, 
+    password: password,
   });
   await newUser.save();
   return transformUserToSession(newUser);
@@ -1287,8 +1321,8 @@ export async function updateUser(userId: string, data: Partial<Pick<IUser, 'name
 
   if (data.name) user.name = data.name;
   if (data.role) user.role = data.role;
-  if (data.password) { 
-    user.password = data.password; 
+  if (data.password) {
+    user.password = data.password;
   }
 
   await user.save();
@@ -1299,7 +1333,7 @@ export async function deleteUser(userId: string): Promise<{ success: boolean, me
   await dbConnect();
   const result = await UserModel.findByIdAndDelete(userId);
   if (!result) throw new Error("Không tìm thấy người dùng để xóa.");
-  
+
   await CustomerModel.updateMany({ assignedStaffId: userId as any }, { $unset: { assignedStaffId: "" } });
   await AppointmentModel.updateMany({ staffId: userId as any }, { $unset: { staffId: "" } });
   return { success: true, message: "Người dùng đã được xóa." };
@@ -1312,8 +1346,8 @@ export async function assignStaffToCustomer(customerId: string, staffId: string)
     customerId,
     {
       assignedStaffId: new mongoose.Types.ObjectId(staffId) as any,
-      lastInteractionAt: new Date(), 
-      interactionStatus: 'read', 
+      lastInteractionAt: new Date(),
+      interactionStatus: 'read',
     },
     { new: true }
   ).populate<{ assignedStaffId: IUser }>('assignedStaffId', 'name');
@@ -1346,8 +1380,8 @@ export async function unassignStaffFromCustomer(customerId: string): Promise<Cus
     customerId,
     {
       $unset: { assignedStaffId: "" },
-      lastInteractionAt: new Date(), 
-      interactionStatus: 'unread', 
+      lastInteractionAt: new Date(),
+      interactionStatus: 'unread',
     },
     { new: true }
   );
@@ -1364,7 +1398,7 @@ export async function unassignStaffFromCustomer(customerId: string): Promise<Cus
     pinnedConversationIds: (updatedCustomerDoc.pinnedConversationIds || []).map(id => id.toString()),
     tags: updatedCustomerDoc.tags || [],
     assignedStaffId: updatedCustomerDoc.assignedStaffId ? (updatedCustomerDoc.assignedStaffId as any)._id?.toString() : undefined,
-    assignedStaffName: undefined, 
+    assignedStaffName: undefined,
     lastInteractionAt: new Date(updatedCustomerDoc.lastInteractionAt),
     createdAt: new Date(updatedCustomerDoc.createdAt as Date),
     interactionStatus: updatedCustomerDoc.interactionStatus as CustomerInteractionStatus,
@@ -1384,7 +1418,7 @@ export async function addTagToCustomer(customerId: string, tag: string): Promise
 
   if (!customer.tags.includes(tag)) {
     customer.tags.push(tag);
-    customer.lastInteractionAt = new Date(); 
+    customer.lastInteractionAt = new Date();
     await customer.save();
   }
   return {
@@ -1412,7 +1446,7 @@ export async function removeTagFromCustomer(customerId: string, tagToRemove: str
   await dbConnect();
   const customer = await CustomerModel.findByIdAndUpdate(
     customerId,
-    { $pull: { tags: tagToRemove }, lastInteractionAt: new Date() }, 
+    { $pull: { tags: tagToRemove }, lastInteractionAt: new Date() },
     { new: true }
   ).populate<{ assignedStaffId: IUser }>('assignedStaffId', 'name');
   if (!customer) throw new Error("Không tìm thấy khách hàng.");
@@ -1466,7 +1500,7 @@ export async function sendStaffMessage(
 
 
   const staffMessageData: Partial<IMessage> = {
-    sender: 'ai', 
+    sender: 'ai',
     content: messageContent,
     timestamp: new Date(),
     name: staffSession.name || (staffSession.role === 'admin' ? 'Quản trị viên' : 'Nhân viên'),
@@ -1518,10 +1552,10 @@ export async function editStaffMessage(
   await message.save();
 
   let conversationIdString: string | undefined = message.conversationId?.toString();
-  
+
   if (conversationIdString) {
       const conversation = await ConversationModel.findById(conversationIdString);
-      if(conversation && conversation.lastMessageTimestamp && conversation.lastMessageTimestamp.getTime() <= message.timestamp.getTime()){ 
+      if(conversation && conversation.lastMessageTimestamp && conversation.lastMessageTimestamp.getTime() <= message.timestamp.getTime()){
          const lastMessageInConv = await MessageModel.findOne({ conversationId: conversation._id }).sort({ timestamp: -1 });
          if (lastMessageInConv) {
              await ConversationModel.findByIdAndUpdate(conversation._id, {
@@ -1531,10 +1565,10 @@ export async function editStaffMessage(
          }
       }
   }
-  
+
   if (message.customerId) {
       const customer = await CustomerModel.findById(message.customerId);
-      if (customer && customer.lastMessageTimestamp && message.updatedAt && customer.lastMessageTimestamp.getTime() <= message.timestamp.getTime()) { 
+      if (customer && customer.lastMessageTimestamp && message.updatedAt && customer.lastMessageTimestamp.getTime() <= message.timestamp.getTime()) {
          const lastMessageForCustomer = await MessageModel.findOne({ customerId: customer._id, conversationId: conversationIdString ? new Types.ObjectId(conversationIdString) : undefined }).sort({ timestamp: -1 });
          if (lastMessageForCustomer) {
              await CustomerModel.findByIdAndUpdate(customer._id, {
@@ -1565,24 +1599,23 @@ export async function deleteStaffMessage(
   const customerIdString = message.customerId?.toString();
   let conversationIdString: string | undefined = message.conversationId?.toString();
 
-
   if (conversationIdString) {
       const conversation = await ConversationModel.findById(conversationIdString);
       if (conversation) {
         conversation.messageIds = conversation.messageIds.filter(id => !id.equals(new mongoose.Types.ObjectId(messageId)));
-        conversation.pinnedMessageIds = conversation.pinnedMessageIds.filter(id => !id.equals(new mongoose.Types.ObjectId(messageId)));
-        
-        const lastMessageInConv = await MessageModel.findOne({ 
-            conversationId: conversation._id, 
-            _id: { $ne: new mongoose.Types.ObjectId(messageId) } 
+        conversation.pinnedMessageIds = (conversation.pinnedMessageIds || []).filter(id => !id.equals(new mongoose.Types.ObjectId(messageId)));
+
+        const lastMessageInConv = await MessageModel.findOne({
+            conversationId: conversation._id,
+            _id: { $ne: new mongoose.Types.ObjectId(messageId) }
         }).sort({ timestamp: -1 });
 
         if (lastMessageInConv) {
             conversation.lastMessagePreview = lastMessageInConv.content.substring(0, 100);
             conversation.lastMessageTimestamp = lastMessageInConv.timestamp;
-        } else { 
+        } else {
             conversation.lastMessagePreview = '';
-            conversation.lastMessageTimestamp = conversation.createdAt; 
+            conversation.lastMessageTimestamp = conversation.createdAt;
         }
         await conversation.save();
       }
@@ -1590,7 +1623,7 @@ export async function deleteStaffMessage(
 
   await MessageModel.findByIdAndDelete(messageId);
 
-  
+
   if (customerIdString) {
     const customer = await CustomerModel.findById(customerIdString);
     if (customer) {
@@ -1601,10 +1634,10 @@ export async function deleteStaffMessage(
           lastMessagePreview: latestConversation.lastMessagePreview,
           lastMessageTimestamp: latestConversation.lastMessageTimestamp,
         });
-      } else { 
+      } else {
         await CustomerModel.findByIdAndUpdate(customerIdString, {
           lastMessagePreview: '',
-          lastMessageTimestamp: customer.createdAt, 
+          lastMessageTimestamp: customer.createdAt,
         });
       }
     }
@@ -1750,7 +1783,7 @@ export async function getAppointments(filters: GetAppointmentsFilters): Promise<
   if (filters.customerId) {
     query.customerId = new mongoose.Types.ObjectId(filters.customerId) as any;
   }
-  if (filters.staffId && filters.staffId !== NO_STAFF_MODAL_VALUE) { 
+  if (filters.staffId && filters.staffId !== NO_STAFF_MODAL_VALUE) {
     query.staffId = new mongoose.Types.ObjectId(filters.staffId) as any;
   }
   if (filters.status && filters.status.length > 0) {
@@ -1833,15 +1866,15 @@ export async function updateExistingAppointment(
   }
 
   const updateData: any = { ...data, updatedAt: new Date() };
-  delete updateData.customerId; 
+  delete updateData.customerId;
   delete updateData.userId;
 
   if (data.staffId && mongoose.Types.ObjectId.isValid(data.staffId) && data.staffId !== NO_STAFF_MODAL_VALUE) {
     (updateData as any).staffId = new mongoose.Types.ObjectId(data.staffId) as any;
   } else if (data.staffId === null || data.staffId === '' || data.staffId === undefined || data.staffId === NO_STAFF_MODAL_VALUE) {
     if (!updateData.$unset) updateData.$unset = {};
-    updateData.$unset.staffId = ""; 
-    delete updateData.staffId; 
+    updateData.$unset.staffId = "";
+    delete updateData.staffId;
   }
 
 
@@ -1945,7 +1978,7 @@ export async function getStaffDashboardStats(staffId: string): Promise<StaffDash
 }
 
 // --- Note CRUD Actions ---
-export async function addNoteToCustomer(customerId: string, staffId: string, content: string): Promise<Note> {
+export async function addNoteToCustomer(customerId: string, staffId: string, content: string, imageDataUri?: string, imageFileName?: string): Promise<Note> {
   await dbConnect();
   if (!mongoose.Types.ObjectId.isValid(customerId) || !mongoose.Types.ObjectId.isValid(staffId)) {
     throw new Error("Invalid customer or staff ID.");
@@ -1955,6 +1988,8 @@ export async function addNoteToCustomer(customerId: string, staffId: string, con
     customerId: new mongoose.Types.ObjectId(customerId) as any,
     staffId: new mongoose.Types.ObjectId(staffId) as any,
     content,
+    imageDataUri,
+    imageFileName,
   });
   await noteDoc.save();
 
@@ -1974,18 +2009,25 @@ export async function getNotesForCustomer(customerId: string): Promise<Note[]> {
   return noteDocs.map(transformNoteDocToNote);
 }
 
-export async function updateCustomerNote(noteId: string, staffId: string, content: string): Promise<Note | null> {
+export async function updateCustomerNote(noteId: string, staffId: string, content: string, imageDataUri?: string | null, imageFileName?: string | null): Promise<Note | null> {
   await dbConnect();
   const note = await NoteModel.findById(noteId);
   if (!note) throw new Error("Note not found.");
   const staffUser = await UserModel.findById(staffId);
   if (!staffUser) throw new Error("Staff user not found.");
 
-  
+
   if (staffUser.role !== 'admin' && note.staffId.toString() !== staffId) {
     throw new Error("You are not authorized to edit this note.");
   }
   note.content = content;
+  if (imageDataUri === null) { // Explicitly remove image
+    note.imageDataUri = undefined;
+    note.imageFileName = undefined;
+  } else if (imageDataUri) {
+    note.imageDataUri = imageDataUri;
+    note.imageFileName = imageFileName;
+  }
   await note.save();
   const populatedNote = await NoteModel.findById(note._id).populate<{ staffId: IUser }>('staffId', 'name');
   return populatedNote ? transformNoteDocToNote(populatedNote) : null;
@@ -1998,8 +2040,8 @@ export async function deleteCustomerNote(noteId: string, staffId: string): Promi
 
   const staffUser = await UserModel.findById(staffId);
   if (!staffUser) throw new Error("Staff user not found.");
-  
-  
+
+
   if (staffUser.role !== 'admin' && note.staffId.toString() !== staffId) {
     throw new Error("You are not authorized to delete this note.");
   }
@@ -2020,7 +2062,7 @@ function transformProductDocToProduct(doc: IProduct): ProductItem {
       weeklyOffDays: schedulingRulesDoc.weeklyOffDays ? [...schedulingRulesDoc.weeklyOffDays] : undefined,
       oneTimeOffDates: schedulingRulesDoc.oneTimeOffDates ? [...schedulingRulesDoc.oneTimeOffDates] : undefined,
       specificDayRules: schedulingRulesDoc.specificDayRules ? schedulingRulesDoc.specificDayRules.map(r => ({
-        id: (r as any)._id?.toString() || new mongoose.Types.ObjectId().toString(), 
+        id: (r as any)._id?.toString() || new mongoose.Types.ObjectId().toString(),
         date: r.date,
         isOff: r.isOff,
         workingHours: r.workingHours ? [...r.workingHours] : undefined,
@@ -2085,7 +2127,7 @@ export async function getProductById(productId: string): Promise<ProductItem | n
 
 export async function createProduct(data: Omit<ProductItem, 'id' | 'createdAt' | 'updatedAt'>): Promise<ProductItem> {
   await dbConnect();
-  
+
   const productData: Partial<IProduct> = {
     name: data.name,
     description: data.description,
@@ -2100,12 +2142,12 @@ export async function createProduct(data: Omit<ProductItem, 'id' | 'createdAt' |
     productData.schedulingRules = {
       ...data.schedulingRules,
       specificDayRules: data.schedulingRules.specificDayRules?.map(r => {
-        const { id, ...rest } = r; 
+        const { id, ...rest } = r;
         return rest;
       }) || [],
-    } as ProductSchedulingRules; 
+    } as ProductSchedulingRules;
   } else {
-    productData.schedulingRules = undefined; 
+    productData.schedulingRules = undefined;
   }
 
   const newProduct = new ProductModel(productData);
@@ -2118,7 +2160,7 @@ export async function updateProduct(
   data: Partial<Omit<ProductItem, 'id' | 'createdAt' | 'updatedAt'>>
 ): Promise<ProductItem | null> {
   await dbConnect();
-  
+
   const updateData: Partial<IProduct> = {
     name: data.name,
     description: data.description,
@@ -2133,18 +2175,18 @@ export async function updateProduct(
      updateData.schedulingRules = {
       ...data.schedulingRules,
       specificDayRules: data.schedulingRules.specificDayRules?.map(r => {
-        const { id, ...rest } = r; 
+        const { id, ...rest } = r;
         return rest;
       }) || [],
     } as ProductSchedulingRules;
   } else {
-    updateData.schedulingRules = undefined; 
+    updateData.schedulingRules = undefined;
   }
 
   const updatedProduct = await ProductModel.findByIdAndUpdate(
     productId,
     { $set: updateData },
-    { new: true, runValidators: true } 
+    { new: true, runValidators: true }
   );
   return updatedProduct ? transformProductDocToProduct(updatedProduct) : null;
 }
@@ -2280,7 +2322,7 @@ export async function getCustomersWithProductsAndReminders(staffId?: string): Pr
   if (staffId) {
     query.$or = [
       { assignedStaffId: new mongoose.Types.ObjectId(staffId) as any },
-      { assignedStaffId: { $exists: false } } 
+      { assignedStaffId: { $exists: false } }
     ];
   }
 
@@ -2328,7 +2370,7 @@ export async function getAllCustomerTags(): Promise<string[]> {
 
 export async function pinMessageToConversation(conversationId: string, messageId: string, userSession: UserSession): Promise<Conversation | null> {
   await dbConnect();
-  
+
   if (!mongoose.Types.ObjectId.isValid(conversationId) || !mongoose.Types.ObjectId.isValid(messageId)) {
     throw new Error("Mã cuộc trò chuyện hoặc tin nhắn không hợp lệ.");
   }
@@ -2336,14 +2378,18 @@ export async function pinMessageToConversation(conversationId: string, messageId
   const conversation = await ConversationModel.findById(conversationId);
   if (!conversation) throw new Error("Không tìm thấy cuộc trò chuyện.");
 
-  if (userSession.role === 'customer' && conversation.customerId.toString() !== userSession.id) {
+  const isParticipant = conversation.participants.some(p => p.userId?.toString() === userSession.id);
+  if (!isParticipant && userSession.role !== 'admin') {
     throw new Error("Bạn không có quyền ghim tin nhắn trong cuộc trò chuyện này.");
   }
 
   const messageObjectId = new mongoose.Types.ObjectId(messageId);
   let newPinnedMessageIds = [...(conversation.pinnedMessageIds || [])];
 
-  if (!newPinnedMessageIds.some(id => id.equals(messageObjectId))) { // If not already pinned
+  // Check if message is already pinned
+  const isAlreadyPinned = newPinnedMessageIds.some(id => id.equals(messageObjectId));
+
+  if (!isAlreadyPinned) {
     if (newPinnedMessageIds.length >= 3) {
       newPinnedMessageIds.shift(); // Remove the oldest pinned message
     }
@@ -2351,14 +2397,14 @@ export async function pinMessageToConversation(conversationId: string, messageId
     conversation.pinnedMessageIds = newPinnedMessageIds;
     await conversation.save();
   }
-  
-  const updatedConversation = await ConversationModel.findById(conversationId).populate({ path: 'messageIds', model: MessageModel, options: { sort: { timestamp: 1 }}});
+
+  const updatedConversation = await ConversationModel.findById(conversationId).populate({ path: 'messageIds', model: MessageModel, options: { sort: { timestamp: 1 }}}).populate('pinnedMessageIds');
   return transformConversationDoc(updatedConversation);
 }
 
 export async function unpinMessageFromConversation(conversationId: string, messageId: string, userSession: UserSession): Promise<Conversation | null> {
   await dbConnect();
-  
+
   if (!mongoose.Types.ObjectId.isValid(conversationId) || !mongoose.Types.ObjectId.isValid(messageId)) {
     throw new Error("Mã cuộc trò chuyện hoặc tin nhắn không hợp lệ.");
   }
@@ -2366,15 +2412,16 @@ export async function unpinMessageFromConversation(conversationId: string, messa
   const conversation = await ConversationModel.findById(conversationId);
   if (!conversation) throw new Error("Không tìm thấy cuộc trò chuyện.");
 
-  if (userSession.role === 'customer' && conversation.customerId.toString() !== userSession.id) {
+  const isParticipant = conversation.participants.some(p => p.userId?.toString() === userSession.id);
+  if (!isParticipant && userSession.role !== 'admin') {
     throw new Error("Bạn không có quyền bỏ ghim tin nhắn trong cuộc trò chuyện này.");
   }
 
   const messageObjectId = new mongoose.Types.ObjectId(messageId);
   conversation.pinnedMessageIds = (conversation.pinnedMessageIds || []).filter(id => !id.equals(messageObjectId));
   await conversation.save();
-  
-  const updatedConversation = await ConversationModel.findById(conversationId).populate({ path: 'messageIds', model: MessageModel, options: { sort: { timestamp: 1 }}});
+
+  const updatedConversation = await ConversationModel.findById(conversationId).populate({ path: 'messageIds', model: MessageModel, options: { sort: { timestamp: 1 }}}).populate('pinnedMessageIds');
   return transformConversationDoc(updatedConversation);
 }
 
@@ -2392,9 +2439,9 @@ export async function getMessagesByIds(messageIds: string[]): Promise<Message[]>
 
   if (objectIds.length === 0) return [];
   const messageDocs = await MessageModel.find({ _id: { $in: objectIds } });
-  
+
   const messagesMap = new Map(messageDocs.map(doc => [(doc._id as mongoose.Types.ObjectId).toString(), transformMessageDocToMessage(doc)]));
-  
+
   return messageIds.map(id => messagesMap.get(id)).filter(Boolean) as Message[];
 }
 
@@ -2404,8 +2451,8 @@ export async function getCustomerMediaMessages(customerId: string): Promise<Mess
   await dbConnect();
   const messages = await MessageModel.find({
     customerId: new mongoose.Types.ObjectId(customerId) as any,
-    content: { $regex: /^data:(image|application)\/[^;]+;base64,/ } 
-  }).sort({ timestamp: -1 }); 
+    content: { $regex: /^data:(image|application)\/[^;]+;base64,/ }
+  }).sort({ timestamp: -1 });
 
   return messages.map(transformMessageDocToMessage);
 }
@@ -2421,7 +2468,7 @@ export async function updateConversationTitle(conversationId: string, newTitle: 
     throw new Error("Không tìm thấy cuộc trò chuyện.");
   }
 
-  
+
   const isParticipant = conversation.participants.some(p => p.userId?.toString() === userId);
   let userIsAdmin = false;
   if (!isParticipant) {
@@ -2450,7 +2497,7 @@ export async function pinConversationForUser(userId: string, conversationId: str
 
   let newPinnedConversationIds = [...(customer.pinnedConversationIds || [])];
   const conversationObjectId = new mongoose.Types.ObjectId(conversationId);
-  
+
   if (!newPinnedConversationIds.some(id => id.equals(conversationObjectId))) {
     if (newPinnedConversationIds.length >= 3) {
       newPinnedConversationIds.shift(); // Remove the oldest
@@ -2532,7 +2579,7 @@ function transformBranchDoc(doc: IBranch | null): Branch | null {
     offDays: doc.offDays,
     numberOfStaff: doc.numberOfStaff,
     specificDayOverrides: (doc.specificDayOverrides || []).map(r => ({
-      id: (r as any)._id?.toString() || new mongoose.Types.ObjectId().toString(), 
+      id: (r as any)._id?.toString() || new mongoose.Types.ObjectId().toString(),
       date: r.date,
       isOff: r.isOff,
       workingHours: r.workingHours,
@@ -2564,7 +2611,7 @@ export async function updateBranch(id: string, data: Partial<Omit<Branch, 'id' |
   const processedData = { ...data };
   if (processedData.specificDayOverrides) {
     processedData.specificDayOverrides = processedData.specificDayOverrides.map(rule => {
-      const { id: ruleId, ...restOfRule } = rule; 
+      const { id: ruleId, ...restOfRule } = rule;
       return restOfRule as Omit<BranchSpecificDayRule, 'id'>;
     });
   }
@@ -2574,7 +2621,7 @@ export async function updateBranch(id: string, data: Partial<Omit<Branch, 'id' |
 
 export async function deleteBranch(id: string): Promise<{ success: boolean }> {
   await dbConnect();
-  
+
   const appointmentUsingBranch = await AppointmentModel.findOne({ branchId: id });
   if (appointmentUsingBranch) {
     throw new Error("Không thể xóa chi nhánh vì đang được sử dụng trong lịch hẹn.");

@@ -9,7 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Separator } from '@/components/ui/separator';
-import { Save, Image as ImageIcon, Palette, FileText, Settings2, CalendarCog, Clock, UsersIcon, CalendarDays, Trash2, PlusCircle, CalendarIcon, UploadCloud, XCircle, Briefcase, MessagesSquare } from 'lucide-react';
+import { Save, Image as ImageIconLucide, Palette, FileText, Settings2, CalendarCog, Clock, UsersIcon, CalendarDays, Trash2, PlusCircle, CalendarIcon, UploadCloud, XCircle, Briefcase, MessagesSquare } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { getAppSettings, updateAppSettings } from '@/app/actions';
 import type { AppSettings, SpecificDayRule } from '@/lib/types';
@@ -30,6 +30,7 @@ const initialSettingsState: AppSettings = {
   greetingMessageNewCustomer: 'Chào mừng bạn lần đầu đến với chúng tôi! Bạn cần hỗ trợ gì ạ?',
   greetingMessageReturningCustomer: 'Chào mừng bạn quay trở lại! Rất vui được gặp lại bạn.',
   suggestedQuestions: ['Các dịch vụ của bạn?', 'Đặt lịch hẹn', 'Địa chỉ của bạn ở đâu?'],
+  successfulBookingMessageTemplate: "Lịch hẹn của bạn cho {{service}} vào lúc {{time}} ngày {{date}}{{#if branch}} tại {{branch}}{{/if}} đã được đặt thành công! Chúng tôi sẽ gửi tin nhắn xác nhận chi tiết cho bạn.",
   footerText: `© ${new Date().getFullYear()} ${defaultInitialBrandName}. Đã đăng ký Bản quyền.`,
   metaTitle: `${defaultInitialBrandName} - Live Chat Thông Minh`,
   metaDescription: 'Live chat tích hợp AI cho giao tiếp khách hàng liền mạch.',
@@ -80,6 +81,7 @@ export default function AdminSettingsPage() {
           ...initialSettingsState, 
           ...fetchedSettings,     
           suggestedQuestions: fetchedSettings.suggestedQuestions && fetchedSettings.suggestedQuestions.length > 0 ? fetchedSettings.suggestedQuestions : initialSettingsState.suggestedQuestions,
+          successfulBookingMessageTemplate: fetchedSettings.successfulBookingMessageTemplate || initialSettingsState.successfulBookingMessageTemplate,
           metaKeywords: fetchedSettings.metaKeywords && fetchedSettings.metaKeywords.length > 0 ? fetchedSettings.metaKeywords : initialSettingsState.metaKeywords || [],
           workingHours: fetchedSettings.workingHours && fetchedSettings.workingHours.length > 0 ? fetchedSettings.workingHours : initialSettingsState.workingHours,
           weeklyOffDays: fetchedSettings.weeklyOffDays || initialSettingsState.weeklyOffDays || [],
@@ -250,6 +252,7 @@ export default function AdminSettingsPage() {
         id: undefined, 
         updatedAt: undefined, 
         suggestedQuestions: settings.suggestedQuestions || [],
+        successfulBookingMessageTemplate: settings.successfulBookingMessageTemplate || initialSettingsState.successfulBookingMessageTemplate,
         metaKeywords: settings.metaKeywords || [],
         workingHours: settings.workingHours || [],
         weeklyOffDays: settings.weeklyOffDays || [],
@@ -263,8 +266,6 @@ export default function AdminSettingsPage() {
       
       Object.keys(finalSettingsToSave).forEach(key => {
         if (finalSettingsToSave[key as keyof typeof finalSettingsToSave] === undefined) {
-          // Keep undefined for numeric fields if they were intentionally cleared to use defaults
-          // For arrays, they are already defaulted to [] above.
           if (typeof initialSettingsState[key as keyof AppSettings] === 'number' && finalSettingsToSave[key as keyof typeof finalSettingsToSave] === undefined) {
             // Explicitly do nothing to allow undefined to be sent for numbers
           } else if (finalSettingsToSave[key as keyof typeof finalSettingsToSave] === undefined) {
@@ -362,6 +363,11 @@ export default function AdminSettingsPage() {
             <div className="space-y-2">
                 <Label htmlFor="suggestedQuestions">Câu hỏi gợi ý ban đầu (Mỗi câu một dòng)</Label>
                 <Textarea id="suggestedQuestions" name="suggestedQuestions" value={(settings.suggestedQuestions || []).join('\n')} onChange={handleSuggestedQuestionsChange} disabled={isSubmitting} placeholder="Dịch vụ của bạn là gì?\nĐặt lịch hẹn"/>
+            </div>
+             <div className="space-y-2">
+                <Label htmlFor="successfulBookingMessageTemplate">Mẫu tin nhắn Đặt lịch thành công</Label>
+                <Textarea id="successfulBookingMessageTemplate" name="successfulBookingMessageTemplate" value={settings.successfulBookingMessageTemplate || ''} onChange={handleInputChange} disabled={isSubmitting} placeholder="VD: Lịch hẹn cho {{service}} vào {{time}} {{date}} đã được xác nhận!" />
+                <p className="text-xs text-muted-foreground">Sử dụng: `{{service}}`, `{{date}}`, `{{time}}`, `{{branch}}`.</p>
             </div>
         </CardContent>
       </Card>
@@ -563,5 +569,4 @@ export default function AdminSettingsPage() {
     </div>
   );
 }
-
-    
+```

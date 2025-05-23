@@ -2,7 +2,7 @@
 // src/app/staff/chat/[customerId]/page.tsx
 'use client';
 
-import { useEffect, useState, useRef, useCallback } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { useParams } from 'next/navigation';
 import NextImage from 'next/image';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
@@ -10,7 +10,7 @@ import { Card, CardHeader, CardTitle, CardContent, CardFooter } from '@/componen
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { Avatar, AvatarFallback } from '@/components/ui/avatar'; // Removed AvatarImage
 import { Send, Paperclip, Smile, UserCircle, Edit2, Tag, Clock, Phone, Info, X, StickyNote, PlusCircle, Trash2, UserPlus, LogOutIcon, UserCheck, Users, Pin, PinOff, Edit, Image as ImageIconLucide, ExternalLink, FileText, Download, Zap, MoreVertical, CalendarPlus, Loader2 } from 'lucide-react';
 import type { CustomerProfile, Message, AppointmentDetails, UserSession, Note, MessageEditState, Conversation, QuickReplyType, AppointmentBookingFormData } from '@/lib/types';
 import {
@@ -51,6 +51,9 @@ import { cn } from '@/lib/utils';
 
 const MAX_FILE_SIZE_MB = 5;
 const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
+const MAX_NOTE_IMAGE_SIZE_MB = 2;
+const MAX_NOTE_IMAGE_SIZE_BYTES = MAX_NOTE_IMAGE_SIZE_MB * 1024 * 1024;
+
 
 function getMimeTypeFromDataUri(dataUri: string): string | null {
   const match = dataUri.match(/^data:([^;]+);base64,/);
@@ -82,9 +85,19 @@ export default function StaffIndividualChatPage() {
   const [newTagName, setNewTagName] = useState('');
   const [editingInternalName, setEditingInternalName] = useState(false);
   const [internalNameInput, setInternalNameInput] = useState('');
+  
+  // Note states
   const [newNoteContent, setNewNoteContent] = useState('');
+  const [newNoteImageDataUri, setNewNoteImageDataUri] = useState<string | undefined>(undefined);
+  const [newNoteImageFileName, setNewNoteImageFileName] = useState<string | undefined>(undefined);
+  const newNoteImageInputRef = useRef<HTMLInputElement>(null);
+
   const [editingNote, setEditingNote] = useState<Note | null>(null);
   const [editingNoteContent, setEditingNoteContent] = useState('');
+  const [editingNoteImageDataUri, setEditingNoteImageDataUri] = useState<string | undefined | null>(undefined); // null means remove
+  const [editingNoteImageFileName, setEditingNoteImageFileName] = useState<string | undefined | null>(undefined);
+  const editNoteImageInputRef = useRef<HTMLInputElement>(null);
+
 
   const [allStaff, setAllStaff] = useState<{id: string, name: string}[]>([]);
   const [selectedStaffToAssign, setSelectedStaffToAssign] = useState<string>('');
@@ -159,7 +172,7 @@ export default function StaffIndividualChatPage() {
         setActiveConversation(currentActiveConv);
 
         if (currentActiveConv) {
-          setMessages(fetchedMessages || []);
+          setMessages((fetchedMessages || []).map(m => ({ ...m, timestamp: new Date(m.timestamp) })));
           fetchPinnedMessagesForConversation(currentActiveConv);
         } else {
           setMessages([]);
@@ -228,7 +241,7 @@ export default function StaffIndividualChatPage() {
   }, [activeConversation]);
 
   useEffect(() => {
-      if (activeConversation) { // This effect will run when activeConversation itself changes
+      if (activeConversation) { 
           fetchPinnedMessagesForConversation(activeConversation);
       }
   }, [activeConversation, fetchPinnedMessagesForConversation]);
@@ -246,7 +259,7 @@ export default function StaffIndividualChatPage() {
       if (newMessage.conversationId === activeConversation?.id && newMessage.userId !== staffSession?.id) {
         setMessages(prev => {
             if (prev.find(m => m.id === newMessage.id)) return prev;
-            return [...prev, newMessage];
+            return [...prev, {...newMessage, timestamp: new Date(newMessage.timestamp)}];
         });
       }
     };
@@ -404,7 +417,6 @@ export default function StaffIndividualChatPage() {
       const updatedMessage = await editStaffMessage(messageEditState.messageId, finalContent, staffSession);
       if (updatedMessage) {
         setMessages(prev => prev.map(m => m.id === updatedMessage.id ? {...updatedMessage, timestamp: new Date(updatedMessage.timestamp)} : m));
-        // fetchPinnedMessagesForConversation will be called by its own useEffect if activeConversation's pinnedMessageIds changed
         if (socket && isConnected) {
           socket.emit('editMessage', { message: updatedMessage, conversationId: activeConversation.id });
         }
@@ -448,7 +460,6 @@ export default function StaffIndividualChatPage() {
       const result = await deleteStaffMessage(messageId, staffSession);
       if (result.success) {
         setMessages(prev => prev.filter(m => m.id !== messageId));
-        // fetchPinnedMessagesForConversation will be called by its own useEffect
         if (socket && isConnected) {
           socket.emit('deleteMessage', { messageId, conversationId: activeConversation.id });
         }
@@ -464,22 +475,22 @@ export default function StaffIndividualChatPage() {
 
   const handlePinRequested = (messageId: string) => {
     if (!socket || !isConnected || !activeConversation?.id || !staffSession) return;
-    socket.emit('pinMessageRequested', { // Changed from pinMessage
-        conversationId: activeConversation.id,
+    socket.emit('pinMessageRequested', { 
+        conversationId: activeConversation.id, 
         messageId,
-        userSessionJsonString: JSON.stringify(staffSession)
+        userSessionJsonString: JSON.stringify(staffSession) 
     });
   };
 
   const handleUnpinRequested = (messageId: string) => {
     if (!socket || !isConnected || !activeConversation?.id || !staffSession) return;
-    socket.emit('unpinMessageRequested', { // Changed from unpinMessage
-        conversationId: activeConversation.id,
+    socket.emit('unpinMessageRequested', { 
+        conversationId: activeConversation.id, 
         messageId,
         userSessionJsonString: JSON.stringify(staffSession)
     });
   };
-
+  
   const handleScrollToMessage = (messageId: string) => {
     const element = document.getElementById(messageId);
     if (element) {
@@ -581,32 +592,103 @@ export default function StaffIndividualChatPage() {
     }
   };
 
+  const handleNewNoteImageChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      if (!file.type.startsWith('image/')) {
+        toast({ title: "Lỗi", description: "Chỉ chấp nhận tệp hình ảnh cho ghi chú.", variant: "destructive" });
+        if (newNoteImageInputRef.current) newNoteImageInputRef.current.value = "";
+        return;
+      }
+      if (file.size > MAX_NOTE_IMAGE_SIZE_BYTES) {
+        toast({ title: "Lỗi", description: `Kích thước ảnh ghi chú không được vượt quá ${MAX_NOTE_IMAGE_SIZE_MB}MB.`, variant: "destructive" });
+        if (newNoteImageInputRef.current) newNoteImageInputRef.current.value = "";
+        return;
+      }
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setNewNoteImageDataUri(reader.result as string);
+        setNewNoteImageFileName(file.name);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
   const handleAddNote = async () => {
-    if (!newNoteContent.trim() || !customer || !staffSession) return;
+    if ((!newNoteContent.trim() && !newNoteImageDataUri) || !customer || !staffSession) {
+        toast({ title: "Thiếu thông tin", description: "Nội dung ghi chú hoặc hình ảnh là bắt buộc.", variant: "destructive"});
+        return;
+    }
     try {
-      const newNote = await addNoteToCustomer(customer.id, staffSession.id, newNoteContent.trim());
+      const newNote = await addNoteToCustomer(customer.id, staffSession.id, newNoteContent.trim(), newNoteImageDataUri, newNoteImageFileName);
       setNotes(prev => [newNote, ...prev]);
       setNewNoteContent('');
+      setNewNoteImageDataUri(undefined);
+      setNewNoteImageFileName(undefined);
+      if (newNoteImageInputRef.current) newNoteImageInputRef.current.value = "";
       toast({ title: "Thành công", description: "Đã thêm ghi chú." });
     } catch (error: any) {
       toast({ title: "Lỗi", description: `Không thể thêm ghi chú: ${error.message}`, variant: "destructive" });
     }
   };
 
+  const handleEditNoteImageChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      if (!file.type.startsWith('image/')) {
+        toast({ title: "Lỗi", description: "Chỉ chấp nhận tệp hình ảnh cho ghi chú.", variant: "destructive" });
+        if (editNoteImageInputRef.current) editNoteImageInputRef.current.value = "";
+        return;
+      }
+      if (file.size > MAX_NOTE_IMAGE_SIZE_BYTES) {
+        toast({ title: "Lỗi", description: `Kích thước ảnh ghi chú không được vượt quá ${MAX_NOTE_IMAGE_SIZE_MB}MB.`, variant: "destructive" });
+        if (editNoteImageInputRef.current) editNoteImageInputRef.current.value = "";
+        return;
+      }
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setEditingNoteImageDataUri(reader.result as string);
+        setEditingNoteImageFileName(file.name);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleRemoveEditingNoteImage = () => {
+    setEditingNoteImageDataUri(null); // Signal to remove image
+    setEditingNoteImageFileName(null);
+    if (editNoteImageInputRef.current) editNoteImageInputRef.current.value = "";
+  };
+
+
   const handleEditNote = (note: Note) => {
     setEditingNote(note);
     setEditingNoteContent(note.content);
+    setEditingNoteImageDataUri(note.imageDataUri);
+    setEditingNoteImageFileName(note.imageFileName);
   };
 
   const handleSaveEditedNote = async () => {
-    if (!editingNote || !staffSession || !editingNoteContent.trim()) return;
+    if (!editingNote || !staffSession || (!editingNoteContent.trim() && editingNoteImageDataUri === undefined)) {
+         toast({ title: "Thiếu thông tin", description: "Nội dung ghi chú hoặc hình ảnh là bắt buộc khi sửa.", variant: "destructive"});
+        return;
+    }
     try {
-      const updatedNote = await updateCustomerNote(editingNote.id, staffSession.id, editingNoteContent.trim());
+      const updatedNote = await updateCustomerNote(
+        editingNote.id, 
+        staffSession.id, 
+        editingNoteContent.trim(),
+        editingNoteImageDataUri, // Can be string (new/existing URI) or null (to remove)
+        editingNoteImageDataUri ? editingNoteImageFileName : undefined // Send filename only if URI exists
+        );
       if (updatedNote) {
         setNotes(prevNotes => prevNotes.map(n => n.id === updatedNote.id ? updatedNote : n));
       }
       setEditingNote(null);
       setEditingNoteContent('');
+      setEditingNoteImageDataUri(undefined);
+      setEditingNoteImageFileName(undefined);
+      if (editNoteImageInputRef.current) editNoteImageInputRef.current.value = "";
       toast({ title: "Thành công", description: "Đã cập nhật ghi chú." });
     } catch (error: any) {
       toast({ title: "Lỗi", description: `Không thể cập nhật ghi chú: ${error.message}`, variant: "destructive" });
@@ -681,8 +763,6 @@ export default function StaffIndividualChatPage() {
     return <div className="flex flex-col items-center justify-center h-full"><p>Không tìm thấy thông tin khách hàng cho ID: {customerId}.</p></div>;
   }
   if (!activeConversation) {
-     // This case can happen if a customer exists but has no conversations,
-     // or if the first conversation failed to load. Provide a user-friendly message.
      return (
       <div className="flex flex-col items-center justify-center h-full text-center p-4">
         <Loader2 className="h-8 w-8 animate-spin text-primary mb-2" />
@@ -719,11 +799,10 @@ export default function StaffIndividualChatPage() {
         <CardHeader className="flex flex-row items-center justify-between border-b p-4">
           <div className="flex items-center gap-3">
             <Avatar>
-              <AvatarImage src={`https://placehold.co/40x40.png?text=${(customer.internalName || customer.name || customer.phoneNumber).charAt(0)}`} data-ai-hint="profile avatar"/>
               <AvatarFallback>{(customer.internalName || customer.name || customer.phoneNumber).charAt(0)}</AvatarFallback>
             </Avatar>
             <div>
-              <CardTitle className="text-lg">{customer.internalName || customer.name || customer.phoneNumber}</CardTitle>
+              <CardTitle className="text-lg">{customer.internalName || customer.name || `Người dùng ${customer.phoneNumber}`}</CardTitle>
               <p className="text-xs text-muted-foreground">Hoạt động cuối: {format(new Date(customer.lastInteractionAt), 'HH:mm dd/MM/yy', { locale: vi })}
                 {customer.assignedStaffId ? ` (Giao cho: ${customer.assignedStaffId === staffSession?.id ? 'Bạn' : customer.assignedStaffName || 'NV khác'})` : "(Chưa giao)"}
               </p>
@@ -941,24 +1020,37 @@ export default function StaffIndividualChatPage() {
             </div>
             <div className="border-t pt-3">
               <h4 className="font-semibold text-sm flex items-center mb-1"><StickyNote className="mr-2 h-4 w-4 text-primary" />Ghi chú nội bộ ({notes.length})</h4>
-              <div className="space-y-2 mb-2 max-h-48 overflow-y-auto">
+              <div className="space-y-2 mb-2 max-h-40 overflow-y-auto">
                 {notes.map(note => (
                   <div key={note.id} className="text-xs p-1.5 bg-muted/50 rounded">
                     {editingNote?.id === note.id ? (
-                      <>
-                        <Textarea
-                            value={editingNoteContent}
-                            onChange={e => setEditingNoteContent(e.target.value)}
-                            rows={2}
-                            className="text-xs mb-1"
+                      <div className="space-y-1">
+                        {editingNoteImageDataUri && (
+                             <div className="relative w-20 h-20 border rounded overflow-hidden">
+                                <NextImage src={editingNoteImageDataUri} alt={editingNoteImageFileName || "Note image"} layout="fill" objectFit="cover" data-ai-hint="note image" />
+                                <Button variant="ghost" size="icon" className="absolute top-0 right-0 h-5 w-5 bg-black/30 hover:bg-black/50 text-white" onClick={handleRemoveEditingNoteImage}><X className="h-3 w-3"/></Button>
+                            </div>
+                        )}
+                        <Input 
+                            type="file" 
+                            accept="image/*" 
+                            ref={editNoteImageInputRef} 
+                            onChange={handleEditNoteImageChange} 
+                            className="h-8 text-xs"
                         />
+                        <Textarea value={editingNoteContent} onChange={e => setEditingNoteContent(e.target.value)} rows={2} className="text-xs"/>
                         <div className="flex gap-1 justify-end">
                             <Button size="xs" variant="ghost" onClick={() => setEditingNote(null)}>Hủy</Button>
                             <Button size="xs" onClick={handleSaveEditedNote}>Lưu</Button>
                         </div>
-                      </>
+                      </div>
                     ) : (
                       <>
+                        {note.imageDataUri && (
+                             <div className="relative w-full aspect-video border rounded overflow-hidden my-1">
+                                <NextImage src={note.imageDataUri} alt={note.imageFileName || "Note image"} layout="fill" objectFit="contain" data-ai-hint="note image" />
+                            </div>
+                        )}
                         <p className="whitespace-pre-wrap">{note.content}</p>
                         <div className="flex justify-between items-center mt-1">
                             <p className="text-muted-foreground">{note.staffName || 'Nhân viên'} - {format(new Date(note.createdAt), 'dd/MM HH:mm', { locale: vi })}</p>
@@ -985,14 +1077,29 @@ export default function StaffIndividualChatPage() {
                   </div>
                 ))}
               </div>
-              <Textarea
-                placeholder="Thêm ghi chú nội bộ mới..."
-                rows={2}
-                className="text-xs"
-                value={newNoteContent}
-                onChange={e => setNewNoteContent(e.target.value)}
-              />
-              <Button size="sm" className="mt-1 w-full" onClick={handleAddNote} disabled={!newNoteContent.trim()}>
+              <div className="space-y-1">
+                {newNoteImageDataUri && (
+                    <div className="relative w-20 h-20 border rounded overflow-hidden">
+                        <NextImage src={newNoteImageDataUri} alt={newNoteImageFileName || "New note image"} layout="fill" objectFit="cover" data-ai-hint="note image" />
+                        <Button variant="ghost" size="icon" className="absolute top-0 right-0 h-5 w-5 bg-black/30 hover:bg-black/50 text-white" onClick={() => { setNewNoteImageDataUri(undefined); setNewNoteImageFileName(undefined); if(newNoteImageInputRef.current) newNoteImageInputRef.current.value = ""; }}><X className="h-3 w-3"/></Button>
+                    </div>
+                )}
+                <Input 
+                    type="file" 
+                    accept="image/*" 
+                    ref={newNoteImageInputRef} 
+                    onChange={handleNewNoteImageChange} 
+                    className="h-8 text-xs"
+                />
+                <Textarea
+                    placeholder="Thêm ghi chú nội bộ mới..."
+                    rows={2}
+                    className="text-xs"
+                    value={newNoteContent}
+                    onChange={e => setNewNoteContent(e.target.value)}
+                />
+              </div>
+              <Button size="sm" className="mt-1 w-full" onClick={handleAddNote} disabled={!newNoteContent.trim() && !newNoteImageDataUri}>
                 <PlusCircle className="mr-1 h-3 w-3"/>Thêm Ghi chú
               </Button>
             </div>
@@ -1068,3 +1175,4 @@ export default function StaffIndividualChatPage() {
     </div>
   );
 }
+```

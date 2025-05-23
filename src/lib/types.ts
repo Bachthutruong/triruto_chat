@@ -1,33 +1,35 @@
 
+// src/lib/types.ts
+
 export type Message = {
   id: string;
   sender: 'user' | 'ai' | 'system';
   content: string;
   timestamp: Date;
-  name?: string; // Optional: display name for sender
-  userId?: string; // ID of the actual user who sent (if staff/admin sent as 'ai')
-  updatedAt?: Date; // For edited messages
-  conversationId?: string; // To associate message with a conversation for Socket.IO
+  name?: string; 
+  userId?: string; 
+  updatedAt?: Date; 
+  conversationId: string; 
 };
 
 export type AppointmentStatus = 'booked' | 'cancelled' | 'completed' | 'pending_confirmation' | 'rescheduled';
 
 export type AppointmentDetails = {
   appointmentId: string;
-  userId: string; // Corresponds to UserSession.id or Customer.id
-  service: string; // Service name
-  productId?: string; // Optional: ID of the product/service if selected from list
-  time: string; // e.g., "3:00 PM" or ISO time part
-  date: string; // e.g., "2024-07-15" or ISO date part
-  branch?: string; // Branch name
-  branchId?: string; // Optional: ID of the branch
-  packageType?: string; // Optional: e.g., "Standard", "Premium"
-  priority?: string; // Optional: e.g., "High", "Normal"
+  userId: string; 
+  service: string; 
+  productId?: string; 
+  time: string; 
+  date: string; 
+  branch?: string; 
+  branchId?: string; 
+  packageType?: string; 
+  priority?: string; 
   status: AppointmentStatus;
-  notes?: string; // Optional notes for the appointment
+  notes?: string; 
   createdAt: Date;
   updatedAt: Date;
-  staffId?: string; // Staff member who handled/created the appointment
+  staffId?: string; 
   staffName?: string;
   customerName?: string;
   customerPhoneNumber?: string;
@@ -47,8 +49,10 @@ export type Note = {
   id: string;
   customerId: string;
   staffId: string;
-  staffName?: string; // Name of the staff who created/last edited
+  staffName?: string; 
   content: string;
+  imageDataUri?: string; // New field for image data URI
+  imageFileName?: string; // New field for image file name
   createdAt: Date;
   updatedAt: Date;
 };
@@ -74,7 +78,7 @@ export type CustomerProfile = {
   lastMessagePreview?: string;
   lastMessageTimestamp?: Date;
   timezone?: string;
-  pinnedConversationIds?: string[]; // For user-specific pinning of conversations
+  pinnedConversationIds?: string[];
 };
 
 export type UserSession = {
@@ -82,7 +86,7 @@ export type UserSession = {
   phoneNumber: string;
   role: UserRole;
   name?: string;
-  currentConversationId?: string; // For customers, this is their primary conversation
+  currentConversationId?: string; 
   pinnedConversationIds?: string[];
 };
 
@@ -125,20 +129,21 @@ export type AppointmentRule = {
 };
 
 export type SpecificDayRule = {
-  id?: string; // Optional for client-side temporary ID before saving
-  date: string; // "YYYY-MM-DD"
+  id?: string; 
+  date: string; 
   isOff?: boolean;
-  workingHours?: string[]; // ["HH:MM", "HH:MM"]
+  workingHours?: string[]; 
   numberOfStaff?: number;
   serviceDurationMinutes?: number;
 };
 
 export type AppSettings = {
   id: string;
-  greetingMessage?: string; // General greeting
-  greetingMessageNewCustomer?: string; // Greeting for new customers
-  greetingMessageReturningCustomer?: string; // Greeting for returning customers
+  greetingMessage?: string; 
+  greetingMessageNewCustomer?: string; 
+  greetingMessageReturningCustomer?: string; 
   suggestedQuestions?: string[];
+  successfulBookingMessageTemplate?: string; // New field
 
   brandName?: string;
   logoUrl?: string;
@@ -152,7 +157,6 @@ export type AppSettings = {
   robotsTxtContent?: string;
   sitemapXmlContent?: string;
 
-  // Global Scheduling Rules (Fallbacks)
   numberOfStaff?: number;
   defaultServiceDurationMinutes?: number;
   workingHours?: string[]; 
@@ -198,7 +202,7 @@ export type GetAppointmentsFilters = {
   customerId?: string;
   staffId?: string;
   status?: string[];
-  serviceName?: string; // Added for filtering by service name
+  serviceName?: string; 
 };
 
 export type AdminDashboardStats = {
@@ -217,12 +221,12 @@ export type StaffDashboardStats = {
 };
 
 export type ProductSchedulingRules = {
-  numberOfStaff?: number; // Staff dedicated to *this* service
-  serviceDurationMinutes?: number; // Duration for *this* service
-  workingHours?: string[]; // Specific working hours for *this* service
-  weeklyOffDays?: number[]; // Specific off days for *this* service
-  oneTimeOffDates?: string[]; // Specific one-time off dates for *this* service
-  specificDayRules?: SpecificDayRule[]; // Daily overrides for *this* service
+  numberOfStaff?: number; 
+  serviceDurationMinutes?: number; 
+  workingHours?: string[]; 
+  weeklyOffDays?: number[]; 
+  oneTimeOffDates?: string[]; 
+  specificDayRules?: SpecificDayRule[]; 
 };
 
 export type ProductItem = {
@@ -277,8 +281,8 @@ export type Conversation = {
     phoneNumber?: string;
   }>;
   messageIds: string[];
-  pinnedMessageIds?: string[]; // Array of message IDs that are pinned
-  isPinned?: boolean; // For user-specific pinning of conversations in their list
+  pinnedMessageIds?: string[]; 
+  isPinned?: boolean; 
   createdAt: Date;
   updatedAt: Date;
   lastMessageTimestamp?: Date;
@@ -304,11 +308,12 @@ export type QuickReplyType = {
   updatedAt: Date;
 };
 
-// Used to pass effective scheduling rules to checkRealAvailability
 export type EffectiveSchedulingRules = {
-  numberOfStaff: number; // Must have a value (from product or global)
-  workingHours: string[]; // Must have a value
-  weeklyOffDays: number[]; // Must have a value
-  oneTimeOffDates: string[]; // Must have a value
-  specificDayRules: SpecificDayRule[]; // Must have a value
+  numberOfStaff: number; 
+  workingHours: string[]; 
+  weeklyOffDays: number[]; 
+  oneTimeOffDates: string[]; 
+  specificDayRules: SpecificDayRule[]; 
 };
+
+```

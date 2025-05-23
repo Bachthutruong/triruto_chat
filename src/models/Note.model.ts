@@ -1,3 +1,4 @@
+
 // src/models/Note.model.ts
 import mongoose, { Schema, Document, models, Model } from 'mongoose';
 import type { Note } from '@/lib/types';
@@ -11,8 +12,11 @@ const NoteSchema: Schema<INote> = new Schema({
   customerId: { type: Schema.Types.ObjectId, ref: 'Customer', required: true, index: true },
   staffId: { type: Schema.Types.ObjectId, ref: 'User', required: true, index: true }, // User who created/last edited
   content: { type: String, required: true },
+  imageDataUri: { type: String }, // New field
+  imageFileName: { type: String }, // New field
 }, { timestamps: true }); // createdAt and updatedAt managed by Mongoose
 
 const NoteModel = models.Note as Model<INote> || mongoose.model<INote>('Note', NoteSchema);
 
 export default NoteModel;
+```

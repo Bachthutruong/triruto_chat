@@ -12,8 +12,10 @@ const SpecificDayRuleSchema: Schema<SpecificDayRule> = new Schema({
   serviceDurationMinutes: { type: Number },
 }, { _id: true });
 
-export interface IAppSettings extends Document, Omit<AppSettings, 'id' | 'specificDayRules'> {
-  specificDayRules?: mongoose.Types.DocumentArray<SpecificDayRule>;
+export interface IAppSettings extends Document, Omit<AppSettings, 'id' | 'specificDayRules' | 'updatedAt'> {
+  specificDayRules?: mongoose.Types.DocumentArray<Omit<SpecificDayRule, 'id'>>; // For Mongoose array handling
+  createdAt?: Date; // Added for consistency if needed, though timestamps:true handles it
+  updatedAt?: Date; // Added for consistency
 }
 
 const AppSettingsSchema: Schema<IAppSettings> = new Schema({
@@ -21,6 +23,7 @@ const AppSettingsSchema: Schema<IAppSettings> = new Schema({
   greetingMessageNewCustomer: { type: String, default: 'Chào mừng bạn lần đầu đến với chúng tôi! Bạn cần hỗ trợ gì ạ?' },
   greetingMessageReturningCustomer: { type: String, default: 'Chào mừng bạn quay trở lại! Rất vui được gặp lại bạn.' },
   suggestedQuestions: { type: [String], default: ['Các dịch vụ của bạn?', 'Đặt lịch hẹn', 'Địa chỉ của bạn ở đâu?'] },
+  successfulBookingMessageTemplate: { type: String, default: "Lịch hẹn của bạn cho {{service}} vào lúc {{time}} ngày {{date}}{{#if branch}} tại {{branch}}{{/if}} đã được đặt thành công! Chúng tôi sẽ gửi tin nhắn xác nhận chi tiết cho bạn." },
   brandName: { type: String, default: 'AetherChat' },
   logoUrl: { type: String },
   logoDataUri: { type: String },
