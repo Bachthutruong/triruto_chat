@@ -1,3 +1,4 @@
+
 // src/app/admin/media/[customerId]/page.tsx
 'use client';
 

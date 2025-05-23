@@ -5,6 +5,7 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { useParams } from 'next/navigation';
 import NextImage from 'next/image';
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { Card, CardHeader, CardTitle, CardContent, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -31,7 +32,8 @@ import {
   deleteStaffMessage,
   editStaffMessage,
   getQuickReplies,
-  handleBookAppointmentFromForm
+  handleBookAppointmentFromForm,
+  getCustomerMediaMessages
 } from '@/app/actions';
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
@@ -55,6 +57,10 @@ function getMimeTypeFromDataUri(dataUri: string): string | null {
   return match ? match[1] : null;
 }
 
+function isImageDataURI(uri: string): boolean {
+  return typeof uri === 'string' && uri.startsWith('data:image/');
+}
+
 export default function StaffIndividualChatPage() {
   const params = useParams();
   const customerId = params.customerId as string;
@@ -66,6 +72,8 @@ export default function StaffIndividualChatPage() {
   const [appointments, setAppointments] = useState<AppointmentDetails[]>([]);
   const [notes, setNotes] = useState<Note[]>([]);
   const [activeConversation, setActiveConversation] = useState<Conversation | null>(null);
+  const [allMediaMessages, setAllMediaMessages] = useState<Message[]>([]);
+
 
   const [isLoading, setIsLoading] = useState(true); 
   const [isSendingMessage, setIsSendingMessage] = useState(false); 
@@ -116,9 +124,10 @@ export default function StaffIndividualChatPage() {
       console.log("Staff: fetchChatData triggered for customerId:", customerId);
       setIsLoading(true);
       try {
-        const [details, fetchedQuickRepliesResult] = await Promise.all([
+        const [details, fetchedQuickRepliesResult, fetchedMediaMessages] = await Promise.all([
           getCustomerDetails(customerId),
-          getQuickReplies()
+          getQuickReplies(),
+          getCustomerMediaMessages(customerId)
         ]);
 
         const {
@@ -133,6 +142,8 @@ export default function StaffIndividualChatPage() {
         setAppointments(fetchedAppointments || []);
         setNotes(fetchedNotes || []);
         setQuickReplies(fetchedQuickRepliesResult || []);
+        setAllMediaMessages(fetchedMediaMessages || []);
+
 
         if (fetchedCustomer?.internalName) {
           setInternalNameInput(fetchedCustomer.internalName);
@@ -167,6 +178,7 @@ export default function StaffIndividualChatPage() {
         setMessages([]);
         setPinnedMessages([]);
         setActiveConversation(null);
+        setAllMediaMessages([]);
       } finally {
         setIsLoading(false);
       }
@@ -262,7 +274,7 @@ export default function StaffIndividualChatPage() {
     };
 
     const handleMessageEdited = ({ message: editedMessage, conversationId: convId }: { message: Message, conversationId: string }) => {
-      if (convId === activeConversation?.id) {
+       if (convId === activeConversation?.id) {
         setMessages(prev => prev.map(m => m.id === editedMessage.id ? {...editedMessage, timestamp: new Date(editedMessage.timestamp)} : m));
         setPinnedMessages(prev => prev.map(pm => pm.id === editedMessage.id ? {...editedMessage, timestamp: new Date(editedMessage.timestamp)} : pm));
       }
@@ -655,14 +667,14 @@ export default function StaffIndividualChatPage() {
     }
   };
 
-  if (isLoading && !customer && !staffSession) { // Only show full page loader if nothing is available yet
+  if (isLoading && !customer && !staffSession) { 
     return <div className="flex items-center justify-center h-full"><Loader2 className="h-8 w-8 animate-spin text-primary"/> <p className="ml-2">Đang tải dữ liệu...</p></div>;
   }
 
   if (!staffSession) {
     return <div className="flex items-center justify-center h-full"><p>Không tìm thấy phiên làm việc. Vui lòng đăng nhập lại.</p></div>;
   }
-  if (isLoading && !customer) { // Loading customer details specifically
+  if (isLoading && !customer) { 
      return <div className="flex items-center justify-center h-full"><Loader2 className="h-8 w-8 animate-spin text-primary"/> <p className="ml-2">Đang tải thông tin khách hàng...</p></div>;
   }
   if (!customer) {
@@ -683,6 +695,10 @@ export default function StaffIndividualChatPage() {
       default: return status;
     }
   };
+
+  const imageMedia = allMediaMessages.filter(msg => isImageDataURI(msg.content));
+  const fileMedia = allMediaMessages.filter(msg => !isImageDataURI(msg.content));
+  const mediaViewPath = staffSession?.role === 'admin' ? `/admin/media/${customerId}` : `/staff/media/${customerId}`;
 
 
   return (
@@ -712,11 +728,6 @@ export default function StaffIndividualChatPage() {
                      <LogOutIcon className="mr-1 h-4 w-4"/> {isAssigning ? "Đang trả..." : "Trả về hàng đợi"}
                  </Button>
             )}
-             <Button variant="outline" size="sm" asChild>
-                <Link href={staffSession.role === 'admin' ? `/admin/media/${customerId}` : `/staff/media/${customerId}`}>
-                  <ImageIconLucide className="mr-1 h-4 w-4" /> Lịch sử File
-                </Link>
-              </Button>
           </div>
         </CardHeader>
 
@@ -826,6 +837,81 @@ export default function StaffIndividualChatPage() {
                 </div>
               </div>
             </div>
+
+            <Accordion type="multiple" className="w-full">
+              <AccordionItem value="media-history">
+                <AccordionTrigger className="text-sm font-semibold py-2 hover:no-underline">
+                  <div className="flex items-center"><ImageIconLucide className="mr-2 h-4 w-4 text-primary"/>Ảnh/Video ({imageMedia.length})</div>
+                </AccordionTrigger>
+                <AccordionContent className="pt-1 pb-2">
+                  {imageMedia.length > 0 ? (
+                    <>
+                      <div className="grid grid-cols-3 gap-1.5 mb-2">
+                        {imageMedia.slice(0, 6).map(msg => {
+                          const match = msg.content.match(/^(data:image\/[^;]+;base64,[^#]+)/);
+                          if (!match) return null;
+                          const dataUri = match[1];
+                          return (
+                            <div key={msg.id} className="aspect-square relative rounded overflow-hidden bg-muted">
+                              <NextImage src={dataUri} alt="media thumbnail" layout="fill" objectFit="cover" data-ai-hint="thumbnail image"/>
+                            </div>
+                          );
+                        })}
+                      </div>
+                      {imageMedia.length > 6 && (
+                        <Button variant="link" size="sm" className="p-0 h-auto text-xs w-full justify-center" asChild>
+                          <Link href={mediaViewPath}>Xem tất cả {imageMedia.length} ảnh/video</Link>
+                        </Button>
+                      )}
+                       {imageMedia.length > 0 && imageMedia.length <= 6 && (
+                          <Button variant="link" size="sm" className="p-0 h-auto text-xs w-full justify-center" asChild>
+                            <Link href={mediaViewPath}>Xem chi tiết</Link>
+                          </Button>
+                       )}
+                    </>
+                  ) : (
+                    <p className="text-xs text-muted-foreground text-center py-2">Chưa có ảnh/video nào.</p>
+                  )}
+                </AccordionContent>
+              </AccordionItem>
+
+              <AccordionItem value="file-history">
+                 <AccordionTrigger className="text-sm font-semibold py-2 hover:no-underline">
+                    <div className="flex items-center"><FileText className="mr-2 h-4 w-4 text-primary"/>File ({fileMedia.length})</div>
+                 </AccordionTrigger>
+                <AccordionContent className="pt-1 pb-2">
+                   {fileMedia.length > 0 ? (
+                    <>
+                      <div className="space-y-1 mb-2 max-h-32 overflow-y-auto">
+                        {fileMedia.map(msg => {
+                          const match = msg.content.match(/#filename=([^#\s]+)/);
+                          const fileName = match ? decodeURIComponent(match[1]) : "Tệp đính kèm";
+                          return (
+                            <a 
+                              key={msg.id} 
+                              href={msg.content.split('#filename=')[0]} 
+                              download={fileName}
+                              className="flex items-center gap-1.5 p-1.5 hover:bg-accent rounded text-xs"
+                            >
+                              <FileText className="h-3.5 w-3.5 shrink-0"/>
+                              <span className="truncate" title={fileName}>{fileName}</span>
+                            </a>
+                          );
+                        })}
+                      </div>
+                      {fileMedia.length > 0 && (
+                        <Button variant="link" size="sm" className="p-0 h-auto text-xs w-full justify-center" asChild>
+                          <Link href={mediaViewPath}>Xem tất cả file</Link>
+                        </Button>
+                      )}
+                    </>
+                  ) : (
+                    <p className="text-xs text-muted-foreground text-center py-2">Chưa có file nào.</p>
+                  )}
+                </AccordionContent>
+              </AccordionItem>
+            </Accordion>
+
             <div className="border-t pt-3">
               <h4 className="font-semibold text-sm flex items-center mb-1"><Clock className="mr-2 h-4 w-4 text-primary" />Lịch hẹn ({appointments.length})</h4>
               {appointments.slice(0,2).map(appt => (

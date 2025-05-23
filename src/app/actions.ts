@@ -11,7 +11,7 @@ import type { ScheduleAppointmentOutput, AppointmentRule as AIAppointmentRuleTyp
 import { randomUUID } from 'crypto';
 import mongoose, { Types, Document } from 'mongoose';
 import dotenv from 'dotenv';
-import { startOfDay, endOfDay, subDays, formatISO, parse, isValid, parseISO as dateFnsParseISO, setHours, setMinutes, setSeconds, setMilliseconds, getDay, addMinutes, isBefore, isEqual, format as dateFnsFormat, getHours, getMinutes } from 'date-fns';
+import { startOfDay, endOfDay, subDays, formatISO, parse, isValid as isValidDateFns, parseISO as dateFnsParseISO, setHours, setMinutes, setSeconds, setMilliseconds, getDay, addMinutes, isBefore, isEqual, format as dateFnsFormat, getHours, getMinutes } from 'date-fns';
 import { validatePhoneNumber } from '@/lib/validator';
 
 
@@ -338,9 +338,10 @@ export async function updateAppSettings(settings: Partial<Omit<AppSettings, 'id'
 
 export async function createNewConversationForUser(userId: string, title?: string): Promise<Conversation | null> {
   await dbConnect();
+  console.log("[ACTIONS] createNewConversationForUser: Called for userId:", userId);
   const user = await CustomerModel.findById(userId);
   if (!user) {
-    console.error(`createNewConversationForUser: Customer not found with ID: ${userId}`);
+    console.error(`[ACTIONS] createNewConversationForUser: Customer not found with ID: ${userId}`);
     return null;
   }
 
@@ -357,12 +358,16 @@ export async function createNewConversationForUser(userId: string, title?: strin
     pinnedMessageIds: [],
     lastMessageTimestamp: new Date(),
   });
+  console.log("[ACTIONS] createNewConversationForUser: New conversation object to save:", newConversation);
   const savedConversation = await newConversation.save();
+  console.log("[ACTIONS] createNewConversationForUser: Saved conversation:", savedConversation);
+
 
   if (user) { 
       user.conversationIds = user.conversationIds || []; 
       user.conversationIds.push(savedConversation._id);
       await user.save();
+      console.log("[ACTIONS] createNewConversationForUser: Updated customer with new conversation ID.");
   } else {
       console.warn(`User ${userId} is not a CustomerModel instance, conversation not linked directly to user document's conversationIds array.`);
   }
@@ -697,6 +702,33 @@ export async function processUserMessage(
   if (!appSettings) {
     throw new Error("Không thể tải cài đặt ứng dụng. Không thể xử lý tin nhắn.");
   }
+  // --- Out of Office Check ---
+  if (isOutOfOffice(appSettings) && appSettings.outOfOfficeResponseEnabled && appSettings.outOfOfficeMessage) {
+    const lastAiMessage = currentChatHistory.slice().reverse().find(m => m.sender === 'ai' || m.sender === 'system');
+    if (lastAiMessage && lastAiMessage.content === appSettings.outOfOfficeMessage) {
+      // Already sent OOO, send a brief follow-up or nothing
+      aiResponseContent = "Chúng tôi vẫn đang ngoài giờ làm việc. Xin cảm ơn sự kiên nhẫn của bạn.";
+      const aiMessageData: Partial<IMessage> = {
+        sender: 'ai',
+        content: aiResponseContent,
+        timestamp: new Date(),
+        name: `${appSettings.brandName || 'AI Assistant'}`,
+        customerId: new mongoose.Types.ObjectId(customerId),
+        conversationId: new mongoose.Types.ObjectId(currentConversationId),
+      };
+      const savedAiMessageDoc = await new MessageModel(aiMessageData).save();
+      finalAiMessage = transformMessageDocToMessage(savedAiMessageDoc);
+       await ConversationModel.findByIdAndUpdate(currentConversationId, {
+        $push: { messageIds: savedAiMessageDoc._id },
+        lastMessageTimestamp: savedAiMessageDoc.timestamp,
+        lastMessagePreview: savedAiMessageDoc.content.substring(0, 100),
+      });
+      return { userMessage: userMessage, aiMessage: finalAiMessage, newSuggestedReplies: [] };
+    }
+    // If OOO is active but this is the first message from user during OOO, the main greeting logic in handleCustomerAccess would have already sent the OOO message.
+    // However, if user sends another message *after* OOO message, this block catches it.
+  }
+  // --- End Out of Office Check ---
 
   const allProducts = await getAllProducts();
   const activeBranches = await getBranches(true);
@@ -1535,34 +1567,24 @@ export async function deleteStaffMessage(
 
 
   if (conversationIdString) {
-      await ConversationModel.findByIdAndUpdate(
-          conversationIdString,
-          { 
-            $pull: { 
-              messageIds: new mongoose.Types.ObjectId(messageId) as any, 
-              pinnedMessageIds: new mongoose.Types.ObjectId(messageId) as any 
-            } 
-          }
-      );
-      
-      const updatedConv = await ConversationModel.findById(conversationIdString).populate({
-        path: 'messageIds',
-        model: MessageModel,
-        options: { sort: { timestamp: -1 }, limit: 1 } 
-      });
-      if (updatedConv) {
-          if (updatedConv.messageIds && updatedConv.messageIds.length > 0) {
-              const lastMessageInConv = updatedConv.messageIds[0] as unknown as IMessage; 
-              await ConversationModel.findByIdAndUpdate(conversationIdString, {
-                  lastMessagePreview: lastMessageInConv.content.substring(0, 100),
-                  lastMessageTimestamp: lastMessageInConv.timestamp,
-              });
-          } else { 
-              await ConversationModel.findByIdAndUpdate(conversationIdString, {
-                  lastMessagePreview: '',
-                  lastMessageTimestamp: updatedConv.createdAt, 
-              });
-          }
+      const conversation = await ConversationModel.findById(conversationIdString);
+      if (conversation) {
+        conversation.messageIds = conversation.messageIds.filter(id => !id.equals(new mongoose.Types.ObjectId(messageId)));
+        conversation.pinnedMessageIds = conversation.pinnedMessageIds.filter(id => !id.equals(new mongoose.Types.ObjectId(messageId)));
+        
+        const lastMessageInConv = await MessageModel.findOne({ 
+            conversationId: conversation._id, 
+            _id: { $ne: new mongoose.Types.ObjectId(messageId) } 
+        }).sort({ timestamp: -1 });
+
+        if (lastMessageInConv) {
+            conversation.lastMessagePreview = lastMessageInConv.content.substring(0, 100);
+            conversation.lastMessageTimestamp = lastMessageInConv.timestamp;
+        } else { 
+            conversation.lastMessagePreview = '';
+            conversation.lastMessageTimestamp = conversation.createdAt; 
+        }
+        await conversation.save();
       }
   }
 
@@ -2314,9 +2336,6 @@ export async function pinMessageToConversation(conversationId: string, messageId
   const conversation = await ConversationModel.findById(conversationId);
   if (!conversation) throw new Error("Không tìm thấy cuộc trò chuyện.");
 
-  // Permission check: User can pin in their own conversation, staff/admin can pin in any they have access to.
-  // For simplicity, if it's staff/admin, we assume they have access if they can view the chat.
-  // A customer can only pin if the conversation's customerId matches their own session.id.
   if (userSession.role === 'customer' && conversation.customerId.toString() !== userSession.id) {
     throw new Error("Bạn không có quyền ghim tin nhắn trong cuộc trò chuyện này.");
   }
