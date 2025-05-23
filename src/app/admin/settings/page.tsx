@@ -9,7 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Separator } from '@/components/ui/separator';
-import { Save, Image as ImageIconLucide, Palette, FileText, Settings2, CalendarCog, Clock, UsersIcon, CalendarDays, Trash2, PlusCircle, CalendarIcon, UploadCloud, XCircle, Briefcase, MessagesSquare } from 'lucide-react';
+import { Save, Image as ImageIconLucide, Palette, FileText, Settings2, CalendarCog, Clock, UsersIcon, CalendarDays, Trash2, PlusCircle, UploadCloud, XCircle, Briefcase, MessagesSquare } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { getAppSettings, updateAppSettings } from '@/app/actions';
 import type { AppSettings, SpecificDayRule } from '@/lib/types';
@@ -247,42 +247,57 @@ export default function AdminSettingsPage() {
   const handleSaveSettings = async () => {
     setIsSubmitting(true);
     try {
-      const finalSettingsToSave: Partial<Omit<AppSettings, 'id' | 'updatedAt'>> = {
+      const settingsToSave: Partial<Omit<AppSettings, 'id' | 'updatedAt'>> = {
         ...settings,
-        id: undefined, 
-        updatedAt: undefined, 
+        brandName: settings.brandName || defaultInitialBrandName,
         suggestedQuestions: settings.suggestedQuestions || [],
-        successfulBookingMessageTemplate: settings.successfulBookingMessageTemplate || initialSettingsState.successfulBookingMessageTemplate,
         metaKeywords: settings.metaKeywords || [],
         workingHours: settings.workingHours || [],
         weeklyOffDays: settings.weeklyOffDays || [],
         oneTimeOffDates: settings.oneTimeOffDates || [],
         specificDayRules: (settings.specificDayRules || []).map(rule => {
-          const { id: ruleId, ...restOfRule } = rule; 
+          const { id: ruleId, ...restOfRule } = rule;
           return restOfRule;
         }),
         officeDays: settings.officeDays || [],
       };
       
-      Object.keys(finalSettingsToSave).forEach(key => {
-        if (finalSettingsToSave[key as keyof typeof finalSettingsToSave] === undefined) {
-          if (typeof initialSettingsState[key as keyof AppSettings] === 'number' && finalSettingsToSave[key as keyof typeof finalSettingsToSave] === undefined) {
-            // Explicitly do nothing to allow undefined to be sent for numbers
-          } else if (finalSettingsToSave[key as keyof typeof finalSettingsToSave] === undefined) {
-             delete finalSettingsToSave[key as keyof typeof finalSettingsToSave];
-          }
+      // Ensure number fields are numbers or undefined, not NaN
+      const numFields: (keyof AppSettings)[] = ['numberOfStaff', 'defaultServiceDurationMinutes'];
+      numFields.forEach(field => {
+        if (settingsToSave[field] !== undefined) {
+          const parsed = parseFloat(settingsToSave[field] as any);
+          settingsToSave[field] = isNaN(parsed) ? undefined : parsed as any;
         }
       });
 
-      await updateAppSettings(finalSettingsToSave);
+
+      if (settingsToSave.specificDayRules) {
+        settingsToSave.specificDayRules = settingsToSave.specificDayRules.map(rule => {
+            const newRule = {...rule};
+            if (newRule.numberOfStaff !== undefined) {
+                const parsed = parseFloat(newRule.numberOfStaff as any);
+                newRule.numberOfStaff = isNaN(parsed) ? undefined : parsed;
+            }
+            if (newRule.serviceDurationMinutes !== undefined) {
+                const parsed = parseFloat(newRule.serviceDurationMinutes as any);
+                newRule.serviceDurationMinutes = isNaN(parsed) ? undefined : parsed;
+            }
+            return newRule;
+        });
+      }
+
+
+      await updateAppSettings(settingsToSave);
       toast({ title: "Thành công", description: "Cài đặt đã được lưu." });
-      fetchSettings();
+      fetchSettings(); // Re-fetch to confirm
     } catch (error: any) {
       toast({ title: "Lỗi", description: error.message || "Không thể lưu cài đặt.", variant: "destructive" });
     } finally {
       setIsSubmitting(false);
     }
   };
+
 
   if (isLoading) {
     return <p>Đang tải cài đặt...</p>;
@@ -361,13 +376,13 @@ export default function AdminSettingsPage() {
                 <Textarea id="greetingMessageReturningCustomer" name="greetingMessageReturningCustomer" value={settings.greetingMessageReturningCustomer || ''} onChange={handleInputChange} disabled={isSubmitting} placeholder="Ví dụ: Chào mừng bạn quay trở lại!"/>
             </div>
             <div className="space-y-2">
-                <Label htmlFor="suggestedQuestions">Câu hỏi gợi ý ban đầu (Mỗi câu một dòng)</Label>
-                <Textarea id="suggestedQuestions" name="suggestedQuestions" value={(settings.suggestedQuestions || []).join('\n')} onChange={handleSuggestedQuestionsChange} disabled={isSubmitting} placeholder="Dịch vụ của bạn là gì?\nĐặt lịch hẹn"/>
+                <Label htmlFor="suggestedQuestionsTextarea">Câu hỏi gợi ý ban đầu (Mỗi câu một dòng)</Label>
+                <Textarea id="suggestedQuestionsTextarea" name="suggestedQuestions" value={(settings.suggestedQuestions || []).join('\n')} onChange={handleSuggestedQuestionsChange} disabled={isSubmitting} placeholder="Dịch vụ của bạn là gì?\nĐặt lịch hẹn"/>
             </div>
              <div className="space-y-2">
                 <Label htmlFor="successfulBookingMessageTemplate">Mẫu tin nhắn Đặt lịch thành công</Label>
                 <Textarea id="successfulBookingMessageTemplate" name="successfulBookingMessageTemplate" value={settings.successfulBookingMessageTemplate || ''} onChange={handleInputChange} disabled={isSubmitting} placeholder="VD: Lịch hẹn cho {{service}} vào {{time}} {{date}} đã được xác nhận!" />
-                <p className="text-xs text-muted-foreground">Sử dụng: `{{service}}`, `{{date}}`, `{{time}}`, `{{branch}}`.</p>
+                <p className="text-xs text-muted-foreground">Sử dụng: '{{service}}', '{{date}}', '{{time}}', '{{branch}}'.</p>
             </div>
         </CardContent>
       </Card>
@@ -434,8 +449,8 @@ export default function AdminSettingsPage() {
             <Textarea id="metaDescription" name="metaDescription" value={settings.metaDescription || ''} onChange={handleInputChange} disabled={isSubmitting} />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="metaKeywords">Từ khóa Meta (cách nhau bằng dấu phẩy)</Label>
-            <Input id="metaKeywords" name="metaKeywords" value={(settings.metaKeywords || []).join(', ')} onChange={handleMetaKeywordsChange} disabled={isSubmitting} />
+            <Label htmlFor="metaKeywordsInput">Từ khóa Meta (cách nhau bằng dấu phẩy)</Label>
+            <Input id="metaKeywordsInput" name="metaKeywords" value={(settings.metaKeywords || []).join(', ')} onChange={handleMetaKeywordsChange} disabled={isSubmitting} />
           </div>
            <div className="space-y-2">
             <Label htmlFor="openGraphImageUrl">URL Hình ảnh OpenGraph</Label>
@@ -469,8 +484,8 @@ export default function AdminSettingsPage() {
             </div>
           </div>
           <div className="space-y-2">
-            <Label htmlFor="workingHours"><CalendarIcon className="inline mr-1 h-4 w-4" />Giờ nhận khách (chung) (HH:MM, cách nhau bằng dấu phẩy)</Label>
-            <Input id="workingHours" name="workingHours" value={(settings.workingHours || []).join(', ')} onChange={handleWorkingHoursChange} placeholder="Ví dụ: 09:00, 10:00, 13:30, 14:30" disabled={isSubmitting} />
+            <Label htmlFor="workingHoursInput"><Clock className="inline mr-1 h-4 w-4" />Giờ nhận khách (chung) (HH:MM, cách nhau bằng dấu phẩy)</Label>
+            <Input id="workingHoursInput" name="workingHours" value={(settings.workingHours || []).join(', ')} onChange={handleWorkingHoursChange} placeholder="Ví dụ: 09:00, 10:00, 13:30, 14:30" disabled={isSubmitting} />
             <p className="text-xs text-muted-foreground">Các giờ bắt đầu của lịch hẹn. Ví dụ: 09:00,10:00,14:00,15:00</p>
           </div>
           <div className="space-y-2">
