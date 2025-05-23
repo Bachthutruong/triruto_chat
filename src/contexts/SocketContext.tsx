@@ -42,10 +42,10 @@ export function SocketProvider({ children }: SocketProviderProps) {
           newSocketInstance = ioClient(socketConnectionUrl, {
             path: '/socket.io/', 
             transports: ['websocket', 'polling'], 
-            reconnection: true, // Explicitly enable reconnection
-            reconnectionAttempts: 5, // Number of reconnection attempts
-            reconnectionDelay: 3000, // Delay between attempts
-            timeout: 10000, // Connection attempt timeout
+            reconnection: true,
+            reconnectionAttempts: 5, 
+            reconnectionDelay: 3000, 
+            timeout: 10000, // Client-side connection attempt timeout
           });
 
           if (newSocketInstance) {
@@ -62,8 +62,8 @@ export function SocketProvider({ children }: SocketProviderProps) {
               setIsConnected(false);
               if (reason === 'io server disconnect') {
                  console.warn('SocketProvider: Server deliberately disconnected socket.');
-              } else if (reason === 'transport close' || reason === 'ping timeout') {
-                console.warn('SocketProvider: Socket disconnected due to transport/ping issue. Will attempt to reconnect if configured.');
+              } else if (reason === 'transport close' || reason === 'ping timeout' || reason === 'transport error') {
+                console.warn('SocketProvider: Socket disconnected due to transport/ping/error issue. Will attempt to reconnect if configured.');
               }
             });
 
@@ -82,10 +82,10 @@ export function SocketProvider({ children }: SocketProviderProps) {
             });
 
             newSocketInstance.on('error', (err) => { // General error events
-                console.error('SocketProvider: GENERAL SOCKET ERROR (error event on socket instance).');
-                console.error('Full error object for general error:', err);
+                console.error('SocketProvider: GENERAL SOCKET ERROR (error event on socket instance). Full error object:', err);
             });
-             newSocketInstance.on('reconnect_attempt', (attemptNumber) => {
+
+            newSocketInstance.on('reconnect_attempt', (attemptNumber) => {
               console.log(`SocketProvider: Reconnect attempt ${attemptNumber}`);
             });
 

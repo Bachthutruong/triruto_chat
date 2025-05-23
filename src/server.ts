@@ -41,11 +41,11 @@ app.prepare().then(() => {
   const io = new SocketIOServer(httpServer, {
     path: '/socket.io/', 
     cors: {
-      origin: "*", 
+      origin: "*", // Allow all origins for development
       methods: ["GET", "POST"],
       credentials: true
     },
-    transports: ['websocket', 'polling']
+    transports: ['websocket', 'polling'] // Prioritize WebSocket
   });
   console.log("Socket.IO Server: > Socket.IO server initialized successfully on path: /socket.io/");
 
@@ -70,8 +70,11 @@ app.prepare().then(() => {
 
     socket.on('sendMessage', ({ message, conversationId }) => {
       if (conversationId && message) {
+        // Broadcast to other clients in the room
         socket.to(conversationId).emit('newMessage', message); 
         console.log(`Socket.IO Server: > Message from ${socket.id} in room '${conversationId}' broadcasted: ${message?.content?.substring(0, 30)}...`);
+      } else {
+        console.warn(`Socket.IO Server: > Received sendMessage event with missing message or conversationId from ${socket.id}`);
       }
     });
     
@@ -87,8 +90,8 @@ app.prepare().then(() => {
       }
     });
     
-    socket.on('requestPinMessage', async ({ conversationId, messageId, userSessionJsonString }) => {
-      console.log(`Socket.IO Server: Received requestPinMessage for convId: ${conversationId}, msgId: ${messageId}`);
+    socket.on('pinMessageRequested', async ({ conversationId, messageId, userSessionJsonString }) => {
+      console.log(`Socket.IO Server: Received pinMessageRequested for convId: ${conversationId}, msgId: ${messageId}`);
       try {
         const userSession: UserSession = JSON.parse(userSessionJsonString);
         const updatedConversation = await pinMessageToConversation(conversationId, messageId, userSession);
@@ -97,16 +100,16 @@ app.prepare().then(() => {
             conversationId, 
             pinnedMessageIds: updatedConversation.pinnedMessageIds || [] 
           });
-          console.log(`Socket.IO Server: Emitted pinnedMessagesUpdated for convId: ${conversationId}`);
+          console.log(`Socket.IO Server: Emitted pinnedMessagesUpdated for convId: ${conversationId} after pin`);
         }
       } catch (error: any) {
-        console.error(`Socket.IO Server: Error processing requestPinMessage for convId ${conversationId}:`, error.message);
+        console.error(`Socket.IO Server: Error processing pinMessageRequested for convId ${conversationId}:`, error.message);
         socket.emit('pinActionError', { messageId, error: error.message || 'Failed to pin message' });
       }
     });
 
-    socket.on('requestUnpinMessage', async ({ conversationId, messageId, userSessionJsonString }) => {
-      console.log(`Socket.IO Server: Received requestUnpinMessage for convId: ${conversationId}, msgId: ${messageId}`);
+    socket.on('unpinMessageRequested', async ({ conversationId, messageId, userSessionJsonString }) => {
+      console.log(`Socket.IO Server: Received unpinMessageRequested for convId: ${conversationId}, msgId: ${messageId}`);
       try {
         const userSession: UserSession = JSON.parse(userSessionJsonString);
         const updatedConversation = await unpinMessageFromConversation(conversationId, messageId, userSession);
@@ -118,14 +121,13 @@ app.prepare().then(() => {
            console.log(`Socket.IO Server: Emitted pinnedMessagesUpdated for convId: ${conversationId} after unpin`);
         }
       } catch (error: any) {
-        console.error(`Socket.IO Server: Error processing requestUnpinMessage for convId ${conversationId}:`, error.message);
+        console.error(`Socket.IO Server: Error processing unpinMessageRequested for convId ${conversationId}:`, error.message);
         socket.emit('unpinActionError', { messageId, error: error.message || 'Failed to unpin message' });
       }
     });
     
     socket.on('editMessage', ({ message, conversationId }) => {
       if (conversationId && message) {
-        // Broadcast to other clients in the room
         socket.to(conversationId).emit('messageEdited', { message, conversationId });
         console.log(`Socket.IO Server: > Message ${message.id} edit broadcast in room '${conversationId}'`);
       }
@@ -133,7 +135,6 @@ app.prepare().then(() => {
 
     socket.on('deleteMessage', ({ messageId, conversationId }) => {
       if (conversationId && messageId) {
-        // Broadcast to other clients in the room
         socket.to(conversationId).emit('messageDeleted', { messageId, conversationId });
         console.log(`Socket.IO Server: > Message ${messageId} deletion broadcast in room '${conversationId}'`);
       }
@@ -147,9 +148,10 @@ app.prepare().then(() => {
       console.error(`Socket.IO Server: > Socket error for ${socket.id}:`, err);
     });
 
-    io.engine.on("connection_error", (err) => {
-      console.error("Socket.IO Server: Engine connection error:", err.code, err.message, err.context);
-    });
+  });
+  
+  io.engine.on("connection_error", (err) => {
+      console.error("Socket.IO Server: Engine connection error. Code:", err.code, "Message:", err.message, "Context:", err.context);
   });
 
   console.log(`Socket.IO Server: Attempting to start HTTP server on http://${hostname}:${port}...`);
