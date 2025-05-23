@@ -10,7 +10,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Send, Paperclip, Smile, UserCircle, Edit2, Tag, Clock, Phone, Info, X, StickyNote, PlusCircle, Trash2, UserPlus, LogOutIcon, UserCheck, Users, Pin, PinOff, Edit, Image as ImageIcon, ExternalLink, FileText, Download, Zap, MoreVertical } from 'lucide-react';
+import { Send, Paperclip, Smile, UserCircle, Edit2, Tag, Clock, Phone, Info, X, StickyNote, PlusCircle, Trash2, UserPlus, LogOutIcon, UserCheck, Users, Pin, PinOff, Edit, Image as ImageIconLucide, ExternalLink, FileText, Download, Zap, MoreVertical, CalendarPlus } from 'lucide-react';
 import type { CustomerProfile, Message, AppointmentDetails, UserSession, Note, MessageEditState, Conversation, QuickReplyType } from '@/lib/types';
 import { 
   getCustomerDetails, 
@@ -30,8 +30,8 @@ import {
   markCustomerInteractionAsReadByStaff,
   deleteStaffMessage,
   editStaffMessage,
-  // getConversationHistory, // Replaced by socket updates
-  getQuickReplies 
+  getQuickReplies,
+  handleBookAppointmentFromForm 
 } from '@/app/actions';
 import { Textarea } from '@/components/ui/textarea'; 
 import { useToast } from '@/hooks/use-toast';
@@ -40,11 +40,12 @@ import { vi } from 'date-fns/locale';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Dialog, DialogHeader, DialogFooter, DialogContent, DialogTitle, DialogDescription, DialogClose } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ChatInterface } from '@/components/chat/ChatInterface'; // Changed from ChatWindow
+import { ChatWindow } from '@/components/chat/ChatWindow'; 
 import { Label } from '@/components/ui/label';
 import Link from 'next/link'; 
 import { Loader2 } from 'lucide-react';
 import { useSocket } from '@/contexts/SocketContext'; 
+import { AppointmentBookingForm } from '@/components/chat/AppointmentBookingForm';
 
 const MAX_FILE_SIZE_MB = 5;
 const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
@@ -98,6 +99,7 @@ export default function StaffIndividualChatPage() {
   const usersTypingMapRef = useRef<Record<string, string>>({});
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const [typingUsers, setTypingUsers] = useState<Record<string, string>>({});
+  const [isBookingModalOpen, setIsBookingModalOpen] = useState(false);
 
 
   const fetchPinnedMessagesForConversation = useCallback(async (conversationId: string | null) => {
@@ -105,7 +107,7 @@ export default function StaffIndividualChatPage() {
         setPinnedMessages([]);
         return;
     }
-    const conversation = activeConversation?.id === conversationId ? activeConversation : null; // Or fetch again if needed
+    const conversation = activeConversation?.id === conversationId ? activeConversation : null; 
     if (conversation && conversation.pinnedMessageIds && conversation.pinnedMessageIds.length > 0) {
         try {
             const fetchedPinned = await getMessagesByIds(conversation.pinnedMessageIds);
@@ -124,7 +126,7 @@ export default function StaffIndividualChatPage() {
     if (customerId && staffSession) { 
       setIsLoading(true);
       try {
-        const [details, fetchedQuickReplies] = await Promise.all([
+        const [details, fetchedQuickRepliesResult] = await Promise.all([
           getCustomerDetails(customerId),
           getQuickReplies()
         ]);
@@ -134,12 +136,13 @@ export default function StaffIndividualChatPage() {
           messages: fetchedMessages, 
           appointments: fetchedAppointments, 
           notes: fetchedNotes,
-          conversations: fetchedConversations // This is an array
+          conversations: fetchedConversations 
         } = details;
         
         setCustomer(fetchedCustomer);
         setAppointments(fetchedAppointments || []);
         setNotes(fetchedNotes || []);
+        setQuickReplies(fetchedQuickRepliesResult || []);
         
         if (fetchedCustomer?.internalName) {
           setInternalNameInput(fetchedCustomer.internalName);
@@ -147,8 +150,6 @@ export default function StaffIndividualChatPage() {
           setInternalNameInput(''); 
         }
 
-        // For staff, assume the first conversation is the active one for this customer.
-        // This might need adjustment if a customer can have multiple conversations visible to staff.
         const currentActiveConv = fetchedConversations && fetchedConversations.length > 0 ? fetchedConversations[0] : null;
         setActiveConversation(currentActiveConv);
 
@@ -167,6 +168,7 @@ export default function StaffIndividualChatPage() {
 
       } catch (error) {
         console.error("Không thể tải chi tiết khách hàng:", error);
+        if (!toast) return; // Guard against toast not being available
         toast({ title: "Lỗi", description: "Không thể tải chi tiết khách hàng.", variant: "destructive" });
         setCustomer(null); 
         setMessages([]);
@@ -189,12 +191,14 @@ export default function StaffIndividualChatPage() {
             const staff = await getStaffList();
             setAllStaff(staff);
           } catch (error) {
+            if (!toast) return;
             toast({ title: "Lỗi", description: "Không thể tải danh sách nhân viên.", variant: "destructive" });
           }
         };
         fetchStaffList();
       }
     } else {
+      if (!toast) return;
       toast({ title: "Lỗi Phiên", description: "Không tìm thấy phiên làm việc. Vui lòng đăng nhập lại.", variant: "destructive" });
       setIsLoading(false);
     }
@@ -208,7 +212,9 @@ export default function StaffIndividualChatPage() {
   }, [fetchChatData, staffSession]); 
 
   useEffect(() => {
-    if (!socket || !isConnected || !activeConversation?.id || !staffSession) return;
+    if (!socket || !isConnected || !activeConversation?.id || !staffSession) {
+      return;
+    }
 
     console.log(`Staff/Admin ${staffSession.id} joining room: ${activeConversation.id}`);
     socket.emit('joinRoom', activeConversation.id);
@@ -240,18 +246,21 @@ export default function StaffIndividualChatPage() {
     const handlePinnedMessagesUpdated = ({ conversationId: updatedConvId, pinnedMessageIds: newPinnedIds }: { conversationId: string, pinnedMessageIds: string[] }) => {
         if (updatedConvId === activeConversation?.id) {
           setActiveConversation(prev => prev ? { ...prev, pinnedMessageIds: newPinnedIds } : null);
-          // fetchPinnedMessagesForConversation will be called by its own useEffect
         }
     };
     
-    const handleMessageDeleted = ({ messageId: deletedMessageId }: { messageId: string }) => {
-      setMessages(prev => prev.filter(m => m.id !== deletedMessageId));
-      setPinnedMessages(prev => prev.filter(pm => pm.id !== deletedMessageId));
+    const handleMessageDeleted = ({ messageId: deletedMessageId, conversationId: convId }: { messageId: string, conversationId: string }) => {
+      if (convId === activeConversation?.id) {
+        setMessages(prev => prev.filter(m => m.id !== deletedMessageId));
+        setPinnedMessages(prev => prev.filter(pm => pm.id !== deletedMessageId));
+      }
     };
 
-    const handleMessageEdited = ({ message: editedMessage }: { message: Message }) => {
-      setMessages(prev => prev.map(m => m.id === editedMessage.id ? editedMessage : m));
-      setPinnedMessages(prev => prev.map(pm => pm.id === editedMessage.id ? editedMessage : pm));
+    const handleMessageEdited = ({ message: editedMessage, conversationId: convId }: { message: Message, conversationId: string }) => {
+      if (convId === activeConversation?.id) {
+        setMessages(prev => prev.map(m => m.id === editedMessage.id ? {...editedMessage, timestamp: new Date(editedMessage.timestamp)} : m));
+        setPinnedMessages(prev => prev.map(pm => pm.id === editedMessage.id ? {...editedMessage, timestamp: new Date(editedMessage.timestamp)} : pm));
+      }
     };
 
     socket.on('newMessage', handleNewMessage);
@@ -263,7 +272,7 @@ export default function StaffIndividualChatPage() {
 
 
     return () => {
-      if (socket && activeConversation?.id) {
+      if (socket && activeConversation?.id && staffSession) {
         console.log(`Staff/Admin ${staffSession.id} leaving room: ${activeConversation.id}`);
         socket.emit('leaveRoom', activeConversation.id);
         socket.off('newMessage', handleNewMessage);
@@ -274,7 +283,7 @@ export default function StaffIndividualChatPage() {
         socket.off('messageEdited', handleMessageEdited);
       }
     };
-  }, [socket, isConnected, activeConversation, staffSession, fetchPinnedMessagesForConversation]); // Added fetchPinnedMessagesForConversation
+  }, [socket, isConnected, activeConversation, staffSession, fetchPinnedMessagesForConversation]); 
 
   useEffect(() => {
     if (activeConversation?.id) {
@@ -285,11 +294,12 @@ export default function StaffIndividualChatPage() {
 
   const handleSendMessage = async (messageContent: string) => {
     if (!messageContent.trim() || !customer || !staffSession || !activeConversation?.id) {
+        if (!toast) return;
         toast({ title: "Lỗi", description: "Không thể gửi tin nhắn. Thiếu thông tin khách hàng, phiên làm việc hoặc cuộc trò chuyện.", variant: "destructive" });
         return;
     }
     setIsSendingMessage(true);
-    if (socket && isConnected && onTyping) onTyping(false); // Stop typing before sending
+    if (socket && isConnected && onTyping) onTyping(false); 
     if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
 
     try {
@@ -302,6 +312,7 @@ export default function StaffIndividualChatPage() {
         socket.emit('sendMessage', { message: sentMessage, conversationId: activeConversation.id });
       }
     } catch (error: any) {
+      if (!toast) return;
       toast({ title: "Lỗi gửi tin nhắn", description: error.message, variant: "destructive"});
     } finally {
       setIsSendingMessage(false);
@@ -316,7 +327,9 @@ export default function StaffIndividualChatPage() {
     } else {
       if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
       typingTimeoutRef.current = setTimeout(() => {
-        if (socket && isConnected) socket.emit('stopTyping', { conversationId: activeConversation?.id, userId: socket.id });
+        if (socket && isConnected && activeConversation?.id && staffSession?.id) { // Check for staffSession.id
+            socket.emit('stopTyping', { conversationId: activeConversation.id, userId: staffSession.id });
+        }
       }, 1500); 
     }
   };
@@ -358,6 +371,7 @@ export default function StaffIndividualChatPage() {
     }
 
     if (!finalContent && !fileToUse) {
+      if (!toast) return;
       toast({ title: "Không có nội dung", description: "Tin nhắn không thể để trống.", variant: "destructive" });
       setIsSendingMessage(false);
       return;
@@ -366,11 +380,12 @@ export default function StaffIndividualChatPage() {
     try {
       const updatedMessage = await editStaffMessage(messageEditState.messageId, finalContent, staffSession);
       if (updatedMessage) {
-        setMessages(prev => prev.map(m => m.id === updatedMessage.id ? updatedMessage : m));
-        fetchPinnedMessagesForConversation(activeConversation.id); // Re-fetch pinned messages
+        setMessages(prev => prev.map(m => m.id === updatedMessage.id ? {...updatedMessage, timestamp: new Date(updatedMessage.timestamp)} : m));
+        fetchPinnedMessagesForConversation(activeConversation.id); 
         if (socket && isConnected) {
           socket.emit('editMessage', { message: updatedMessage, conversationId: activeConversation.id });
         }
+        if (!toast) return;
         toast({ title: "Thành công", description: "Đã sửa tin nhắn." });
       }
       setMessageEditState(null);
@@ -378,6 +393,7 @@ export default function StaffIndividualChatPage() {
       setCurrentAttachmentInEdit(null);
       setStagedEditFile(null);
     } catch (error: any) {
+      if (!toast) return;
       toast({ title: "Lỗi sửa tin nhắn", description: error.message, variant: "destructive" });
     } finally {
       setIsSendingMessage(false);
@@ -388,6 +404,7 @@ export default function StaffIndividualChatPage() {
     const file = event.target.files?.[0];
     if (file) {
       if (file.size > MAX_FILE_SIZE_BYTES) {
+        if (!toast) return;
         toast({ title: "Tệp quá lớn", description: `Kích thước tệp không được vượt quá ${MAX_FILE_SIZE_MB}MB.`, variant: "destructive" });
         if(editFileInputRef.current) editFileInputRef.current.value = "";
         return;
@@ -410,16 +427,19 @@ export default function StaffIndividualChatPage() {
       const result = await deleteStaffMessage(messageId, staffSession);
       if (result.success) {
         setMessages(prev => prev.filter(m => m.id !== messageId));
-        fetchPinnedMessagesForConversation(activeConversation.id); // Re-fetch pinned messages
+        fetchPinnedMessagesForConversation(activeConversation.id); 
         if (socket && isConnected) {
           socket.emit('deleteMessage', { messageId, conversationId: activeConversation.id });
         }
+        if (!toast) return;
         toast({ title: "Thành công", description: "Đã xóa tin nhắn." });
+        // Potentially refresh customer last message preview if the deleted message was the last one
         if (result.conversationId === activeConversation.id && customer?.lastMessagePreview && messages.find(m=>m.id === messageId)?.content.startsWith(customer.lastMessagePreview)) {
             fetchChatData(); 
         }
       }
     } catch (error: any) {
+      if (!toast) return;
       toast({ title: "Lỗi xóa tin nhắn", description: error.message, variant: "destructive" });
     }
   };
@@ -459,8 +479,10 @@ export default function StaffIndividualChatPage() {
     try {
       const updatedCustomer = await assignStaffToCustomer(customer.id, staffSession.id);
       setCustomer(updatedCustomer);
+      if (!toast) return;
       toast({ title: "Thành công", description: `Khách hàng đã được giao cho bạn.`});
     } catch (error: any) {
+      if (!toast) return;
       toast({ title: "Lỗi", description: error.message, variant: "destructive"});
     } finally {
       setIsAssigning(false);
@@ -473,9 +495,11 @@ export default function StaffIndividualChatPage() {
     try {
       const updatedCustomer = await assignStaffToCustomer(customer.id, selectedStaffToAssign);
       setCustomer(updatedCustomer);
+      if (!toast) return;
       toast({ title: "Thành công", description: `Khách hàng đã được giao cho nhân viên đã chọn.`});
       setSelectedStaffToAssign('');
     } catch (error: any) {
+      if (!toast) return;
       toast({ title: "Lỗi", description: error.message, variant: "destructive"});
     } finally {
       setIsAssigning(false);
@@ -489,11 +513,14 @@ export default function StaffIndividualChatPage() {
       if (staffSession.role === 'admin' || customer.assignedStaffId === staffSession.id) {
         const updatedCustomer = await unassignStaffFromCustomer(customer.id);
         setCustomer(updatedCustomer);
+        if (!toast) return;
         toast({ title: "Thành công", description: `Khách hàng đã được đưa trở lại hàng đợi chung.`});
       } else {
+        if (!toast) return;
         toast({ title: "Không được phép", description: "Bạn không được phép thực hiện hành động này.", variant: "destructive"});
       }
     } catch (error: any) {
+      if (!toast) return;
       toast({ title: "Lỗi", description: error.message, variant: "destructive"});
     } finally {
       setIsAssigning(false);
@@ -503,6 +530,7 @@ export default function StaffIndividualChatPage() {
   const handleAddTag = async () => {
     if (!customer || !newTagName.trim() || !staffSession) return;
     if (newTagName.toLowerCase().startsWith("admin:") && staffSession.role !== 'admin') {
+       if (!toast) return;
        toast({title: "Thông báo", description: "Chỉ Admin mới có thể mời Admin khác bằng tag."}); 
        return;
     }
@@ -511,8 +539,10 @@ export default function StaffIndividualChatPage() {
         const updatedCustomer = await addTagToCustomer(customer.id, newTagName.trim());
         setCustomer(updatedCustomer);
         setNewTagName('');
+        if (!toast) return;
         toast({title: "Thành công", description: "Đã thêm nhãn."});
     } catch (error: any) {
+        if (!toast) return;
         toast({title: "Lỗi", description: `Không thể thêm nhãn: ${error.message}`, variant: "destructive"});
     }
   };
@@ -522,8 +552,10 @@ export default function StaffIndividualChatPage() {
     try {
         const updatedCustomer = await removeTagFromCustomer(customer.id, tagToRemove);
         setCustomer(updatedCustomer);
+        if (!toast) return;
         toast({title: "Thành công", description: "Đã xóa nhãn."});
     } catch (error: any) {
+        if (!toast) return;
         toast({title: "Lỗi", description: `Không thể xóa nhãn: ${error.message}`, variant: "destructive"});
     }
   };
@@ -536,8 +568,10 @@ export default function StaffIndividualChatPage() {
     try {
         const updatedCustomer = await updateCustomerInternalName(customer.id, internalNameInput.trim());
         setCustomer(updatedCustomer);
+        if (!toast) return;
         toast({title: "Thành công", description: "Đã cập nhật tên nội bộ."});
     } catch (error: any) {
+        if (!toast) return;
         toast({title: "Lỗi", description: `Không thể cập nhật tên nội bộ: ${error.message}`, variant: "destructive"});
         setInternalNameInput(customer.internalName || '');
     }
@@ -549,8 +583,10 @@ export default function StaffIndividualChatPage() {
       const newNote = await addNoteToCustomer(customer.id, staffSession.id, newNoteContent.trim());
       setNotes(prev => [newNote, ...prev]);
       setNewNoteContent('');
+      if (!toast) return;
       toast({ title: "Thành công", description: "Đã thêm ghi chú." });
     } catch (error: any) {
+      if (!toast) return;
       toast({ title: "Lỗi", description: `Không thể thêm ghi chú: ${error.message}`, variant: "destructive" });
     }
   };
@@ -569,8 +605,10 @@ export default function StaffIndividualChatPage() {
       }
       setEditingNote(null);
       setEditingNoteContent('');
+      if (!toast) return;
       toast({ title: "Thành công", description: "Đã cập nhật ghi chú." });
     } catch (error: any) {
+      if (!toast) return;
       toast({ title: "Lỗi", description: `Không thể cập nhật ghi chú: ${error.message}`, variant: "destructive" });
     }
   };
@@ -580,9 +618,55 @@ export default function StaffIndividualChatPage() {
     try {
       await deleteCustomerNote(noteId, staffSession.id);
       setNotes(prevNotes => prevNotes.filter(n => n.id !== noteId));
+      if (!toast) return;
       toast({ title: "Thành công", description: "Đã xóa ghi chú." });
     } catch (error: any) {
+      if (!toast) return;
       toast({ title: "Lỗi", description: `Không thể xóa ghi chú: ${error.message}`, variant: "destructive" });
+    }
+  };
+
+  const handleDirectBookAppointment = async (formData: any) => { 
+    if (!staffSession || !customer ) return;
+    setIsSendingMessage(true); // Use isSendingMessage to indicate form processing
+    try {
+      const result = await handleBookAppointmentFromForm({...formData, customerId: customer.id });
+      if (!toast) return;
+      toast({
+        title: result.success ? "Thành công" : "Thất bại",
+        description: result.message,
+        variant: result.success ? "default" : "destructive",
+      });
+
+      let systemMessageContent = result.message;
+      if (!result.success && result.suggestedSlots && result.suggestedSlots.length > 0) {
+        systemMessageContent += "\nCác khung giờ gợi ý khác:\n" +
+          result.suggestedSlots.map(s => `- ${s.date} lúc ${s.time}`).join("\n");
+      }
+
+      // Send a system message about the booking attempt if needed, or directly update appointments
+      const systemMessage: Message = {
+        id: `msg_system_booking_staff_${Date.now()}`,
+        sender: 'system',
+        content: systemMessageContent,
+        timestamp: new Date(),
+        conversationId: activeConversation?.id || "unknown_conv", // Ensure there's a fallback
+      };
+      setMessages(prev => [...prev, systemMessage]);
+      if (socket && isConnected && activeConversation?.id) {
+        socket.emit('sendMessage', { message: systemMessage, conversationId: activeConversation.id });
+      }
+      
+      if(result.success) {
+        setIsBookingModalOpen(false);
+        fetchChatData(); // Re-fetch appointments list
+      }
+
+    } catch (error: any) {
+      if (!toast) return;
+      toast({ title: "Lỗi đặt lịch", description: error.message || "Không thể đặt lịch hẹn.", variant: "destructive" });
+    } finally {
+      setIsSendingMessage(false);
     }
   };
   
@@ -594,10 +678,10 @@ export default function StaffIndividualChatPage() {
     return <div className="flex items-center justify-center h-full"><p>Không tìm thấy phiên làm việc. Vui lòng đăng nhập lại.</p></div>;
   }
   if (!customer) {
-    return <div className="flex flex-col items-center justify-center h-full"><Loader2 className="h-8 w-8 animate-spin text-primary mb-2" /><p>Không tìm thấy thông tin khách hàng.</p><p className="text-xs text-muted-foreground">Vui lòng chọn lại khách hàng từ danh sách.</p></div>;
+    return <div className="flex flex-col items-center justify-center h-full"><Loader2 className="h-8 w-8 animate-spin text-primary mb-2" /><p>Đang tải thông tin khách hàng...</p></div>;
   }
   if (!activeConversation) {
-     return <div className="flex flex-col items-center justify-center h-full"><Loader2 className="h-8 w-8 animate-spin text-primary mb-2" /><p>Không tìm thấy cuộc trò chuyện cho khách hàng này.</p><p className="text-xs text-muted-foreground">Có thể khách hàng này chưa có cuộc trò chuyện nào.</p></div>;
+     return <div className="flex flex-col items-center justify-center h-full"><Loader2 className="h-8 w-8 animate-spin text-primary mb-2" /><p>Đang tải cuộc trò chuyện...</p></div>;
   }
 
 
@@ -612,8 +696,8 @@ export default function StaffIndividualChatPage() {
 
 
   return (
-    <div className="flex flex-col md:flex-row h-full gap-0 md:gap-4"> 
-      <Card className="flex-grow h-full flex flex-col rounded-none md:rounded-lg border-none md:border">
+    <div className="flex flex-col md:flex-row h-full gap-0 md:gap-0 md:max-w-screen-lg md:mx-auto"> 
+      <Card className="flex-grow h-full flex flex-col rounded-none md:rounded-none border-none md:border-none"> 
         <CardHeader className="flex flex-row items-center justify-between border-b p-4">
           <div className="flex items-center gap-3">
             <Avatar>
@@ -640,7 +724,7 @@ export default function StaffIndividualChatPage() {
             )}
              <Button variant="outline" size="sm" asChild>
                 <Link href={staffSession.role === 'admin' ? `/admin/media/${customerId}` : `/staff/media/${customerId}`}>
-                  <ImageIcon className="mr-1 h-4 w-4" /> Lịch sử File
+                  <ImageIconLucide className="mr-1 h-4 w-4" /> Lịch sử File
                 </Link>
               </Button>
           </div>
@@ -666,10 +750,11 @@ export default function StaffIndividualChatPage() {
           onScrollToMessage={handleScrollToMessage}
           activeConversationId={activeConversation?.id}
           activeConversationPinnedMessageIds={activeConversation?.pinnedMessageIds || []}
+          onBookAppointmentClick={() => setIsBookingModalOpen(true)} 
         />
       </Card>
 
-      <Card className="w-full md:max-w-xs lg:max-w-sm xl:max-w-md h-full flex-col hidden md:flex rounded-none md:rounded-lg border-none md:border"> 
+      <Card className="w-full md:max-w-xs lg:max-w-sm xl:max-w-md h-full flex-col hidden md:flex rounded-none md:rounded-none border-none md:border-l"> 
         <CardHeader className="border-b">
           <CardTitle className="flex items-center"><Info className="mr-2 h-5 w-5" /> Thông tin Khách hàng</CardTitle>
         </CardHeader>
@@ -757,7 +842,13 @@ export default function StaffIndividualChatPage() {
                     <p>{appt.service} - {format(new Date(appt.date), 'dd/MM/yy', { locale: vi })} lúc {appt.time} ({getStatusLabel(appt.status)})</p>
                 </div>
               ))}
-              {appointments.length > 2 && <Button variant="link" size="sm" className="p-0 h-auto text-primary">Xem tất cả</Button>}
+              {appointments.length > 2 && staffSession && 
+                <Button variant="link" size="sm" className="p-0 h-auto text-primary" asChild>
+                    <Link href={staffSession.role === 'admin' ? '/admin/appointments/view' : '/staff/appointments'}>
+                        Xem tất cả
+                    </Link>
+                </Button>
+              }
             </div>
             <div className="border-t pt-3">
               <h4 className="font-semibold text-sm flex items-center mb-1"><StickyNote className="mr-2 h-4 w-4 text-primary" />Ghi chú nội bộ ({notes.length})</h4>
@@ -876,6 +967,16 @@ export default function StaffIndividualChatPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      
+      {staffSession && customer && (
+         <AppointmentBookingForm
+          isOpen={isBookingModalOpen}
+          onClose={() => setIsBookingModalOpen(false)}
+          onSubmit={handleDirectBookAppointment}
+          currentUserSession={staffSession} // Staff is booking
+          // customerIdForBooking={customer.id} // Pass the customerId for whom staff is booking
+        />
+      )}
     </div>
   );
 }
