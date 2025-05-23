@@ -13,9 +13,11 @@ import { AppFooter } from '@/components/layout/AppFooter';
 import { Phone, LogIn, MessageSquare } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { handleCustomerAccess } from '@/app/actions';
+import type { UserSession } from '@/lib/types';
 import { useAppSettingsContext } from '@/contexts/AppSettingsContext';
 import { Logo } from '@/components/icons/Logo';
 import Image from 'next/image';
+import { validatePhoneNumber } from '@/lib/validator';
 
 export default function EnterPhonePage() {
   const [phoneNumber, setPhoneNumber] = useState('');
@@ -27,24 +29,40 @@ export default function EnterPhonePage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!phoneNumber.trim()) {
-      toast({ title: "Lỗi", description: "Vui lòng nhập số điện thoại.", variant: "destructive" });
+    if (!validatePhoneNumber(phoneNumber.trim())) {
+      toast({ title: "Lỗi", description: "Số điện thoại không hợp lệ. Vui lòng kiểm tra lại.", variant: "destructive" });
       return;
     }
     setIsLoading(true);
+    console.log("EnterPhonePage: Bắt đầu handleCustomerAccess với SĐT:", phoneNumber.trim());
     try {
-      const { userSession: custSession } = await handleCustomerAccess(phoneNumber.trim());
-      if (custSession) {
-        sessionStorage.setItem('aetherChatUserSession', JSON.stringify(custSession));
+      // handleCustomerAccess now returns an object with all necessary initial data
+      const result = await handleCustomerAccess(phoneNumber.trim());
+      console.log("EnterPhonePage: Kết quả từ handleCustomerAccess:", result);
+
+      if (result.userSession) {
+        sessionStorage.setItem('aetherChatUserSession', JSON.stringify(result.userSession));
+        
+        // Store all pre-fetched data for the main chat page
+        sessionStorage.setItem('aetherChatPrefetchedData', JSON.stringify({
+          userSession: result.userSession, // Include session here for verification on next page
+          initialMessages: result.initialMessages,
+          initialSuggestedReplies: result.initialSuggestedReplies,
+          activeConversationId: result.activeConversationId,
+          conversations: result.conversations,
+        }));
+
         toast({
           title: "Bắt đầu trò chuyện",
-          description: custSession.name ? `Chào mừng quay trở lại, ${custSession.name}!` : `Chào mừng đến với ${brandName}!`,
+          description: result.userSession.name ? `Chào mừng quay trở lại, ${result.userSession.name}!` : `Chào mừng đến với ${brandName}!`,
         });
         router.push('/'); // Redirect to chat page
       } else {
+        console.error("EnterPhonePage: handleCustomerAccess không trả về userSession.");
         throw new Error("Không thể khởi tạo phiên.");
       }
     } catch (error: any) {
+      console.error("EnterPhonePage: Lỗi trong handleSubmit:", error);
       toast({
         title: "Lỗi",
         description: error.message || "Không thể bắt đầu phiên trò chuyện. Vui lòng thử lại.",
@@ -68,12 +86,12 @@ export default function EnterPhonePage() {
   };
 
   return (
-    <div className="flex flex-col min-h-screen bg-muted/40">
+    <div className="flex flex-col min-h-screen bg-background text-foreground">
       <AppHeader userSession={null} onLogout={() => { }} />
       <main className="flex-grow container mx-auto py-12 px-4 flex flex-col items-center justify-center">
-        <Card className="w-full max-w-md shadow-xl">
+        <Card className="w-full max-w-md shadow-none border-none rounded-none">
           <CardHeader className="text-center">
-            <div className="mx-auto border shadow-sm p-3 rounded-full w-fit mb-3">
+             <div className="mx-auto border shadow-sm p-3 rounded-full w-fit mb-3 bg-card">
               {renderLogo()}
             </div>
             <CardTitle className="text-2xl">Chào mừng đến {brandName}!</CardTitle>
@@ -93,7 +111,7 @@ export default function EnterPhonePage() {
                   placeholder="Nhập số điện thoại của bạn"
                   required
                   disabled={isLoading}
-                  className="text-center text-lg h-12"
+                  className="text-center text-lg h-12 w-full" 
                   autoComplete="tel"
                 />
               </div>
