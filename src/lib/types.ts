@@ -6,33 +6,35 @@ export type Message = {
   sender: 'user' | 'ai' | 'system';
   content: string;
   timestamp: Date;
-  name?: string; 
-  userId?: string; 
-  updatedAt?: Date; 
-  conversationId: string; 
+  name?: string;
+  userId?: string;
+  updatedAt?: Date;
+  conversationId: string;
 };
 
 export type AppointmentStatus = 'booked' | 'cancelled' | 'completed' | 'pending_confirmation' | 'rescheduled';
 
 export type AppointmentDetails = {
   appointmentId: string;
-  userId: string; 
-  service: string; 
-  productId?: string; 
-  time: string; 
-  date: string; 
-  branch?: string; 
-  branchId?: string; 
-  packageType?: string; 
-  priority?: string; 
+  userId: string;
+  service: string;
+  productId?: string;
+  time: string;
+  date: string;
+  branch?: string;
+  branchId?: string;
+  packageType?: string;
+  priority?: string;
   status: AppointmentStatus;
-  notes?: string; 
+  notes?: string;
   createdAt: Date;
   updatedAt: Date;
-  staffId?: string; 
+  staffId?: string;
   staffName?: string;
   customerName?: string;
   customerPhoneNumber?: string;
+  recurrenceType?: 'none' | 'daily' | 'weekly' | 'monthly';
+  recurrenceCount?: number;
 };
 
 export type Product = {
@@ -49,10 +51,10 @@ export type Note = {
   id: string;
   customerId: string;
   staffId: string;
-  staffName?: string; 
+  staffName?: string;
   content: string;
-  imageDataUri?: string; // New field for image data URI
-  imageFileName?: string; // New field for image file name
+  imageDataUri?: string;
+  imageFileName?: string;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -86,7 +88,7 @@ export type UserSession = {
   phoneNumber: string;
   role: UserRole;
   name?: string;
-  currentConversationId?: string; 
+  currentConversationId?: string;
   pinnedConversationIds?: string[];
 };
 
@@ -129,21 +131,21 @@ export type AppointmentRule = {
 };
 
 export type SpecificDayRule = {
-  id?: string; 
-  date: string; 
+  id?: string;
+  date: string;
   isOff?: boolean;
-  workingHours?: string[]; 
+  workingHours?: string[];
   numberOfStaff?: number;
   serviceDurationMinutes?: number;
 };
 
 export type AppSettings = {
   id: string;
-  greetingMessage?: string; 
-  greetingMessageNewCustomer?: string; 
-  greetingMessageReturningCustomer?: string; 
+  greetingMessage?: string;
+  greetingMessageNewCustomer?: string;
+  greetingMessageReturningCustomer?: string;
   suggestedQuestions?: string[];
-  successfulBookingMessageTemplate?: string; // New field
+  successfulBookingMessageTemplate?: string;
 
   brandName?: string;
   logoUrl?: string;
@@ -159,38 +161,38 @@ export type AppSettings = {
 
   numberOfStaff?: number;
   defaultServiceDurationMinutes?: number;
-  workingHours?: string[]; 
-  weeklyOffDays?: number[]; 
-  oneTimeOffDates?: string[]; 
-  specificDayRules?: SpecificDayRule[]; 
+  workingHours?: string[];
+  weeklyOffDays?: number[];
+  oneTimeOffDates?: string[];
+  specificDayRules?: SpecificDayRule[];
 
   outOfOfficeResponseEnabled?: boolean;
   outOfOfficeMessage?: string;
-  officeHoursStart?: string; 
-  officeHoursEnd?: string; 
-  officeDays?: number[]; 
+  officeHoursStart?: string;
+  officeHoursEnd?: string;
+  officeDays?: number[];
 
   updatedAt?: Date;
 };
 
 export type BranchSpecificDayRule = {
-  id?: string; 
-  date: string; 
+  id?: string;
+  date: string;
   isOff?: boolean;
-  workingHours?: string[]; 
-  numberOfStaff?: number; 
+  workingHours?: string[];
+  numberOfStaff?: number;
 };
 
 export type Branch = {
   id: string;
   name: string;
   address?: string;
-  contactInfo?: string; 
+  contactInfo?: string;
   isActive: boolean;
-  workingHours?: string[]; 
-  offDays?: number[]; 
-  numberOfStaff?: number; 
-  specificDayOverrides?: BranchSpecificDayRule[]; 
+  workingHours?: string[];
+  offDays?: number[];
+  numberOfStaff?: number;
+  specificDayOverrides?: BranchSpecificDayRule[];
   createdAt?: Date;
   updatedAt?: Date;
 };
@@ -202,7 +204,7 @@ export type GetAppointmentsFilters = {
   customerId?: string;
   staffId?: string;
   status?: string[];
-  serviceName?: string; 
+  serviceName?: string;
 };
 
 export type AdminDashboardStats = {
@@ -221,12 +223,12 @@ export type StaffDashboardStats = {
 };
 
 export type ProductSchedulingRules = {
-  numberOfStaff?: number; 
-  serviceDurationMinutes?: number; 
-  workingHours?: string[]; 
-  weeklyOffDays?: number[]; 
-  oneTimeOffDates?: string[]; 
-  specificDayRules?: SpecificDayRule[]; 
+  numberOfStaff?: number;
+  serviceDurationMinutes?: number;
+  workingHours?: string[];
+  weeklyOffDays?: number[];
+  oneTimeOffDates?: string[];
+  specificDayRules?: SpecificDayRule[];
 };
 
 export type ProductItem = {
@@ -237,8 +239,8 @@ export type ProductItem = {
   category: string;
   imageUrl?: string;
   isActive: boolean;
-  isSchedulable?: boolean; 
-  schedulingRules?: ProductSchedulingRules; 
+  isSchedulable?: boolean;
+  schedulingRules?: ProductSchedulingRules;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -281,8 +283,8 @@ export type Conversation = {
     phoneNumber?: string;
   }>;
   messageIds: string[];
-  pinnedMessageIds?: string[]; 
-  isPinned?: boolean; 
+  pinnedMessageIds?: string[];
+  isPinned?: boolean;
   createdAt: Date;
   updatedAt: Date;
   lastMessageTimestamp?: Date;
@@ -290,14 +292,16 @@ export type Conversation = {
 };
 
 export type AppointmentBookingFormData = {
-  service: string; 
-  productId: string; 
+  service: string;
+  productId: string;
   date: string; // YYYY-MM-DD
   time: string; // HH:MM
   customerId: string;
-  branch?: string; 
-  branchId?: string; 
+  branch?: string;
+  branchId?: string;
   notes?: string;
+  recurrenceType?: 'none' | 'daily' | 'weekly' | 'monthly';
+  recurrenceCount?: number;
 };
 
 export type QuickReplyType = {
@@ -309,11 +313,9 @@ export type QuickReplyType = {
 };
 
 export type EffectiveSchedulingRules = {
-  numberOfStaff: number; 
-  workingHours: string[]; 
-  weeklyOffDays: number[]; 
-  oneTimeOffDates: string[]; 
-  specificDayRules: SpecificDayRule[]; 
+  numberOfStaff: number;
+  workingHours: string[];
+  weeklyOffDays: number[];
+  oneTimeOffDates: string[];
+  specificDayRules: SpecificDayRule[];
 };
-
-```

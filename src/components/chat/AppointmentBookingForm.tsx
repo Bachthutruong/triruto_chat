@@ -11,7 +11,7 @@ import { Calendar } from '@/components/ui/calendar';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose } from '@/components/ui/dialog';
 import type { AppointmentBookingFormData, UserSession, ProductItem, Branch, AppSettings } from '@/lib/types';
-import { format, addMinutes, startOfHour, setHours, setMinutes } from 'date-fns';
+import { format, addMinutes, startOfHour, setHours, setMinutes, addDays, addWeeks, addMonths } from 'date-fns';
 import { vi } from 'date-fns/locale';
 import { useToast } from '@/hooks/use-toast';
 import { getCustomerListForSelect, getAllProducts, getBranches, getAppSettings } from '@/app/actions';
@@ -52,6 +52,8 @@ export function AppointmentBookingForm({ isOpen, onClose, onSubmit, currentUserS
   const [time, setTime] = useState('09:00');
   const [selectedBranchId, setSelectedBranchId] = useState<string>('');
   const [notes, setNotes] = useState('');
+  const [recurrenceType, setRecurrenceType] = useState<'none' | 'daily' | 'weekly' | 'monthly'>('none');
+  const [recurrenceCount, setRecurrenceCount] = useState<number>(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { toast } = useToast();
   const appSettingsFromContext = useAppSettingsContext();
@@ -68,8 +70,18 @@ export function AppointmentBookingForm({ isOpen, onClose, onSubmit, currentUserS
   useEffect(() => {
     const appSettingsToUse = appSettingsFromContext || currentAppSettings;
     const selectedProduct = products.find(p => p.id === selectedProductId);
+    
     let serviceSpecificWorkingHours = selectedProduct?.schedulingRules?.workingHours;
+    if (selectedProduct?.isSchedulable && selectedProduct.schedulingRules && (!serviceSpecificWorkingHours || serviceSpecificWorkingHours.length === 0)) {
+        // If product is schedulable but has no specific working hours, use global ones.
+        serviceSpecificWorkingHours = appSettingsToUse?.workingHours;
+    }
+
     let serviceSpecificDuration = selectedProduct?.schedulingRules?.serviceDurationMinutes;
+    if(selectedProduct?.isSchedulable && selectedProduct.schedulingRules && !serviceSpecificDuration){
+        serviceSpecificDuration = appSettingsToUse?.defaultServiceDurationMinutes;
+    }
+
 
     const slots = generateTimeSlots(
       serviceSpecificWorkingHours?.length ? serviceSpecificWorkingHours : appSettingsToUse?.workingHours,
@@ -82,6 +94,7 @@ export function AppointmentBookingForm({ isOpen, onClose, onSubmit, currentUserS
     } else if (slots.length === 0 && time) {
         setTime(''); 
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedProductId, products, appSettingsFromContext, currentAppSettings, time]);
 
 
@@ -98,16 +111,14 @@ export function AppointmentBookingForm({ isOpen, onClose, onSubmit, currentUserS
             (currentUserSession?.role === 'admin' || currentUserSession?.role === 'staff') ? getCustomerListForSelect() : Promise.resolve([]),
           ]);
           
-          setProducts(fetchedProducts.filter(p => p.isActive && p.isSchedulable)); 
+          setProducts(fetchedProducts.filter(p => p.isSchedulable));
           setBranches(fetchedBranches);
           setCustomerList(fetchedCustomers);
           
-          // Auto-select customer if current user is a customer
           if (currentUserSession?.role === 'customer' && !selectedCustomerId) {
             setSelectedCustomerId(currentUserSession.id);
           }
 
-          // Auto-select branch if only one is available
           if (fetchedBranches.length === 1 && !selectedBranchId) {
             setSelectedBranchId(fetchedBranches[0].id);
           }
@@ -118,14 +129,18 @@ export function AppointmentBookingForm({ isOpen, onClose, onSubmit, currentUserS
       };
       fetchData();
     } else {
-      // Reset form fields when dialog closes, except for date and customer if it's a customer
+      // Reset form fields when dialog closes
       setSelectedProductId('');
-      setTime('09:00'); // Reset time to default
-      setSelectedBranchId('');
+      setTime('09:00'); 
+      setSelectedBranchId(branches.length === 1 ? branches[0].id : '');
       setNotes('');
+      setRecurrenceType('none');
+      setRecurrenceCount(1);
       if (currentUserSession?.role !== 'customer') {
         setSelectedCustomerId(undefined);
       }
+       // Keep selectedDate as is or reset to today:
+       // setSelectedDate(new Date()); 
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, currentUserSession, toast]); 
@@ -136,7 +151,7 @@ export function AppointmentBookingForm({ isOpen, onClose, onSubmit, currentUserS
     const selectedBranch = branches.find(b => b.id === selectedBranchId);
 
     let branchIsRequiredAndMissing = false;
-    if (branches.length > 1 && !selectedBranchId) { // Branch selection is required only if there are multiple branches
+    if (branches.length > 1 && !selectedBranchId) { 
       branchIsRequiredAndMissing = true;
     }
 
@@ -146,18 +161,19 @@ export function AppointmentBookingForm({ isOpen, onClose, onSubmit, currentUserS
     }
     setIsSubmitting(true);
     const formData: AppointmentBookingFormData = {
-      service: selectedProduct!.name, // selectedProduct is guaranteed by the validation above
+      service: selectedProduct!.name, 
       productId: selectedProduct!.id,
       date: format(selectedDate, 'yyyy-MM-dd'),
       time,
-      branch: selectedBranch?.name, // Can be undefined if no branches or only one branch (auto-selected)
-      branchId: selectedBranchId || (branches.length === 1 ? branches[0].id : undefined), // Ensure branchId is set if one branch
+      branch: selectedBranch?.name, 
+      branchId: selectedBranchId || (branches.length === 1 ? branches[0].id : undefined), 
       notes: notes.trim() || undefined,
-      customerId: selectedCustomerId!, // selectedCustomerId is guaranteed by validation
+      customerId: selectedCustomerId!, 
+      recurrenceType: recurrenceType === 'none' ? undefined : recurrenceType,
+      recurrenceCount: recurrenceType !== 'none' && recurrenceCount > 1 ? recurrenceCount : undefined,
     };
     await onSubmit(formData);
     setIsSubmitting(false);
-    // Do not close dialog here, parent component (HomePage) will close it upon successful booking if needed
   };
 
   return (
@@ -186,7 +202,19 @@ export function AppointmentBookingForm({ isOpen, onClose, onSubmit, currentUserS
                 value={selectedProductId} 
                 onValueChange={(value) => {
                     setSelectedProductId(value);
-                    if (timeSlots.length > 0) setTime(timeSlots[0]); else setTime('');
+                    // Reset time based on new service's potential working hours
+                    const product = products.find(p => p.id === value);
+                    const appSettingsToUse = appSettingsFromContext || currentAppSettings;
+                    let serviceSpecificWorkingHours = product?.schedulingRules?.workingHours;
+                    if (product?.isSchedulable && product.schedulingRules && (!serviceSpecificWorkingHours || serviceSpecificWorkingHours.length === 0)) {
+                        serviceSpecificWorkingHours = appSettingsToUse?.workingHours;
+                    }
+                    const slots = generateTimeSlots(
+                        serviceSpecificWorkingHours?.length ? serviceSpecificWorkingHours : appSettingsToUse?.workingHours,
+                        product?.schedulingRules?.serviceDurationMinutes,
+                        appSettingsToUse?.defaultServiceDurationMinutes
+                    );
+                    if (slots.length > 0) setTime(slots[0]); else setTime('');
                 }} 
                 disabled={isSubmitting || products.length === 0}
             >
@@ -198,7 +226,6 @@ export function AppointmentBookingForm({ isOpen, onClose, onSubmit, currentUserS
               </SelectContent>
             </Select>
           </div>
-
           
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
@@ -222,7 +249,7 @@ export function AppointmentBookingForm({ isOpen, onClose, onSubmit, currentUserS
                   <SelectValue placeholder={timeSlots.length === 0 ? "Chọn dịch vụ để xem giờ" : "Chọn giờ"} />
                 </SelectTrigger>
                 <SelectContent className="max-h-60">
-                  {timeSlots.length === 0 && <SelectItem value="" disabled>Không có khung giờ phù hợp</SelectItem>}
+                  {timeSlots.length === 0 && <SelectItem value="" disabled>Không có khung giờ</SelectItem>}
                   {timeSlots.map(slot => <SelectItem key={slot} value={slot}>{slot}</SelectItem>)}
                 </SelectContent>
               </Select>
@@ -231,15 +258,15 @@ export function AppointmentBookingForm({ isOpen, onClose, onSubmit, currentUserS
 
           {branches.length > 0 && (
             <div className="space-y-2">
-              <Label htmlFor="branch" className="text-sm font-medium">Chi nhánh {branches.length === 1 ? '(Mặc định)' : <span className="text-destructive">*</span>}</Label>
+              <Label htmlFor="branch" className="text-sm font-medium">Chi nhánh {branches.length === 1 ? '' : <span className="text-destructive">*</span>}</Label>
               <Select 
-                value={selectedBranchId} // Always use selectedBranchId for value
+                value={selectedBranchId} 
                 onValueChange={setSelectedBranchId} 
                 disabled={isSubmitting || branches.length === 0}
-                required={branches.length > 1} // Only required if more than one branch
+                required={branches.length > 1} 
               >
                 <SelectTrigger id="branch" className="w-full">
-                  <SelectValue placeholder={branches.length > 1 ? "Chọn chi nhánh" : (branches.length === 1 ? branches[0].name : "Không có chi nhánh")} />
+                   <SelectValue placeholder={branches.length === 1 && branches[0] ? branches[0].name : "Chọn chi nhánh"} />
                 </SelectTrigger>
                 <SelectContent>
                   {branches.map(b => <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>)}
@@ -247,6 +274,41 @@ export function AppointmentBookingForm({ isOpen, onClose, onSubmit, currentUserS
               </Select>
             </div>
           )}
+
+          {(currentUserSession?.role === 'admin' || currentUserSession?.role === 'staff') && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-end">
+                <div className="space-y-2">
+                <Label htmlFor="recurrenceType" className="text-sm font-medium">Lặp lại</Label>
+                <Select value={recurrenceType} onValueChange={(value) => setRecurrenceType(value as any)} disabled={isSubmitting}>
+                    <SelectTrigger id="recurrenceType" className="w-full">
+                    <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                    <SelectItem value="none">Không lặp lại</SelectItem>
+                    <SelectItem value="daily">Hàng ngày</SelectItem>
+                    <SelectItem value="weekly">Hàng tuần</SelectItem>
+                    <SelectItem value="monthly">Hàng tháng</SelectItem>
+                    </SelectContent>
+                </Select>
+                </div>
+                {recurrenceType !== 'none' && (
+                <div className="space-y-2">
+                    <Label htmlFor="recurrenceCount" className="text-sm font-medium">Số lần lặp lại</Label>
+                    <Input
+                    id="recurrenceCount"
+                    type="number"
+                    value={recurrenceCount}
+                    onChange={e => setRecurrenceCount(Math.max(1, parseInt(e.target.value, 10) || 1))}
+                    min="1"
+                    max="52" // Example max
+                    disabled={isSubmitting}
+                    className="w-full"
+                    />
+                </div>
+                )}
+            </div>
+          )}
+
 
           <div className="space-y-2">
             <Label htmlFor="notes" className="text-sm font-medium">Ghi chú (Tùy chọn)</Label>
@@ -281,4 +343,3 @@ export function AppointmentBookingForm({ isOpen, onClose, onSubmit, currentUserS
     </Dialog>
   );
 }
-
