@@ -80,13 +80,13 @@ export default function AdminSettingsPage() {
         const mergedSettings: AppSettings = {
           ...initialSettingsState, 
           ...fetchedSettings,     
-          suggestedQuestions: fetchedSettings.suggestedQuestions && fetchedSettings.suggestedQuestions.length > 0 ? fetchedSettings.suggestedQuestions : initialSettingsState.suggestedQuestions,
+          suggestedQuestions: fetchedSettings.suggestedQuestions && fetchedSettings.suggestedQuestions.length > 0 ? fetchedSettings.suggestedQuestions : initialSettingsState.suggestedQuestions || [],
           successfulBookingMessageTemplate: fetchedSettings.successfulBookingMessageTemplate || initialSettingsState.successfulBookingMessageTemplate,
           metaKeywords: fetchedSettings.metaKeywords && fetchedSettings.metaKeywords.length > 0 ? fetchedSettings.metaKeywords : initialSettingsState.metaKeywords || [],
-          workingHours: fetchedSettings.workingHours && fetchedSettings.workingHours.length > 0 ? fetchedSettings.workingHours : initialSettingsState.workingHours,
+          workingHours: fetchedSettings.workingHours && fetchedSettings.workingHours.length > 0 ? fetchedSettings.workingHours : initialSettingsState.workingHours || [],
           weeklyOffDays: fetchedSettings.weeklyOffDays || initialSettingsState.weeklyOffDays || [],
           oneTimeOffDates: fetchedSettings.oneTimeOffDates || initialSettingsState.oneTimeOffDates || [],
-          specificDayRules: (fetchedSettings.specificDayRules || initialSettingsState.specificDayRules!).map(rule => ({ ...rule, id: rule.id || new Date().getTime().toString() + Math.random() })),
+          specificDayRules: (fetchedSettings.specificDayRules || initialSettingsState.specificDayRules || []).map(rule => ({ ...rule, id: rule.id || new Date().getTime().toString() + Math.random() })),
           officeDays: fetchedSettings.officeDays && fetchedSettings.officeDays.length > 0 ? fetchedSettings.officeDays : initialSettingsState.officeDays || [],
         };
         setSettings(mergedSettings);
@@ -569,4 +569,3 @@ export default function AdminSettingsPage() {
     </div>
   );
 }
-```
