@@ -256,7 +256,7 @@ export default function AdminSettingsPage() {
         weeklyOffDays: settings.weeklyOffDays || [],
         oneTimeOffDates: settings.oneTimeOffDates || [],
         specificDayRules: (settings.specificDayRules || []).map(rule => {
-          const { id: ruleId, ...restOfRule } = rule;
+          const { id: ruleId, ...restOfRule } = rule; // remove client-side id
           return restOfRule;
         }),
         officeDays: settings.officeDays || [],
@@ -287,10 +287,18 @@ export default function AdminSettingsPage() {
         });
       }
 
+      if (settingsToSave.weeklyOffDays?.length === 0) delete settingsToSave.weeklyOffDays;
+      if (settingsToSave.oneTimeOffDates?.length === 0) delete settingsToSave.oneTimeOffDates;
+      if (settingsToSave.specificDayRules?.length === 0) delete settingsToSave.specificDayRules;
+      if (settingsToSave.officeDays?.length === 0) delete settingsToSave.officeDays;
+      if (settingsToSave.suggestedQuestions?.length === 0) delete settingsToSave.suggestedQuestions;
+      if (settingsToSave.metaKeywords?.length === 0) delete settingsToSave.metaKeywords;
+      if (settingsToSave.workingHours?.length === 0) delete settingsToSave.workingHours;
+
 
       await updateAppSettings(settingsToSave);
       toast({ title: "Thành công", description: "Cài đặt đã được lưu." });
-      fetchSettings(); // Re-fetch to confirm
+      fetchSettings(); // Re-fetch to confirm and get updated specificDayRule IDs
     } catch (error: any) {
       toast({ title: "Lỗi", description: error.message || "Không thể lưu cài đặt.", variant: "destructive" });
     } finally {
@@ -382,7 +390,7 @@ export default function AdminSettingsPage() {
              <div className="space-y-2">
                 <Label htmlFor="successfulBookingMessageTemplate">Mẫu tin nhắn Đặt lịch thành công</Label>
                 <Textarea id="successfulBookingMessageTemplate" name="successfulBookingMessageTemplate" value={settings.successfulBookingMessageTemplate || ''} onChange={handleInputChange} disabled={isSubmitting} placeholder="VD: Lịch hẹn cho {{service}} vào {{time}} {{date}} đã được xác nhận!" />
-                <p className="text-xs text-muted-foreground">Sử dụng: '{{service}}', '{{date}}', '{{time}}', '{{branch}}'.</p>
+                <p className="text-xs text-muted-foreground">Sử dụng: {'\'{{service}}\''}, {'\'{{date}}\''}, {'\'{{time}}\''}, {'\'{{branch}}\''}.</p>
             </div>
         </CardContent>
       </Card>
