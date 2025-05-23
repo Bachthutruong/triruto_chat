@@ -23,20 +23,17 @@ const generateTimeSlots = (workingHours?: string[], serviceDuration?: number, de
   const effectiveDuration = serviceDuration || defaultDuration;
 
   if (workingHours && workingHours.length > 0) {
-    // Use configured working hours if available
-    // This could be further refined to remove slots where `effectiveDuration` doesn't fit before the next slot or end of day
     return workingHours;
   }
   
-  // Fallback to default time slots if no working hours configured
   let date = startOfHour(new Date());
-  date = setHours(date, 8); // Start from 8 AM
+  date = setHours(date, 8); 
   date = setMinutes(date, 0);
-  const endDate = setHours(new Date(), 21); // End at 9 PM
+  const endDate = setHours(new Date(), 21); 
 
   while (date < endDate) {
     slots.push(format(date, 'HH:mm'));
-    date = addMinutes(date, 30); // Default to 30 minute intervals if not specified by workingHours
+    date = addMinutes(date, 30); 
   }
   return slots;
 };
@@ -60,7 +57,9 @@ export function AppointmentBookingForm({ isOpen, onClose, onSubmit, currentUserS
   const appSettingsFromContext = useAppSettingsContext();
 
   const [customerList, setCustomerList] = useState<{ id: string, name: string, phoneNumber: string }[]>([]);
-  const [selectedCustomerId, setSelectedCustomerId] = useState<string | undefined>(currentUserSession?.role === 'customer' ? currentUserSession.id : undefined);
+  const [selectedCustomerId, setSelectedCustomerId] = useState<string | undefined>(
+    currentUserSession?.role === 'customer' ? currentUserSession.id : undefined
+  );
   const [products, setProducts] = useState<ProductItem[]>([]);
   const [branches, setBranches] = useState<Branch[]>([]);
   const [timeSlots, setTimeSlots] = useState<string[]>([]);
@@ -81,7 +80,7 @@ export function AppointmentBookingForm({ isOpen, onClose, onSubmit, currentUserS
     if (slots.length > 0 && !slots.includes(time)) {
         setTime(slots[0]);
     } else if (slots.length === 0 && time) {
-        setTime(''); // Clear time if no slots available for selected config
+        setTime(''); 
     }
   }, [selectedProductId, products, appSettingsFromContext, currentAppSettings, time]);
 
@@ -99,45 +98,66 @@ export function AppointmentBookingForm({ isOpen, onClose, onSubmit, currentUserS
             (currentUserSession?.role === 'admin' || currentUserSession?.role === 'staff') ? getCustomerListForSelect() : Promise.resolve([]),
           ]);
           
-          // Filter for active and schedulable products
           setProducts(fetchedProducts.filter(p => p.isActive && p.isSchedulable)); 
           setBranches(fetchedBranches);
           setCustomerList(fetchedCustomers);
           
-          if (currentUserSession?.role === 'customer') {
+          // Auto-select customer if current user is a customer
+          if (currentUserSession?.role === 'customer' && !selectedCustomerId) {
             setSelectedCustomerId(currentUserSession.id);
           }
-          // Time slots will be set by the other useEffect based on product/settings
+
+          // Auto-select branch if only one is available
+          if (fetchedBranches.length === 1 && !selectedBranchId) {
+            setSelectedBranchId(fetchedBranches[0].id);
+          }
+          
         } catch (error) {
           toast({ title: "Lỗi tải dữ liệu", description: "Không thể tải danh sách dịch vụ, chi nhánh hoặc khách hàng.", variant: "destructive" });
         }
       };
       fetchData();
+    } else {
+      // Reset form fields when dialog closes, except for date and customer if it's a customer
+      setSelectedProductId('');
+      setTime('09:00'); // Reset time to default
+      setSelectedBranchId('');
+      setNotes('');
+      if (currentUserSession?.role !== 'customer') {
+        setSelectedCustomerId(undefined);
+      }
     }
-  }, [currentUserSession, isOpen, toast, appSettingsFromContext]); // Removed time from deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, currentUserSession, toast]); 
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const selectedProduct = products.find(p => p.id === selectedProductId);
     const selectedBranch = branches.find(b => b.id === selectedBranchId);
 
-    if (!selectedProduct || !selectedDate || !time || !selectedCustomerId || (branches.length > 0 && !selectedBranchId && branches.length > 0)) {
+    let branchIsRequiredAndMissing = false;
+    if (branches.length > 1 && !selectedBranchId) { // Branch selection is required only if there are multiple branches
+      branchIsRequiredAndMissing = true;
+    }
+
+    if (!selectedProductId || !selectedDate || !time || !selectedCustomerId || branchIsRequiredAndMissing) {
       toast({ title: 'Thiếu thông tin', description: 'Vui lòng điền đầy đủ các trường bắt buộc: Dịch vụ, Khách hàng, Ngày, Giờ và Chi nhánh (nếu có nhiều hơn 1).', variant: 'destructive' });
       return;
     }
     setIsSubmitting(true);
     const formData: AppointmentBookingFormData = {
-      service: selectedProduct.name,
-      productId: selectedProduct.id, // Send productId
+      service: selectedProduct!.name, // selectedProduct is guaranteed by the validation above
+      productId: selectedProduct!.id,
       date: format(selectedDate, 'yyyy-MM-dd'),
       time,
-      branch: selectedBranch?.name,
-      branchId: selectedBranch?.id,
+      branch: selectedBranch?.name, // Can be undefined if no branches or only one branch (auto-selected)
+      branchId: selectedBranchId || (branches.length === 1 ? branches[0].id : undefined), // Ensure branchId is set if one branch
       notes: notes.trim() || undefined,
-      customerId: selectedCustomerId,
+      customerId: selectedCustomerId!, // selectedCustomerId is guaranteed by validation
     };
     await onSubmit(formData);
     setIsSubmitting(false);
+    // Do not close dialog here, parent component (HomePage) will close it upon successful booking if needed
   };
 
   return (
@@ -166,7 +186,6 @@ export function AppointmentBookingForm({ isOpen, onClose, onSubmit, currentUserS
                 value={selectedProductId} 
                 onValueChange={(value) => {
                     setSelectedProductId(value);
-                    // Reset time when service changes, so new slots can be populated
                     if (timeSlots.length > 0) setTime(timeSlots[0]); else setTime('');
                 }} 
                 disabled={isSubmitting || products.length === 0}
@@ -214,10 +233,10 @@ export function AppointmentBookingForm({ isOpen, onClose, onSubmit, currentUserS
             <div className="space-y-2">
               <Label htmlFor="branch" className="text-sm font-medium">Chi nhánh {branches.length === 1 ? '(Mặc định)' : <span className="text-destructive">*</span>}</Label>
               <Select 
-                value={selectedBranchId || (branches.length === 1 ? branches[0].id : '')} 
+                value={selectedBranchId} // Always use selectedBranchId for value
                 onValueChange={setSelectedBranchId} 
                 disabled={isSubmitting || branches.length === 0}
-                required={branches.length > 1}
+                required={branches.length > 1} // Only required if more than one branch
               >
                 <SelectTrigger id="branch" className="w-full">
                   <SelectValue placeholder={branches.length > 1 ? "Chọn chi nhánh" : (branches.length === 1 ? branches[0].name : "Không có chi nhánh")} />
@@ -250,7 +269,7 @@ export function AppointmentBookingForm({ isOpen, onClose, onSubmit, currentUserS
               </DialogClose>
               <Button
                 type="submit"
-                disabled={isSubmitting || !selectedProductId || (branches.length > 1 && !selectedBranchId) || !time}
+                disabled={isSubmitting || !selectedProductId || (branches.length > 1 && !selectedBranchId) || !time || !selectedDate || !selectedCustomerId}
                 className="w-full sm:w-auto"
               >
                 {isSubmitting ? 'Đang xử lý...' : 'Đặt lịch'}
@@ -262,3 +281,4 @@ export function AppointmentBookingForm({ isOpen, onClose, onSubmit, currentUserS
     </Dialog>
   );
 }
+
