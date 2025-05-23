@@ -6,23 +6,22 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
 import { AppHeader } from '@/components/layout/AppHeader';
+import { AppFooter } from '@/components/layout/AppFooter'; // Ensure AppFooter is used or remove if not needed
 import { ChatInterface } from '@/components/chat/ChatInterface';
+import { ChatWindow } from '@/components/chat/ChatWindow'; // Added this import
 import type { Message, UserSession, Conversation, MessageViewerRole } from '@/lib/types';
 import { 
   handleCustomerAccess, 
   processUserMessage, 
   // createNewConversationForUser, // Removed as it's not exported from actions
-  getUserConversations, 
+  // getConversationHistory, // Not used directly in page.tsx anymore
+  getUserConversations,
   getMessagesByIds,
-  updateConversationTitle,
-  pinConversationForUser,
-  unpinConversationForUser,
-  pinMessageToConversation, // New for pinning messages
-  unpinMessageFromConversation, // New for unpinning messages
-  deleteStaffMessage, // For consistency, even if not used by customer
-  editStaffMessage, // For consistency
-  getAppSettings,
-  createNewConversationForUser,
+  updateConversationTitle, // Added for updating title
+  pinConversationForUser, // Added for pinning conversations
+  unpinConversationForUser, // Added for unpinning conversations
+  getAppSettings, // For fetching app settings
+  createNewConversationForUser, // For creating new conversations by user
 } from './actions'; 
 import { useToast } from '@/hooks/use-toast';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -73,32 +72,68 @@ export default function HomePage() {
     updateBrandName();
   }, [appSettingsContext]);
 
-  const fetchPinnedMessages = useCallback(async (convId: string | null) => {
-    if (!convId) {
-        setPinnedMessages([]);
-        return;
+  const fetchPinnedMessages = useCallback(async (conversation: Conversation | null) => {
+    if (!conversation || !conversation.pinnedMessageIds || conversation.pinnedMessageIds.length === 0) {
+      setPinnedMessages([]);
+      return;
     }
-    const currentConv = activeConversation?.id === convId ? activeConversation : null;
-    
-    if (currentConv && currentConv.pinnedMessageIds && currentConv.pinnedMessageIds.length > 0) {
-        try {
-            const fetchedPinned = await getMessagesByIds(currentConv.pinnedMessageIds);
-            setPinnedMessages(fetchedPinned);
-        } catch (error) {
-            console.error("HomePage: Error fetching pinned messages:", error);
-            setPinnedMessages([]);
-        }
-    } else {
-        setPinnedMessages([]);
+    try {
+      const fetchedPinned = await getMessagesByIds(conversation.pinnedMessageIds);
+      setPinnedMessages(fetchedPinned);
+    } catch (error) {
+      console.error("HomePage: Error fetching pinned messages:", error);
+      setPinnedMessages([]);
+      toast({ title: "Lỗi", description: "Không thể tải tin nhắn đã ghim.", variant: "destructive" });
     }
-  }, [activeConversation]);
+  }, [toast]);
 
   useEffect(() => {
-    if (activeConversation?.id) {
-        fetchPinnedMessages(activeConversation.id);
+    if (activeConversation) {
+      fetchPinnedMessages(activeConversation);
     }
   }, [activeConversation, fetchPinnedMessages]);
 
+  const loadInitialData = useCallback(async (session: UserSession) => {
+    if (session.role !== 'customer' || !session.id) {
+      setIsLoadingSession(false);
+      return;
+    }
+    setIsLoadingSession(true);
+    setHasLoadedInitialData(false); 
+    console.log("HomePage: Starting loadInitialData for session:", session.id);
+    try {
+      const result = await handleCustomerAccess(session.phoneNumber); 
+
+      setCurrentUserSession(result.userSession); 
+      setCurrentMessages((result.initialMessages || []).map((m: Message) => ({...m, timestamp: new Date(m.timestamp)})));
+      setCurrentSuggestedReplies(result.initialSuggestedReplies || []);
+      
+      const primaryConversation = (result.conversations && result.conversations.length > 0) ? 
+        result.conversations.map((c: Conversation) => ({
+          ...c,
+          createdAt: new Date(c.createdAt),
+          updatedAt: new Date(c.updatedAt),
+          lastMessageTimestamp: c.lastMessageTimestamp ? new Date(c.lastMessageTimestamp) : undefined,
+        }))[0] 
+        : null;
+
+      setActiveConversation(primaryConversation);
+
+      if (primaryConversation) {
+        fetchPinnedMessages(primaryConversation);
+      }
+      setHasLoadedInitialData(true);
+      console.log("HomePage: loadInitialData completed.");
+    } catch (error) {
+      console.error("HomePage: Error in loadInitialData:", error);
+      toast({ title: "Lỗi", description: "Không thể tải dữ liệu trò chuyện.", variant: "destructive" });
+      sessionStorage.removeItem('aetherChatUserSession');
+      sessionStorage.removeItem('aetherChatPrefetchedData');
+      if (router && router.replace) router.replace('/enter-phone'); else window.location.pathname = '/enter-phone';
+    } finally {
+      setIsLoadingSession(false);
+    }
+  }, [toast, router, fetchPinnedMessages]); 
 
   useEffect(() => {
     console.log("HomePage: Initial session check effect running. Pathname:", pathname);
@@ -110,7 +145,7 @@ export default function HomePage() {
         console.log("HomePage: Found session in storage:", session);
         setInitialSessionFromStorage(session);
       } catch (error) {
-        console.error("HomePage: Lỗi phân tích cú pháp session từ sessionStorage:", error);
+        console.error("HomePage: Error parsing session from sessionStorage:", error);
         sessionStorage.removeItem('aetherChatUserSession');
         sessionStorage.removeItem('aetherChatPrefetchedData');
         if (router && router.replace) router.replace('/enter-phone'); else window.location.pathname = '/enter-phone';
@@ -125,53 +160,6 @@ export default function HomePage() {
     }
   }, [router, pathname]);
 
-
-  const loadInitialData = useCallback(async (session: UserSession) => {
-    if (session.role !== 'customer' || !session.id) {
-      setIsLoadingSession(false);
-      return;
-    }
-    setIsLoadingSession(true);
-    setHasLoadedInitialData(false); 
-    console.log("HomePage: Bắt đầu loadInitialData cho session:", session.id);
-    try {
-      const {
-        userSession: updatedSession,
-        initialMessages,
-        initialSuggestedReplies,
-        activeConversationId: primaryConvId,
-        conversations: customerConversations 
-      } = await handleCustomerAccess(session.phoneNumber); 
-
-      setCurrentUserSession(updatedSession); 
-      setCurrentMessages(initialMessages.map((m: Message) => ({...m, timestamp: new Date(m.timestamp)})));
-      setCurrentSuggestedReplies(initialSuggestedReplies);
-      
-      const primaryConversation = customerConversations && customerConversations.length > 0 ? 
-        customerConversations.map((c: Conversation) => ({
-          ...c,
-          createdAt: new Date(c.createdAt),
-          updatedAt: new Date(c.updatedAt),
-          lastMessageTimestamp: c.lastMessageTimestamp ? new Date(c.lastMessageTimestamp) : undefined,
-        }))[0] 
-        : null;
-      setActiveConversation(primaryConversation);
-
-      if (primaryConversation?.id) {
-        fetchPinnedMessages(primaryConversation.id);
-      }
-      setHasLoadedInitialData(true);
-      console.log("HomePage: loadInitialData hoàn thành.");
-    } catch (error) {
-      console.error("HomePage: Lỗi loadInitialData:", error);
-      toast({ title: "Lỗi", description: "Không thể tải dữ liệu trò chuyện.", variant: "destructive" });
-      sessionStorage.removeItem('aetherChatUserSession');
-      sessionStorage.removeItem('aetherChatPrefetchedData');
-      if (router && router.replace) router.replace('/enter-phone'); else window.location.pathname = '/enter-phone';
-    } finally {
-      setIsLoadingSession(false);
-    }
-  }, [toast, router, fetchPinnedMessages]); 
 
   useEffect(() => {
     if (initialSessionFromStorage) {
@@ -197,8 +185,8 @@ export default function HomePage() {
               const primaryConv = custConvs.find(c => c.id === prefetchedData.activeConversationId) || custConvs[0] || null;
               setActiveConversation(primaryConv);
 
-              if (primaryConv?.id) {
-                fetchPinnedMessages(primaryConv.id);
+              if (primaryConv) {
+                fetchPinnedMessages(primaryConv);
               }
               
               setHasLoadedInitialData(true);
@@ -251,21 +239,22 @@ export default function HomePage() {
       if (newMessage.conversationId === activeConversation?.id && newMessage.userId !== currentUserSession?.id) {
         setCurrentMessages(prev => {
           if (prev.find(m => m.id === newMessage.id)) return prev;
-          return [...prev, newMessage];
+          return [...prev, {...newMessage, timestamp: new Date(newMessage.timestamp)}];
         });
       }
     };
 
     const handleUserTyping = ({ userId: typingUserId, userName, conversationId: incomingConvId }: { userId: string, userName: string, conversationId: string }) => {
       if (incomingConvId === activeConversation?.id && typingUserId !== currentUserSession?.id) {
-        usersTypingMapRef.current[typingUserId] = userName;
+        usersTypingMapRef.current = { ...usersTypingMapRef.current, [typingUserId]: userName };
         setTypingUsers({ ...usersTypingMapRef.current });
       }
     };
 
     const handleUserStopTyping = ({ userId: typingUserId, conversationId: incomingConvId }: { userId: string, conversationId: string }) => {
       if (incomingConvId === activeConversation?.id && typingUserId !== currentUserSession?.id) {
-        delete usersTypingMapRef.current[typingUserId];
+        const { [typingUserId]: _, ...rest } = usersTypingMapRef.current;
+        usersTypingMapRef.current = rest;
         setTypingUsers({ ...usersTypingMapRef.current });
       }
     };
@@ -273,21 +262,21 @@ export default function HomePage() {
     const handlePinnedMessagesUpdated = ({ conversationId: updatedConvId, pinnedMessageIds: newPinnedIds }: { conversationId: string, pinnedMessageIds: string[] }) => {
         if (updatedConvId === activeConversation?.id) {
             setActiveConversation(prev => prev ? { ...prev, pinnedMessageIds: newPinnedIds } : null);
-            // fetchPinnedMessages will be called by its own useEffect
+            // fetchPinnedMessages will be called by its own useEffect reacting to activeConversation change
         }
     };
     
     const handleMessageDeleted = ({ messageId, conversationId: convId }: { messageId: string, conversationId: string }) => {
       if (convId === activeConversation?.id) {
         setCurrentMessages(prev => prev.filter(m => m.id !== messageId));
-        setPinnedMessages(prev => prev.filter(pm => pm.id !== messageId));
+        setPinnedMessages(prev => prev.filter(pm => pm.id !== messageId)); // Also update pinned messages if one was deleted
       }
     };
 
     const handleMessageEdited = ({ message: editedMessage, conversationId: convId }: { message: Message, conversationId: string }) => {
        if (convId === activeConversation?.id) {
         setCurrentMessages(prev => prev.map(m => m.id === editedMessage.id ? {...editedMessage, timestamp: new Date(editedMessage.timestamp)} : m));
-        setPinnedMessages(prev => prev.map(pm => pm.id === editedMessage.id ? {...editedMessage, timestamp: new Date(editedMessage.timestamp)} : pm));
+        setPinnedMessages(prev => prev.map(pm => pm.id === editedMessage.id ? {...editedMessage, timestamp: new Date(editedMessage.timestamp)} : pm)); // Also update pinned
       }
     };
 
@@ -434,7 +423,7 @@ export default function HomePage() {
   
   const handlePinRequested = (messageId: string) => {
     if (!socket || !isConnected || !activeConversation?.id || !currentUserSession) return;
-    socket.emit('requestPinMessage', { 
+    socket.emit('pinMessage', { 
         conversationId: activeConversation.id, 
         messageId,
         userSessionJsonString: JSON.stringify(currentUserSession) 
@@ -443,7 +432,7 @@ export default function HomePage() {
 
   const handleUnpinRequested = (messageId: string) => {
     if (!socket || !isConnected || !activeConversation?.id || !currentUserSession) return;
-    socket.emit('requestUnpinMessage', { 
+    socket.emit('unpinMessage', { 
         conversationId: activeConversation.id, 
         messageId,
         userSessionJsonString: JSON.stringify(currentUserSession)
@@ -611,3 +600,4 @@ export default function HomePage() {
     </div>
   );
 }
+
