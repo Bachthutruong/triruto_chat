@@ -24,8 +24,8 @@ import {
   deleteCustomerNote,
   updateCustomerNote,
   getStaffList,
-  pinMessageToConversation,
-  unpinMessageFromConversation,
+  pinMessageToConversation, 
+  unpinMessageFromConversation, 
   getMessagesByIds,
   markCustomerInteractionAsReadByStaff,
   deleteStaffMessage,
@@ -45,12 +45,13 @@ import { Label } from '@/components/ui/label';
 import Link from 'next/link';
 import { useSocket } from '@/contexts/SocketContext';
 import { AppointmentBookingForm } from '@/components/chat/AppointmentBookingForm';
+import { cn } from '@/lib/utils';
 
 const MAX_FILE_SIZE_MB = 5;
 const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
 
 function getMimeTypeFromDataUri(dataUri: string): string | null {
-  const match = dataUri.match(/^data:[^;]+;base64,/);
+  const match = dataUri.match(/^data:([^;]+);base64,/);
   return match ? match[1] : null;
 }
 
@@ -94,24 +95,20 @@ export default function StaffIndividualChatPage() {
   const [typingUsers, setTypingUsers] = useState<Record<string, string>>({});
   const [isBookingModalOpen, setIsBookingModalOpen] = useState(false);
 
-  const fetchPinnedMessagesForConversation = useCallback(async (conversationId: string | null) => {
-    if (!conversationId) {
+  const fetchPinnedMessagesForConversation = useCallback(async (conversation: Conversation | null) => {
+    if (!conversation || !conversation.pinnedMessageIds || conversation.pinnedMessageIds.length === 0) {
         setPinnedMessages([]);
         return;
     }
-    const conversationToUse = activeConversation?.id === conversationId ? activeConversation : null;
-    if (conversationToUse && conversationToUse.pinnedMessageIds && conversationToUse.pinnedMessageIds.length > 0) {
-        try {
-            const fetchedPinned = await getMessagesByIds(conversationToUse.pinnedMessageIds);
-            setPinnedMessages(fetchedPinned);
-        } catch (error) {
-            console.error("Error fetching pinned messages for staff:", error);
-            setPinnedMessages([]);
-        }
-    } else {
+    try {
+        console.log(`[Staff] Fetching pinned messages for conv ${conversation.id}:`, conversation.pinnedMessageIds);
+        const fetchedPinned = await getMessagesByIds(conversation.pinnedMessageIds);
+        setPinnedMessages(fetchedPinned);
+    } catch (error) {
+        console.error("Error fetching pinned messages for staff:", error);
         setPinnedMessages([]);
     }
-  }, [activeConversation]);
+  }, []);
 
 
   const fetchChatData = useCallback(async () => {
@@ -143,12 +140,16 @@ export default function StaffIndividualChatPage() {
           setInternalNameInput('');
         }
 
-        const currentActiveConv = fetchedConversations && fetchedConversations.length > 0 ? fetchedConversations[0] : null;
+        const currentActiveConv = fetchedConversations && fetchedConversations.length > 0 ? 
+            {
+                ...fetchedConversations[0], 
+                pinnedMessageIds: fetchedConversations[0].pinnedMessageIds || [] 
+            } : null;
         setActiveConversation(currentActiveConv);
 
         if (currentActiveConv) {
           setMessages(fetchedMessages || []);
-          fetchPinnedMessagesForConversation(currentActiveConv.id);
+          fetchPinnedMessagesForConversation(currentActiveConv);
         } else {
           setMessages([]);
           setPinnedMessages([]);
@@ -201,6 +202,25 @@ export default function StaffIndividualChatPage() {
     }
   }, [fetchChatData, staffSession]);
 
+  const handlePinnedMessagesUpdated = useCallback(({ conversationId: updatedConvId, pinnedMessageIds: newPinnedIds }: { conversationId: string, pinnedMessageIds: string[] }) => {
+    console.log(`[Staff] Received pinnedMessagesUpdated for conv ${updatedConvId}. New IDs:`, newPinnedIds, "Current active conv ID:", activeConversation?.id);
+    if (updatedConvId === activeConversation?.id) {
+        setActiveConversation(prev => {
+            if (prev && prev.id === updatedConvId) {
+                console.log(`[Staff] Updating pinned IDs for conv ${updatedConvId} from`, prev.pinnedMessageIds, "to", newPinnedIds);
+                return { ...prev, pinnedMessageIds: newPinnedIds || [] };
+            }
+            return prev;
+        });
+    }
+  }, [activeConversation]);
+
+  useEffect(() => {
+      if (activeConversation) { // This effect will run when activeConversation itself changes
+          fetchPinnedMessagesForConversation(activeConversation);
+      }
+  }, [activeConversation, fetchPinnedMessagesForConversation]);
+
   useEffect(() => {
     if (!socket || !isConnected || !activeConversation?.id || !staffSession) {
       return;
@@ -221,22 +241,17 @@ export default function StaffIndividualChatPage() {
 
     const handleUserTyping = ({ userId: typingUserId, userName, conversationId: incomingConvId }: { userId: string, userName: string, conversationId: string }) => {
       if (incomingConvId === activeConversation?.id && typingUserId !== socket.id && typingUserId !== staffSession?.id) {
-        usersTypingMapRef.current[typingUserId] = userName;
+        usersTypingMapRef.current = { ...usersTypingMapRef.current, [typingUserId]: userName };
         setTypingUsers({ ...usersTypingMapRef.current });
       }
     };
 
     const handleUserStopTyping = ({ userId: typingUserId, conversationId: incomingConvId }: { userId: string, conversationId: string }) => {
       if (incomingConvId === activeConversation?.id && typingUserId !== socket.id && typingUserId !== staffSession?.id) {
-        delete usersTypingMapRef.current[typingUserId];
+        const { [typingUserId]: _, ...rest } = usersTypingMapRef.current;
+        usersTypingMapRef.current = rest;
         setTypingUsers({ ...usersTypingMapRef.current });
       }
-    };
-
-    const handlePinnedMessagesUpdated = ({ conversationId: updatedConvId, pinnedMessageIds: newPinnedIds }: { conversationId: string, pinnedMessageIds: string[] }) => {
-        if (updatedConvId === activeConversation?.id) {
-          setActiveConversation(prev => prev ? { ...prev, pinnedMessageIds: newPinnedIds } : null);
-        }
     };
 
     const handleMessageDeleted = ({ messageId: deletedMessageId, conversationId: convId }: { messageId: string, conversationId: string }) => {
@@ -273,13 +288,7 @@ export default function StaffIndividualChatPage() {
         socket.off('messageEdited', handleMessageEdited);
       }
     };
-  }, [socket, isConnected, activeConversation, staffSession]);
-
-  useEffect(() => {
-    if (activeConversation?.id) {
-        fetchPinnedMessagesForConversation(activeConversation.id);
-    }
-  }, [activeConversation, fetchPinnedMessagesForConversation]);
+  }, [socket, isConnected, activeConversation, staffSession, handlePinnedMessagesUpdated]);
 
 
   const handleSendMessage = async (messageContent: string) => {
@@ -299,7 +308,7 @@ export default function StaffIndividualChatPage() {
       const sentMessage = await sendStaffMessage(staffSession!, customer!.id, activeConversation!.id, messageContent);
       console.log("Staff: Message object received from action to add to state:", sentMessage);
       if (sentMessage && sentMessage.id) {
-        setMessages(prev => [...prev, sentMessage]);
+        setMessages(prev => [...prev, {...sentMessage, timestamp: new Date(sentMessage.timestamp)}]);
         setCustomer(prev => prev ? { ...prev, interactionStatus: 'replied_by_staff', lastMessagePreview: messageContent.substring(0,100), lastMessageTimestamp: new Date(sentMessage.timestamp) } : null);
         setActiveConversation(prev => prev ? { ...prev, lastMessagePreview: messageContent.substring(0,100), lastMessageTimestamp: new Date(sentMessage.timestamp) } : null);
         if (socket && isConnected) {
@@ -383,7 +392,7 @@ export default function StaffIndividualChatPage() {
       const updatedMessage = await editStaffMessage(messageEditState.messageId, finalContent, staffSession);
       if (updatedMessage) {
         setMessages(prev => prev.map(m => m.id === updatedMessage.id ? {...updatedMessage, timestamp: new Date(updatedMessage.timestamp)} : m));
-        fetchPinnedMessagesForConversation(activeConversation.id);
+        // fetchPinnedMessagesForConversation will be called by its own useEffect if activeConversation's pinnedMessageIds changed
         if (socket && isConnected) {
           socket.emit('editMessage', { message: updatedMessage, conversationId: activeConversation.id });
         }
@@ -427,7 +436,7 @@ export default function StaffIndividualChatPage() {
       const result = await deleteStaffMessage(messageId, staffSession);
       if (result.success) {
         setMessages(prev => prev.filter(m => m.id !== messageId));
-        fetchPinnedMessagesForConversation(activeConversation.id);
+        // fetchPinnedMessagesForConversation will be called by its own useEffect
         if (socket && isConnected) {
           socket.emit('deleteMessage', { messageId, conversationId: activeConversation.id });
         }
@@ -443,19 +452,19 @@ export default function StaffIndividualChatPage() {
 
   const handlePinRequested = (messageId: string) => {
     if (!socket || !isConnected || !activeConversation?.id || !staffSession) return;
-    socket.emit('requestPinMessage', {
-        conversationId: activeConversation.id,
+    socket.emit('pinMessage', { 
+        conversationId: activeConversation.id, 
         messageId,
-        userSessionJsonString: JSON.stringify(staffSession) // Use staffSession here
+        userSessionJsonString: JSON.stringify(staffSession) 
     });
   };
 
   const handleUnpinRequested = (messageId: string) => {
     if (!socket || !isConnected || !activeConversation?.id || !staffSession) return;
-    socket.emit('requestUnpinMessage', {
-        conversationId: activeConversation.id,
+    socket.emit('unpinMessage', { 
+        conversationId: activeConversation.id, 
         messageId,
-        userSessionJsonString: JSON.stringify(staffSession) // Use staffSession here
+        userSessionJsonString: JSON.stringify(staffSession)
     });
   };
 
@@ -463,9 +472,9 @@ export default function StaffIndividualChatPage() {
     const element = document.getElementById(messageId);
     if (element) {
       element.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      element.classList.add('bg-yellow-200', 'transition-all', 'duration-1000');
+      element.classList.add('bg-yellow-200', 'dark:bg-yellow-700', 'transition-all', 'duration-1000');
       setTimeout(() => {
-        element.classList.remove('bg-yellow-200');
+        element.classList.remove('bg-yellow-200', 'dark:bg-yellow-700');
       }, 2000);
     }
   };
@@ -646,20 +655,21 @@ export default function StaffIndividualChatPage() {
     }
   };
 
-  console.log(`StaffIndividualChatPage: Rendering. isSendingMessage = ${isSendingMessage}, isLoading (page) = ${isLoading}`);
-
-  if (isLoading && !customer) {
-    return <div className="flex items-center justify-center h-full"><Loader2 className="h-8 w-8 animate-spin text-primary"/> <p className="ml-2">Đang tải cuộc trò chuyện...</p></div>;
+  if (isLoading && !customer && !staffSession) { // Only show full page loader if nothing is available yet
+    return <div className="flex items-center justify-center h-full"><Loader2 className="h-8 w-8 animate-spin text-primary"/> <p className="ml-2">Đang tải dữ liệu...</p></div>;
   }
 
   if (!staffSession) {
     return <div className="flex items-center justify-center h-full"><p>Không tìm thấy phiên làm việc. Vui lòng đăng nhập lại.</p></div>;
   }
+  if (isLoading && !customer) { // Loading customer details specifically
+     return <div className="flex items-center justify-center h-full"><Loader2 className="h-8 w-8 animate-spin text-primary"/> <p className="ml-2">Đang tải thông tin khách hàng...</p></div>;
+  }
   if (!customer) {
-    return <div className="flex flex-col items-center justify-center h-full"><p>Không tìm thấy thông tin khách hàng.</p></div>;
+    return <div className="flex flex-col items-center justify-center h-full"><p>Không tìm thấy thông tin khách hàng cho ID: {customerId}.</p></div>;
   }
   if (!activeConversation) {
-     return <div className="flex flex-col items-center justify-center h-full"><Loader2 className="h-8 w-8 animate-spin text-primary mb-2" /><p>Đang tải cuộc trò chuyện cho khách hàng này...</p></div>;
+     return <div className="flex flex-col items-center justify-center h-full"><Loader2 className="h-8 w-8 animate-spin text-primary mb-2" /><p>Đang tải hoặc tạo cuộc trò chuyện...</p></div>;
   }
 
 
@@ -724,7 +734,7 @@ export default function StaffIndividualChatPage() {
           onDeleteMessage={handleDeleteMessage}
           onEditMessage={handleEditMessage}
           currentStaffSessionId={staffSession.id}
-          currentUserSessionId={customer.id} // Pass customer ID for context in message bubble
+          currentUserSessionId={customer.id} 
           quickReplies={quickReplies}
           typingUsers={typingUsers}
           onTyping={onTyping}

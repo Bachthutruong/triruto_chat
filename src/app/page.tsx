@@ -6,22 +6,18 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
 import { AppHeader } from '@/components/layout/AppHeader';
-import { AppFooter } from '@/components/layout/AppFooter'; // Ensure AppFooter is used or remove if not needed
-import { ChatInterface } from '@/components/chat/ChatInterface';
-import { ChatWindow } from '@/components/chat/ChatWindow'; // Added this import
-import type { Message, UserSession, Conversation, MessageViewerRole } from '@/lib/types';
+import { ChatWindow } from '@/components/chat/ChatWindow';
+import type { Message, UserSession, Conversation, MessageViewerRole, AppointmentBookingFormData } from '@/lib/types';
 import { 
   handleCustomerAccess, 
   processUserMessage, 
-  // createNewConversationForUser, // Removed as it's not exported from actions
-  // getConversationHistory, // Not used directly in page.tsx anymore
-  getUserConversations,
-  getMessagesByIds,
-  updateConversationTitle, // Added for updating title
-  pinConversationForUser, // Added for pinning conversations
-  unpinConversationForUser, // Added for unpinning conversations
-  getAppSettings, // For fetching app settings
-  createNewConversationForUser, // For creating new conversations by user
+  getUserConversations, // For fetching all conversations for a user if needed later
+  getMessagesByIds,     // For fetching pinned messages
+  updateConversationTitle, 
+  pinMessageToConversation, // Renamed
+  unpinMessageFromConversation, // Renamed
+  getAppSettings,
+  handleBookAppointmentFromForm // For direct booking
 } from './actions'; 
 import { useToast } from '@/hooks/use-toast';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -78,20 +74,15 @@ export default function HomePage() {
       return;
     }
     try {
+      console.log(`[Customer] Fetching pinned messages for conv ${conversation.id}:`, conversation.pinnedMessageIds);
       const fetchedPinned = await getMessagesByIds(conversation.pinnedMessageIds);
       setPinnedMessages(fetchedPinned);
     } catch (error) {
       console.error("HomePage: Error fetching pinned messages:", error);
       setPinnedMessages([]);
-      toast({ title: "Lỗi", description: "Không thể tải tin nhắn đã ghim.", variant: "destructive" });
+      // toast({ title: "Lỗi", description: "Không thể tải tin nhắn đã ghim.", variant: "destructive" }); // Can be noisy
     }
-  }, [toast]);
-
-  useEffect(() => {
-    if (activeConversation) {
-      fetchPinnedMessages(activeConversation);
-    }
-  }, [activeConversation, fetchPinnedMessages]);
+  }, []);
 
   const loadInitialData = useCallback(async (session: UserSession) => {
     if (session.role !== 'customer' || !session.id) {
@@ -114,6 +105,7 @@ export default function HomePage() {
           createdAt: new Date(c.createdAt),
           updatedAt: new Date(c.updatedAt),
           lastMessageTimestamp: c.lastMessageTimestamp ? new Date(c.lastMessageTimestamp) : undefined,
+          pinnedMessageIds: c.pinnedMessageIds || [], // Ensure pinnedMessageIds is always an array
         }))[0] 
         : null;
 
@@ -123,7 +115,7 @@ export default function HomePage() {
         fetchPinnedMessages(primaryConversation);
       }
       setHasLoadedInitialData(true);
-      console.log("HomePage: loadInitialData completed.");
+      console.log("HomePage: loadInitialData completed. Active conversation ID:", primaryConversation?.id);
     } catch (error) {
       console.error("HomePage: Error in loadInitialData:", error);
       toast({ title: "Lỗi", description: "Không thể tải dữ liệu trò chuyện.", variant: "destructive" });
@@ -181,6 +173,7 @@ export default function HomePage() {
                 createdAt: new Date(c.createdAt),
                 updatedAt: new Date(c.updatedAt),
                 lastMessageTimestamp: c.lastMessageTimestamp ? new Date(c.lastMessageTimestamp) : undefined,
+                pinnedMessageIds: c.pinnedMessageIds || [],
               }));
               const primaryConv = custConvs.find(c => c.id === prefetchedData.activeConversationId) || custConvs[0] || null;
               setActiveConversation(primaryConv);
@@ -226,6 +219,26 @@ export default function HomePage() {
   }, [currentUserSession]);
 
 
+  const handlePinnedMessagesUpdated = useCallback(({ conversationId: updatedConvId, pinnedMessageIds: newPinnedIds }: { conversationId: string, pinnedMessageIds: string[] }) => {
+    console.log(`[Customer] Received pinnedMessagesUpdated for conv ${updatedConvId}. New IDs:`, newPinnedIds, "Current active conv ID:", activeConversation?.id);
+    if (updatedConvId === activeConversation?.id) {
+        setActiveConversation(prev => {
+            if (prev && prev.id === updatedConvId) {
+                console.log(`[Customer] Updating pinned IDs for conv ${updatedConvId} from`, prev.pinnedMessageIds, "to", newPinnedIds);
+                return { ...prev, pinnedMessageIds: newPinnedIds || [] }; 
+            }
+            return prev;
+        });
+    }
+  }, [activeConversation]);
+
+  useEffect(() => {
+    if (activeConversation) { // This effect will run when activeConversation itself changes (e.g., its pinnedMessageIds array)
+        fetchPinnedMessages(activeConversation);
+    }
+  }, [activeConversation, fetchPinnedMessages]);
+
+
   useEffect(() => {
     if (!socket || !isConnected || !activeConversation?.id || !currentUserSession || currentUserSession.role !== 'customer') {
       return;
@@ -258,25 +271,18 @@ export default function HomePage() {
         setTypingUsers({ ...usersTypingMapRef.current });
       }
     };
-    
-    const handlePinnedMessagesUpdated = ({ conversationId: updatedConvId, pinnedMessageIds: newPinnedIds }: { conversationId: string, pinnedMessageIds: string[] }) => {
-        if (updatedConvId === activeConversation?.id) {
-            setActiveConversation(prev => prev ? { ...prev, pinnedMessageIds: newPinnedIds } : null);
-            // fetchPinnedMessages will be called by its own useEffect reacting to activeConversation change
-        }
-    };
-    
+        
     const handleMessageDeleted = ({ messageId, conversationId: convId }: { messageId: string, conversationId: string }) => {
       if (convId === activeConversation?.id) {
         setCurrentMessages(prev => prev.filter(m => m.id !== messageId));
-        setPinnedMessages(prev => prev.filter(pm => pm.id !== messageId)); // Also update pinned messages if one was deleted
+        setPinnedMessages(prev => prev.filter(pm => pm.id !== messageId)); 
       }
     };
 
     const handleMessageEdited = ({ message: editedMessage, conversationId: convId }: { message: Message, conversationId: string }) => {
        if (convId === activeConversation?.id) {
         setCurrentMessages(prev => prev.map(m => m.id === editedMessage.id ? {...editedMessage, timestamp: new Date(editedMessage.timestamp)} : m));
-        setPinnedMessages(prev => prev.map(pm => pm.id === editedMessage.id ? {...editedMessage, timestamp: new Date(editedMessage.timestamp)} : pm)); // Also update pinned
+        setPinnedMessages(prev => prev.map(pm => pm.id === editedMessage.id ? {...editedMessage, timestamp: new Date(editedMessage.timestamp)} : pm)); 
       }
     };
 
@@ -300,7 +306,7 @@ export default function HomePage() {
         socket.off('messageEdited', handleMessageEdited);
       }
     };
-  }, [socket, isConnected, activeConversation, currentUserSession]);
+  }, [socket, isConnected, activeConversation, currentUserSession, handlePinnedMessagesUpdated]);
 
 
   const handleLogout = () => {
@@ -383,11 +389,11 @@ export default function HomePage() {
         currentMessages 
       );
 
-      setCurrentMessages((prevMessages) => [
-        ...prevMessages.filter(m => m.id !== userMessage.id), 
-        {...savedUserMessage, timestamp: new Date(savedUserMessage.timestamp)}, 
-        {...aiMessage, timestamp: new Date(aiMessage.timestamp)}
-      ]);
+      setCurrentMessages((prevMessages) => 
+        prevMessages.map(m => m.id === userMessage.id ? {...savedUserMessage, timestamp: new Date(savedUserMessage.timestamp)} : m)
+      );
+      setCurrentMessages(prev => [...prev, {...aiMessage, timestamp: new Date(aiMessage.timestamp)}]);
+
 
       if (socket && isConnected) {
         socket.emit('sendMessage', { message: savedUserMessage, conversationId: activeConversation.id });
@@ -443,9 +449,9 @@ export default function HomePage() {
     const element = document.getElementById(messageId);
     if (element) {
       element.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      element.classList.add('bg-yellow-200', 'transition-all', 'duration-1000');
+      element.classList.add('bg-yellow-200', 'dark:bg-yellow-700', 'transition-all', 'duration-1000');
       setTimeout(() => {
-        element.classList.remove('bg-yellow-200');
+        element.classList.remove('bg-yellow-200', 'dark:bg-yellow-700');
       }, 2000);
     }
   };
@@ -472,12 +478,12 @@ export default function HomePage() {
         activeConversationPinnedMessageIds={activeConversation?.pinnedMessageIds || []}
         onPinRequested={handlePinRequested}
         onUnpinRequested={handleUnpinRequested}
-        currentUserSessionId={currentUserSession.id}
+        currentUserSessionId={currentUserSession.id} // For MessageBubble to know who "user" is
       />
     );
   };
 
-  const handleDirectBookAppointment = async (formData: any) => { 
+  const handleDirectBookAppointment = async (formData: AppointmentBookingFormData) => { 
     if (!currentUserSession || !activeConversation?.id) return;
     setIsChatLoading(true);
     try {
@@ -584,8 +590,8 @@ export default function HomePage() {
     <div className="flex flex-col min-h-screen bg-background h-screen">
       <AppHeader userSession={currentUserSession} onLogout={handleLogout} />
       <main className={cn(
-        "flex-grow flex items-stretch w-full overflow-hidden pt-16 md:max-w-screen-lg md:mx-auto",
-        (currentUserSession?.role === 'customer' || !currentUserSession) ? "h-[calc(100vh-4rem)]" : "h-auto items-center justify-center" 
+        "flex-grow flex items-stretch w-full overflow-hidden pt-16", 
+        currentUserSession?.role === 'customer' ? "h-[calc(100vh-4rem)] md:max-w-screen-lg md:mx-auto" : "h-auto items-center justify-center" 
       )}>
         {renderContent()}
       </main>
@@ -600,4 +606,3 @@ export default function HomePage() {
     </div>
   );
 }
-

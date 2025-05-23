@@ -22,24 +22,19 @@ import {
 type MessageBubbleProps = {
   message: Message;
   viewerRole: MessageViewerRole;
-  currentStaffSessionId?: string; // For staff/admin to identify their own messages
-  currentUserSessionId?: string; // For customer to identify their own messages (or for staff viewing as customer)
+  currentStaffSessionId?: string; 
+  currentUserSessionId?: string; 
   onPinRequested?: (messageId: string) => void;
   onUnpinRequested?: (messageId: string) => void;
   onDeleteMessage?: (messageId: string) => void;
   onEditMessage?: (messageId: string, currentContent: string) => void;
   isCurrentlyPinned: boolean;
-  canPinMore: boolean;
+  canPinMore: boolean; // True if less than 3 messages are currently pinned, OR if this message is already pinned (so unpin is an option)
 };
 
 function isImageDataURI(uri: string): boolean {
   const mimeMatch = uri.match(/^data:(image\/[^;]+);base64,/);
   return !!mimeMatch;
-}
-
-function getMimeTypeFromDataUri(dataUri: string): string | null {
-  const match = dataUri.match(/^data:([A-Za-z-+\/]+);base64,/);
-  return match ? match[1] : null;
 }
 
 export function MessageBubble({
@@ -62,14 +57,19 @@ export function MessageBubble({
     console.warn("MessageBubble received invalid message prop:", message);
     return null;
   }
-
+  
   useEffect(() => {
     if (message.timestamp) {
-      setFormattedTime(new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+      try {
+        setFormattedTime(new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }));
+      } catch (e) {
+        setFormattedTime('...'); // Fallback for invalid date
+      }
     } else {
       setFormattedTime('...'); 
     }
   }, [message.timestamp]);
+
 
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
 
@@ -80,30 +80,30 @@ export function MessageBubble({
   let displayName = 'Hệ thống';
   let avatarIcon = <Bot className="h-5 w-5" />;
   let avatarFallbackText = 'AI';
-  let isOwnMessage = false;
+  let isOwnMessageByViewer = false;
 
   if (isUserSender) {
     avatarIcon = <User className="h-5 w-5" />;
     if (viewerRole === 'customer_view') {
       displayName = 'Bạn';
       avatarFallbackText = 'B';
-      isOwnMessage = true;
-    } else { // Staff or Admin viewing
+      isOwnMessageByViewer = true;
+    } else { 
       displayName = message.name || `Người dùng ${message.userId?.slice(-4) || 'ẩn danh'}`;
       avatarFallbackText = displayName.charAt(0).toUpperCase() || 'K';
-      isOwnMessage = message.userId === currentUserSessionId; // If staff is viewing a customer message
+      isOwnMessageByViewer = message.userId === currentUserSessionId; 
     }
-  } else if (isAISender) { // Message sent by staff/admin or true AI
-    if (message.userId) { // Sent by a specific staff/admin
+  } else if (isAISender) { 
+    if (message.userId) { 
       avatarIcon = <User className="h-5 w-5" />;
-      displayName = message.name || (viewerRole === 'customer_view' ? `${brandName} AI` : `Nhân viên ${message.userId.slice(-4)}`);
+      displayName = message.name || (viewerRole === 'customer_view' ? `${brandName}` : `Nhân viên ${message.userId.slice(-4)}`);
       avatarFallbackText = displayName.charAt(0).toUpperCase();
-      isOwnMessage = message.userId === currentStaffSessionId || message.userId === currentUserSessionId;
-    } else { // True AI message
+      isOwnMessageByViewer = viewerRole !== 'customer_view' && message.userId === currentStaffSessionId;
+    } else { 
       avatarIcon = <Bot className="h-5 w-5" />;
-      displayName = `${brandName} AI`;
+      displayName = `${brandName}`;
       avatarFallbackText = 'AI';
-      isOwnMessage = false; // True AI messages are not "owned" by the viewer for editing
+      isOwnMessageByViewer = false; 
     }
   }
 
@@ -193,9 +193,9 @@ export function MessageBubble({
     return <p className="text-sm whitespace-pre-wrap">{message.content}</p>;
   };
 
-  const canBeModifiedByStaff = (viewerRole === 'staff' || viewerRole === 'admin') && message.sender === 'ai' && message.userId === currentStaffSessionId;
-  const canBePinned = onPinRequested && onUnpinRequested && message.id !== 'msg_system_greeting' && !message.id.startsWith('msg_local_user_');
-
+  const canEditOrDelete = (viewerRole === 'staff' || viewerRole === 'admin') && message.sender === 'ai' && message.userId === currentStaffSessionId;
+  const isPinnableMessage = message.id !== 'msg_system_greeting' && !message.id.startsWith('msg_local_user_');
+  const showOptionsMenu = (onPinRequested && onUnpinRequested && isPinnableMessage) || canEditOrDelete;
 
   return (
     <div id={message.id} className={cn('flex items-end gap-2 my-2 group relative', isUserSender ? 'justify-end' : 'justify-start')}>
@@ -203,8 +203,8 @@ export function MessageBubble({
         <Avatar className="h-8 w-8">
           <AvatarFallback className={cn(
             'bg-accent text-accent-foreground',
-            viewerRole !== 'customer_view' && isAISender && message.userId && 'bg-teal-500 text-white', // Staff message
-            viewerRole !== 'customer_view' && isAISender && !message.userId && 'bg-purple-500 text-white' // True AI message
+            viewerRole !== 'customer_view' && isAISender && message.userId && 'bg-teal-500 text-white', 
+            viewerRole !== 'customer_view' && isAISender && !message.userId && 'bg-purple-500 text-white' 
           )}>
             {avatarIcon}
           </AvatarFallback>
@@ -218,7 +218,7 @@ export function MessageBubble({
             : viewerRole === 'customer_view' ? 'bg-accent text-accent-foreground rounded-bl-none' : 'bg-card border rounded-bl-none'
         )}
       >
-        {(!isUserSender || viewerRole !== 'customer_view') && ( // Show name if not user sender OR if staff/admin is viewing
+        {(!isUserSender || viewerRole !== 'customer_view') && ( 
             <p className="text-xs font-semibold mb-1">{displayName}</p>
         )}
         {renderContent()}
@@ -239,47 +239,56 @@ export function MessageBubble({
         </Avatar>
       )}
 
-      {(canBeModifiedByStaff || canBePinned) && (
-        <div className={cn("absolute opacity-0 group-hover:opacity-100 transition-opacity duration-150 flex items-center", isUserSender ? "left-0 -translate-x-full mr-1" : "right-0 translate-x-full ml-1")} style={{ top: '50%', transform: isUserSender ? 'translate(-100%, -50%)' : 'translate(100%, -50%)' }}>
+      {showOptionsMenu && (
+        <div className={cn(
+            "absolute flex items-center", // Removed opacity for easier debugging
+            isUserSender ? "left-0 -translate-x-full mr-1" : "right-0 translate-x-full ml-1"
+            )} 
+            style={{ top: '50%', transform: isUserSender ? 'translate(-100%, -50%)' : 'translate(100%, -50%)' }}
+        >
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" className="h-6 w-6">
+              <Button variant="ghost" size="icon" className="h-7 w-7 opacity-60 hover:opacity-100">
                 <MoreVertical className="h-4 w-4" />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align={isUserSender ? "end" : "start"}>
-              {canBePinned && (
+              {onPinRequested && onUnpinRequested && isPinnableMessage && (
                 isCurrentlyPinned ? (
-                  <DropdownMenuItem onClick={() => onUnpinRequested && onUnpinRequested(message.id)}>
+                  <DropdownMenuItem onClick={() => onUnpinRequested(message.id)}>
                     <PinOff className="mr-2 h-4 w-4" /> Bỏ ghim
                   </DropdownMenuItem>
                 ) : (
-                  <DropdownMenuItem onClick={() => onPinRequested && onPinRequested(message.id)} disabled={!canPinMore}>
+                  <DropdownMenuItem onClick={() => onPinRequested(message.id)} disabled={!canPinMore}>
                     <Pin className="mr-2 h-4 w-4" /> Ghim tin nhắn
                     {!canPinMore && <span className="text-xs text-muted-foreground ml-1">(Tối đa 3)</span>}
                   </DropdownMenuItem>
                 )
               )}
-              {canBeModifiedByStaff && onDeleteMessage && onEditMessage && (
+              {canEditOrDelete && (
                 <>
-                  {canBePinned && <DropdownMenuSeparator />}
-                  <DropdownMenuItem onClick={() => onEditMessage(message.id, message.content)}>
-                    <Edit className="mr-2 h-4 w-4" /> Sửa
-                  </DropdownMenuItem>
-                  <AlertDialog>
-                    <AlertDialogTrigger asChild>
-                      <DropdownMenuItem onSelect={(e) => e.preventDefault()} className="text-destructive focus:text-destructive">
-                        <Trash2 className="mr-2 h-4 w-4" /> Xóa
-                      </DropdownMenuItem>
-                    </AlertDialogTrigger>
-                    <AlertDialogContent>
-                      <AlertDialogHeader><AlertDialogTitle>Xác nhận xóa</AlertDialogTitle><AlertDialogDescription>Bạn có chắc muốn xóa tin nhắn này?</AlertDialogDescription></AlertDialogHeader>
-                      <AlertDialogFooter>
-                        <AlertDialogCancel>Hủy</AlertDialogCancel>
-                        <AlertDialogAction onClick={() => onDeleteMessage(message.id)} className="bg-destructive hover:bg-destructive/90">Xóa</AlertDialogAction>
-                      </AlertDialogFooter>
-                    </AlertDialogContent>
-                  </AlertDialog>
+                  {(onPinRequested && onUnpinRequested && isPinnableMessage) && <DropdownMenuSeparator />}
+                  {onEditMessage && 
+                    <DropdownMenuItem onClick={() => onEditMessage(message.id, message.content)}>
+                        <Edit className="mr-2 h-4 w-4" /> Sửa
+                    </DropdownMenuItem>
+                  }
+                  {onDeleteMessage && 
+                    <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                        <DropdownMenuItem onSelect={(e) => e.preventDefault()} className="text-destructive focus:text-destructive">
+                            <Trash2 className="mr-2 h-4 w-4" /> Xóa
+                        </DropdownMenuItem>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent>
+                        <AlertDialogHeader><AlertDialogTitle>Xác nhận xóa</AlertDialogTitle><AlertDialogDescription>Bạn có chắc muốn xóa tin nhắn này?</AlertDialogDescription></AlertDialogHeader>
+                        <AlertDialogFooter>
+                            <AlertDialogCancel>Hủy</AlertDialogCancel>
+                            <AlertDialogAction onClick={() => onDeleteMessage(message.id)} className="bg-destructive hover:bg-destructive/90">Xóa</AlertDialogAction>
+                        </AlertDialogFooter>
+                        </AlertDialogContent>
+                    </AlertDialog>
+                  }
                 </>
               )}
             </DropdownMenuContent>
