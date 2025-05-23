@@ -25,8 +25,8 @@ import {
   deleteCustomerNote,
   updateCustomerNote,
   getStaffList,
-  pinMessageToConversation, 
-  unpinMessageFromConversation, 
+  pinMessageToConversation,
+  unpinMessageFromConversation,
   getMessagesByIds,
   markCustomerInteractionAsReadByStaff,
   deleteStaffMessage,
@@ -75,8 +75,8 @@ export default function StaffIndividualChatPage() {
   const [allMediaMessages, setAllMediaMessages] = useState<Message[]>([]);
 
 
-  const [isLoading, setIsLoading] = useState(true); 
-  const [isSendingMessage, setIsSendingMessage] = useState(false); 
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSendingMessage, setIsSendingMessage] = useState(false);
   const [staffSession, setStaffSession] = useState<UserSession | null>(null);
   const [isAssigning, setIsAssigning] = useState(false);
   const [newTagName, setNewTagName] = useState('');
@@ -151,10 +151,10 @@ export default function StaffIndividualChatPage() {
           setInternalNameInput('');
         }
 
-        const currentActiveConv = fetchedConversations && fetchedConversations.length > 0 ? 
+        const currentActiveConv = fetchedConversations && fetchedConversations.length > 0 ?
             {
-                ...fetchedConversations[0], 
-                pinnedMessageIds: fetchedConversations[0].pinnedMessageIds || [] 
+                ...fetchedConversations[0],
+                pinnedMessageIds: fetchedConversations[0].pinnedMessageIds || []
             } : null;
         setActiveConversation(currentActiveConv);
 
@@ -395,7 +395,7 @@ export default function StaffIndividualChatPage() {
 
     if (!finalContent && !fileToUse) {
       toast({ title: "Không có nội dung", description: "Tin nhắn không thể để trống.", variant: "destructive" });
-      setIsSendingMessage(false); 
+      setIsSendingMessage(false);
       console.log("Staff: Setting isSendingMessage to false in edit (empty content)");
       return;
     }
@@ -464,17 +464,17 @@ export default function StaffIndividualChatPage() {
 
   const handlePinRequested = (messageId: string) => {
     if (!socket || !isConnected || !activeConversation?.id || !staffSession) return;
-    socket.emit('pinMessage', { 
-        conversationId: activeConversation.id, 
+    socket.emit('pinMessageRequested', { // Changed from pinMessage
+        conversationId: activeConversation.id,
         messageId,
-        userSessionJsonString: JSON.stringify(staffSession) 
+        userSessionJsonString: JSON.stringify(staffSession)
     });
   };
 
   const handleUnpinRequested = (messageId: string) => {
     if (!socket || !isConnected || !activeConversation?.id || !staffSession) return;
-    socket.emit('unpinMessage', { 
-        conversationId: activeConversation.id, 
+    socket.emit('unpinMessageRequested', { // Changed from unpinMessage
+        conversationId: activeConversation.id,
         messageId,
         userSessionJsonString: JSON.stringify(staffSession)
     });
@@ -626,7 +626,7 @@ export default function StaffIndividualChatPage() {
 
   const handleDirectBookAppointment = async (formData: AppointmentBookingFormData) => {
     if (!staffSession || !customer ) return;
-    setIsSendingMessage(true); 
+    setIsSendingMessage(true);
     try {
       const result = await handleBookAppointmentFromForm({...formData, customerId: customer.id });
       toast({
@@ -667,21 +667,33 @@ export default function StaffIndividualChatPage() {
     }
   };
 
-  if (isLoading && !customer && !staffSession) { 
+  if (isLoading && !customer && !staffSession) {
     return <div className="flex items-center justify-center h-full"><Loader2 className="h-8 w-8 animate-spin text-primary"/> <p className="ml-2">Đang tải dữ liệu...</p></div>;
   }
 
   if (!staffSession) {
     return <div className="flex items-center justify-center h-full"><p>Không tìm thấy phiên làm việc. Vui lòng đăng nhập lại.</p></div>;
   }
-  if (isLoading && !customer) { 
+  if (isLoading && !customer) {
      return <div className="flex items-center justify-center h-full"><Loader2 className="h-8 w-8 animate-spin text-primary"/> <p className="ml-2">Đang tải thông tin khách hàng...</p></div>;
   }
   if (!customer) {
     return <div className="flex flex-col items-center justify-center h-full"><p>Không tìm thấy thông tin khách hàng cho ID: {customerId}.</p></div>;
   }
   if (!activeConversation) {
-     return <div className="flex flex-col items-center justify-center h-full"><Loader2 className="h-8 w-8 animate-spin text-primary mb-2" /><p>Đang tải hoặc tạo cuộc trò chuyện...</p></div>;
+     // This case can happen if a customer exists but has no conversations,
+     // or if the first conversation failed to load. Provide a user-friendly message.
+     return (
+      <div className="flex flex-col items-center justify-center h-full text-center p-4">
+        <Loader2 className="h-8 w-8 animate-spin text-primary mb-2" />
+        <p className="text-muted-foreground">
+          Đang tải hoặc tạo cuộc trò chuyện...
+        </p>
+        <p className="text-xs text-muted-foreground mt-1">
+          Nếu chờ quá lâu, vui lòng thử tải lại trang hoặc kiểm tra lại danh sách khách hàng.
+        </p>
+      </div>
+    );
   }
 
 
@@ -707,11 +719,11 @@ export default function StaffIndividualChatPage() {
         <CardHeader className="flex flex-row items-center justify-between border-b p-4">
           <div className="flex items-center gap-3">
             <Avatar>
-              <AvatarImage src={`https://placehold.co/40x40.png?text=${(customer.name || customer.phoneNumber).charAt(0)}`} data-ai-hint="profile avatar"/>
-              <AvatarFallback>{(customer.name || customer.phoneNumber).charAt(0)}</AvatarFallback>
+              <AvatarImage src={`https://placehold.co/40x40.png?text=${(customer.internalName || customer.name || customer.phoneNumber).charAt(0)}`} data-ai-hint="profile avatar"/>
+              <AvatarFallback>{(customer.internalName || customer.name || customer.phoneNumber).charAt(0)}</AvatarFallback>
             </Avatar>
             <div>
-              <CardTitle className="text-lg">{customer.name || customer.phoneNumber}</CardTitle>
+              <CardTitle className="text-lg">{customer.internalName || customer.name || customer.phoneNumber}</CardTitle>
               <p className="text-xs text-muted-foreground">Hoạt động cuối: {format(new Date(customer.lastInteractionAt), 'HH:mm dd/MM/yy', { locale: vi })}
                 {customer.assignedStaffId ? ` (Giao cho: ${customer.assignedStaffId === staffSession?.id ? 'Bạn' : customer.assignedStaffName || 'NV khác'})` : "(Chưa giao)"}
               </p>
@@ -738,14 +750,14 @@ export default function StaffIndividualChatPage() {
           suggestedReplies={[]}
           onSendMessage={handleSendMessage}
           onSuggestedReplyClick={() => {}}
-          isLoading={isSendingMessage} 
+          isLoading={isSendingMessage}
           viewerRole={staffSession.role}
           onPinRequested={handlePinRequested}
           onUnpinRequested={handleUnpinRequested}
           onDeleteMessage={handleDeleteMessage}
           onEditMessage={handleEditMessage}
           currentStaffSessionId={staffSession.id}
-          currentUserSessionId={customer.id} 
+          currentUserSessionId={customer.id}
           quickReplies={quickReplies}
           typingUsers={typingUsers}
           onTyping={onTyping}
@@ -887,9 +899,9 @@ export default function StaffIndividualChatPage() {
                           const match = msg.content.match(/#filename=([^#\s]+)/);
                           const fileName = match ? decodeURIComponent(match[1]) : "Tệp đính kèm";
                           return (
-                            <a 
-                              key={msg.id} 
-                              href={msg.content.split('#filename=')[0]} 
+                            <a
+                              key={msg.id}
+                              href={msg.content.split('#filename=')[0]}
                               download={fileName}
                               className="flex items-center gap-1.5 p-1.5 hover:bg-accent rounded text-xs"
                             >
