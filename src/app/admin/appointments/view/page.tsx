@@ -4,26 +4,51 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Calendar } from '@/components/ui/calendar'; 
+import { Calendar } from '@/components/ui/calendar';
 import { PlusCircle, ListFilter, Edit, Trash2, Save, Users, Clock, Search } from 'lucide-react';
-import type { AppointmentDetails, UserSession, GetAppointmentsFilters } from '@/lib/types';
-import { getAppointments, createNewAppointment, updateExistingAppointment, deleteExistingAppointment, getCustomerListForSelect, getAllUsers } from '@/app/actions';
+import type { AppointmentDetails, UserSession, GetAppointmentsFilters, ProductItem, Branch, AppSettings } from '@/lib/types';
+import { getAppointments, createNewAppointment, updateExistingAppointment, deleteExistingAppointment, getCustomerListForSelect, getAllUsers, getAllProducts, getBranches, getAppSettings } from '@/app/actions';
 import { useToast } from '@/hooks/use-toast';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogClose, DialogTrigger, DialogFooter } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { vi } from 'date-fns/locale'; // Import the locale directly
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
-import { format, parseISO } from 'date-fns';
+import { format, parseISO, addMinutes, startOfHour, setHours, setMinutes } from 'date-fns';
+import { vi } from 'date-fns/locale';
+import { useAppSettingsContext } from '@/contexts/AppSettingsContext';
+
+const generateTimeSlots = (workingHours?: string[], serviceDuration?: number, defaultDuration = 60): string[] => {
+  const slots: string[] = [];
+  const effectiveDuration = serviceDuration || defaultDuration;
+
+  if (workingHours && workingHours.length > 0) {
+    return workingHours;
+  }
+
+  let date = startOfHour(new Date());
+  date = setHours(date, 8);
+  date = setMinutes(date, 0);
+  const endDate = setHours(new Date(), 21);
+
+  while (date < endDate) {
+    slots.push(format(date, 'HH:mm'));
+    date = addMinutes(date, 30);
+  }
+  return slots;
+};
 
 const formatDateToYYYYMMDD = (date: Date | undefined): string => {
   if (!date) return '';
   return format(date, 'yyyy-MM-dd');
 };
 
+const parseDateFromYYYYMMDD = (dateString: string): Date => {
+  return parseISO(dateString);
+};
+
 const ALL_STAFF_FILTER_VALUE = "__ALL_STAFF_FILTER__";
-const NO_STAFF_MODAL_VALUE = "__NO_STAFF_ASSIGNED__";
+const NO_STAFF_ASSIGNED_VALUE = "__NO_STAFF_ASSIGNED__";
 
 export default function AdminViewAppointmentsPage() {
   const { toast } = useToast();
@@ -34,72 +59,113 @@ export default function AdminViewAppointmentsPage() {
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [currentAppointment, setCurrentAppointment] = useState<AppointmentDetails | null>(null);
-  
+
   const [formCustomerId, setFormCustomerId] = useState('');
-  const [formService, setFormService] = useState('');
+  const [formProductId, setFormProductId] = useState('');
   const [formDate, setFormDate] = useState(formatDateToYYYYMMDD(new Date()));
   const [formTime, setFormTime] = useState('09:00');
-  const [formBranch, setFormBranch] = useState('');
+  const [formBranchId, setFormBranchId] = useState('');
   const [formStatus, setFormStatus] = useState<AppointmentDetails['status']>('booked');
   const [formNotes, setFormNotes] = useState('');
-  const [formStaffId, setFormStaffId] = useState(NO_STAFF_MODAL_VALUE); 
+  const [formStaffId, setFormStaffId] = useState(NO_STAFF_ASSIGNED_VALUE);
+  const [formRecurrenceType, setFormRecurrenceType] = useState<'none' | 'daily' | 'weekly' | 'monthly'>('none');
+  const [formRecurrenceCount, setFormRecurrenceCount] = useState<number>(1);
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [customerList, setCustomerList] = useState<{ id: string; name: string; phoneNumber: string }[]>([]);
   const [staffList, setStaffList] = useState<UserSession[]>([]);
-  
+  const [products, setProducts] = useState<ProductItem[]>([]);
+  const [branches, setBranches] = useState<Branch[]>([]);
+  const [timeSlots, setTimeSlots] = useState<string[]>([]);
+  const appSettingsFromContext = useAppSettingsContext();
+  const [currentAppSettings, setCurrentAppSettings] = useState<AppSettings | null>(null);
+
   const [filterCustomerSearch, setFilterCustomerSearch] = useState('');
-  const [filterStaffId, setFilterStaffId] = useState(ALL_STAFF_FILTER_VALUE); 
+  const [filterStaffId, setFilterStaffId] = useState(ALL_STAFF_FILTER_VALUE);
 
   useEffect(() => {
     const sessionString = sessionStorage.getItem('aetherChatUserSession');
     if (sessionString) {
-      setAdminSession(JSON.parse(sessionString));
+      const session = JSON.parse(sessionString);
+      setAdminSession(session);
     }
+
     const fetchInitialData = async () => {
-        try {
-            const [customers, staffMembers] = await Promise.all([
-                getCustomerListForSelect(),
-                getAllUsers()
- ]);
-            // Filter to include only 'staff' or 'admin' roles
- const validStaffMembers = staffMembers.filter((u: UserSession) => u.role === 'staff' || u.role === 'admin');
-            setStaffList(validStaffMembers);
-            setStaffList(staffMembers.filter(u => u.role === 'staff' || u.role === 'admin'));
-        } catch (error) {
-            toast({ title: "Lỗi tải dữ liệu", description: "Không thể tải danh sách khách hàng hoặc nhân viên.", variant: "destructive" });
+      try {
+        const [customers, staffMembers, fetchedProducts, fetchedBranches, settings] = await Promise.all([
+          getCustomerListForSelect(),
+          getAllUsers(),
+          getAllProducts(),
+          getBranches(true),
+          getAppSettings()
+        ]);
+        setCustomerList(customers);
+        setStaffList(staffMembers.filter(u => u.role === 'staff' || u.role === 'admin'));
+        setProducts(fetchedProducts.filter(p => p.isSchedulable));
+        setBranches(fetchedBranches);
+        setCurrentAppSettings(settings);
+
+        if (fetchedBranches.length === 1 && !formBranchId) {
+          setFormBranchId(fetchedBranches[0].id);
         }
+      } catch (error) {
+        toast({ title: "Lỗi tải dữ liệu", description: "Không thể tải danh sách khách hàng, nhân viên, dịch vụ hoặc chi nhánh.", variant: "destructive" });
+      }
     };
     fetchInitialData();
-  }, [toast]);
-  
+  }, [toast, formBranchId]);
+
+  useEffect(() => {
+    const appSettingsToUse = appSettingsFromContext || currentAppSettings;
+    const selectedProduct = products.find(p => p.id === formProductId);
+
+    let serviceSpecificWorkingHours = selectedProduct?.schedulingRules?.workingHours;
+    if (selectedProduct?.isSchedulable && selectedProduct.schedulingRules && (!serviceSpecificWorkingHours || serviceSpecificWorkingHours.length === 0)) {
+      serviceSpecificWorkingHours = appSettingsToUse?.workingHours;
+    }
+
+    let serviceSpecificDuration = selectedProduct?.schedulingRules?.serviceDurationMinutes;
+    if (selectedProduct?.isSchedulable && selectedProduct.schedulingRules && !serviceSpecificDuration) {
+      serviceSpecificDuration = appSettingsToUse?.defaultServiceDurationMinutes;
+    }
+
+    const slots = generateTimeSlots(
+      serviceSpecificWorkingHours?.length ? serviceSpecificWorkingHours : appSettingsToUse?.workingHours,
+      serviceSpecificDuration,
+      appSettingsToUse?.defaultServiceDurationMinutes
+    );
+    setTimeSlots(slots);
+    if (slots.length > 0 && !slots.includes(formTime)) {
+      setFormTime(slots[0]);
+    } else if (slots.length === 0 && formTime) {
+      setFormTime('');
+    }
+  }, [formProductId, products, appSettingsFromContext, currentAppSettings, formTime]);
+
   const fetchAppointments = useCallback(async () => {
-    if (!adminSession || !(adminSession.role === 'admin')) return; 
+    if (!adminSession) return;
     setIsLoading(true);
     try {
       const filters: GetAppointmentsFilters = {};
       if (selectedDate) {
         const localDateStr = formatDateToYYYYMMDD(selectedDate);
         const now = new Date();
-        // Check if the selectedDate is indeed "today" relative to local browser time
         const isViewingToday = selectedDate.getFullYear() === now.getFullYear() &&
-                               selectedDate.getMonth() === now.getMonth() &&
-                               selectedDate.getDate() === now.getDate();
+          selectedDate.getMonth() === now.getMonth() &&
+          selectedDate.getDate() === now.getDate();
 
         if (isViewingToday) {
-          // Get UTC "today" date string
           const utcDate = new Date(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
           const utcDateStr = formatDateToYYYYMMDD(utcDate);
-          
           if (localDateStr !== utcDateStr) {
-            filters.dates = [localDateStr, utcDateStr]; // Query for both local and UTC "today"
+            filters.dates = [localDateStr, utcDateStr];
             console.log(`[AdminViewAppointments] Querying for today (local & UTC): ${localDateStr}, ${utcDateStr}`);
           } else {
             filters.date = localDateStr;
             console.log(`[AdminViewAppointments] Querying for today (local=UTC): ${localDateStr}`);
           }
         } else {
-          filters.date = localDateStr; // For any other selected day, just use that day
+          filters.date = localDateStr;
           console.log(`[AdminViewAppointments] Querying for specific date: ${localDateStr}`);
         }
       } else {
@@ -107,16 +173,16 @@ export default function AdminViewAppointmentsPage() {
       }
 
       if (filterStaffId && filterStaffId !== ALL_STAFF_FILTER_VALUE) {
-         filters.staffId = filterStaffId;
+        filters.staffId = filterStaffId;
       }
-      
+
       const data = await getAppointments(filters);
       let filteredData = data;
       if (filterCustomerSearch) {
         const searchTerm = filterCustomerSearch.toLowerCase();
-        filteredData = data.filter(appt => 
-            (appt.customerName?.toLowerCase().includes(searchTerm)) ||
-            (appt.customerPhoneNumber?.includes(searchTerm))
+        filteredData = data.filter(appt =>
+          (appt.customerName?.toLowerCase().includes(searchTerm)) ||
+          (appt.customerPhoneNumber?.includes(searchTerm))
         );
       }
       setAppointments(filteredData);
@@ -132,32 +198,33 @@ export default function AdminViewAppointmentsPage() {
     fetchAppointments();
   }, [fetchAppointments]);
 
-
   const resetForm = () => {
     setCurrentAppointment(null);
     setFormCustomerId('');
-    setFormService('');
+    setFormProductId('');
     setFormDate(formatDateToYYYYMMDD(selectedDate || new Date()));
     setFormTime('09:00');
-    setFormBranch('');
+    setFormBranchId('');
     setFormStatus('booked');
     setFormNotes('');
-    setFormStaffId(NO_STAFF_MODAL_VALUE); 
+    setFormStaffId(adminSession?.id || NO_STAFF_ASSIGNED_VALUE);
+    setFormRecurrenceType('none');
+    setFormRecurrenceCount(1);
   };
 
   const handleOpenModal = (appointment: AppointmentDetails | null = null) => {
     if (appointment) {
       setCurrentAppointment(appointment);
-      setFormCustomerId(appointment.userId); // This should be customerId from the transformed object
-      setFormService(appointment.service);
+      setFormCustomerId(appointment.userId);
+      setFormProductId(appointment.service);
       setFormDate(appointment.date);
       setFormTime(appointment.time.replace(/ AM| PM/i, ''));
-      setFormBranch(appointment.branch || '');
+      setFormBranchId(appointment.branch || '');
       setFormStatus(appointment.status);
       setFormNotes(appointment.notes || '');
-      setFormStaffId(appointment.staffId || NO_STAFF_MODAL_VALUE);
+      setFormStaffId(appointment.staffId || adminSession?.id || NO_STAFF_ASSIGNED_VALUE);
     } else {
-      resetForm(); 
+      resetForm();
       setFormDate(formatDateToYYYYMMDD(selectedDate || new Date()));
     }
     setIsModalOpen(true);
@@ -166,21 +233,38 @@ export default function AdminViewAppointmentsPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
-     if (!formCustomerId || !formService || !formDate || !formTime) {
-        toast({ title: "Thiếu thông tin", description: "Vui lòng điền đầy đủ các trường bắt buộc (Khách hàng, Dịch vụ, Ngày, Giờ).", variant: "destructive" });
-        setIsSubmitting(false);
-        return;
+
+    const selectedProduct = products.find(p => p.id === formProductId);
+    const selectedBranch = branches.find(b => b.id === formBranchId);
+
+    let branchIsRequiredAndMissing = false;
+    if (branches.length > 1 && !formBranchId) {
+      branchIsRequiredAndMissing = true;
     }
+
+    if (!formCustomerId || !formProductId || !formDate || !formTime || branchIsRequiredAndMissing) {
+      toast({
+        title: "Thiếu thông tin",
+        description: "Vui lòng điền đầy đủ các trường bắt buộc: Khách hàng, Dịch vụ, Ngày, Giờ và Chi nhánh (nếu có nhiều hơn 1).",
+        variant: "destructive"
+      });
+      setIsSubmitting(false);
+      return;
+    }
+
     const appointmentData = {
-      customerId: formCustomerId, // Ensure this is the customer's DB ID
-      service: formService,
+      customerId: formCustomerId,
+      service: selectedProduct!.name,
+      productId: selectedProduct!.id,
       date: formDate,
       time: formTime,
-      branch: formBranch,
+      branch: selectedBranch?.name,
+      branchId: formBranchId || (branches.length === 1 ? branches[0].id : undefined),
       status: formStatus,
-      notes: formNotes,
-      staffId: formStaffId === NO_STAFF_MODAL_VALUE ? undefined : formStaffId,
-      // packageType and priority could be added to the form if needed
+      notes: formNotes.trim() || undefined,
+      staffId: formStaffId === NO_STAFF_ASSIGNED_VALUE ? undefined : formStaffId,
+      recurrenceType: formRecurrenceType === 'none' ? undefined : formRecurrenceType,
+      recurrenceCount: formRecurrenceType !== 'none' && formRecurrenceCount > 1 ? formRecurrenceCount : undefined,
     };
 
     try {
@@ -200,7 +284,7 @@ export default function AdminViewAppointmentsPage() {
       setIsSubmitting(false);
     }
   };
-  
+
   const handleDelete = async (appointmentId: string) => {
     try {
       await deleteExistingAppointment(appointmentId);
@@ -221,9 +305,9 @@ export default function AdminViewAppointmentsPage() {
       default: return status;
     }
   };
-  
+
   const handleApplyFilters = () => {
-      fetchAppointments();
+    fetchAppointments();
   };
 
   return (
@@ -240,26 +324,34 @@ export default function AdminViewAppointmentsPage() {
 
       <Card>
         <CardHeader>
-            <CardTitle>Bộ lọc</CardTitle>
+          <CardTitle>Bộ lọc</CardTitle>
         </CardHeader>
         <CardContent className="grid md:grid-cols-3 gap-4">
-            <div>
-                <Label htmlFor="filterCustomerSearch">Tìm Khách hàng (Tên/SĐT)</Label>
-                <Input id="filterCustomerSearch" placeholder="Nhập tên hoặc SĐT" value={filterCustomerSearch} onChange={e => setFilterCustomerSearch(e.target.value)} icon={<Search />} />
-            </div>
-            <div>
-                <Label htmlFor="filterStaffId">Nhân viên</Label>
-                <Select value={filterStaffId} onValueChange={setFilterStaffId}>
-                    <SelectTrigger><SelectValue placeholder="Tất cả nhân viên" /></SelectTrigger>
-                    <SelectContent>
-                        <SelectItem value={ALL_STAFF_FILTER_VALUE}>Tất cả nhân viên</SelectItem>
-                        {staffList.map(s => <SelectItem key={s.id} value={s.id}>{s.name} ({s.phoneNumber})</SelectItem>)}
-                    </SelectContent>
-                </Select>
-            </div>
-            <div className="flex items-end">
-                <Button onClick={handleApplyFilters} className="w-full md:w-auto"><ListFilter className="mr-2 h-4 w-4" /> Áp dụng lọc</Button>
-            </div>
+          <div>
+            <Label htmlFor="filterCustomerSearch">Tìm Khách hàng (Tên/SĐT)</Label>
+            <Input
+              id="filterCustomerSearch"
+              placeholder="Nhập tên hoặc SĐT"
+              value={filterCustomerSearch}
+              onChange={e => setFilterCustomerSearch(e.target.value)}
+              icon={<Search />}
+            />
+          </div>
+          <div>
+            <Label htmlFor="filterStaffId">Nhân viên</Label>
+            <Select value={filterStaffId} onValueChange={setFilterStaffId}>
+              <SelectTrigger><SelectValue placeholder="Tất cả nhân viên" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value={ALL_STAFF_FILTER_VALUE}>Tất cả nhân viên</SelectItem>
+                {staffList.map(s => <SelectItem key={s.id} value={s.id}>{s.name} ({s.phoneNumber})</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex items-end">
+            <Button onClick={handleApplyFilters} className="w-full md:w-auto">
+              <ListFilter className="mr-2 h-4 w-4" /> Áp dụng lọc
+            </Button>
+          </div>
         </CardContent>
       </Card>
 
@@ -267,52 +359,55 @@ export default function AdminViewAppointmentsPage() {
         <Card className="md:col-span-1">
           <CardHeader>
             <CardTitle>Chọn Ngày</CardTitle>
-             <CardDescription>(Để trống để xem tất cả ngày)</CardDescription>
+            <CardDescription>(Để trống để xem tất cả ngày)</CardDescription>
           </CardHeader>
           <CardContent className="flex justify-center">
             <Calendar
               mode="single"
               selected={selectedDate}
-              onSelect={(date) => {
-                setSelectedDate(date);
-              }}
+              onSelect={setSelectedDate}
               className="rounded-md border"
+              locale={vi}
             />
           </CardContent>
-            <CardFooter>
-                <Button variant="outline" onClick={() => {setSelectedDate(undefined);}} className="w-full">
-                    Xem Tất cả Ngày
-                </Button>
-            </CardFooter>
+          <CardFooter>
+            <Button variant="outline" onClick={() => { setSelectedDate(undefined); }} className="w-full">
+              Xem Tất cả Ngày
+            </Button>
+          </CardFooter>
         </Card>
 
         <Card className="md:col-span-2">
           <CardHeader>
-            <CardTitle>Lịch hẹn {selectedDate ? `ngày ${format(selectedDate, 'dd/MM/yyyy', { locale: vi })}` : '(Tất cả ngày đã lọc)'}</CardTitle>
-            <CardDescription>Danh sách các lịch hẹn đã đặt.</CardDescription>
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle>Lịch hẹn {selectedDate ? `ngày ${format(selectedDate, 'dd/MM/yyyy', { locale: vi })}` : '(Tất cả ngày)'}</CardTitle>
+                <CardDescription>Danh sách các lịch hẹn đã đặt.</CardDescription>
+              </div>
+            </div>
           </CardHeader>
           <CardContent>
             {isLoading ? (
               <p>Đang tải lịch hẹn...</p>
             ) : appointments.length === 0 ? (
-              <p className="text-muted-foreground text-center py-8">Không có lịch hẹn nào phù hợp với bộ lọc.</p>
+              <p className="text-muted-foreground text-center py-8">Không có lịch hẹn nào cho ngày này.</p>
             ) : (
               <ul className="space-y-3 max-h-[60vh] overflow-y-auto">
                 {appointments.map(appt => (
                   <li key={appt.appointmentId} className="p-4 border rounded-lg bg-card shadow hover:shadow-md transition-shadow">
                     <div className="flex items-start justify-between">
-                       <div className="flex-grow">
-                        <h3 className="font-semibold text-base">{appt.service} - {appt.date} {appt.time}</h3>
+                      <div className="flex-grow">
+                        <h3 className="font-semibold text-base">{appt.service} - {appt.time}</h3>
                         <p className="text-sm text-muted-foreground">
-                          <Users className="inline-block mr-1 h-3 w-3"/>KH: {appt.customerName || `Người dùng ${appt.userId}`} {appt.customerPhoneNumber && `(${appt.customerPhoneNumber})`}</p>
+                          <Users className="inline-block mr-1 h-3 w-3" />KH: {appt.customerName || `Người dùng ${appt.userId}`} {appt.customerPhoneNumber && `(${appt.customerPhoneNumber})`}
+                        </p>
                         {appt.branch && <p className="text-sm text-muted-foreground">Chi nhánh: {appt.branch}</p>}
                         {appt.staffName && <p className="text-sm text-muted-foreground">NV: {appt.staffName}</p>}
                         <p className="text-sm mt-1">
-                          <span className={`px-2 py-0.5 text-xs rounded-full ${
-                            appt.status === 'booked' ? 'bg-blue-100 text-blue-700' : 
-                            appt.status === 'completed' ? 'bg-green-100 text-green-700' : 
-                            appt.status === 'cancelled' ? 'bg-red-100 text-red-700' : 
-                            'bg-gray-100 text-gray-700'}`}>
+                          <span className={`px-2 py-0.5 text-xs rounded-full ${appt.status === 'booked' ? 'bg-blue-100 text-blue-700' :
+                            appt.status === 'completed' ? 'bg-green-100 text-green-700' :
+                              appt.status === 'cancelled' ? 'bg-red-100 text-red-700' :
+                                'bg-gray-100 text-gray-700'}`}>
                             {getStatusLabel(appt.status)}
                           </span>
                         </p>
@@ -348,7 +443,7 @@ export default function AdminViewAppointmentsPage() {
             <DialogTitle>{currentAppointment ? 'Sửa Lịch hẹn' : 'Tạo Lịch hẹn Mới'}</DialogTitle>
           </DialogHeader>
           <form onSubmit={handleSubmit} className="space-y-4 max-h-[70vh] overflow-y-auto p-1">
-             <div>
+            <div>
               <Label htmlFor="formCustomerId">Khách hàng</Label>
               <Select value={formCustomerId} onValueChange={setFormCustomerId} disabled={isSubmitting}>
                 <SelectTrigger><SelectValue placeholder="Chọn khách hàng" /></SelectTrigger>
@@ -357,21 +452,92 @@ export default function AdminViewAppointmentsPage() {
                 </SelectContent>
               </Select>
             </div>
-            <div><Label htmlFor="formService">Dịch vụ</Label><Input id="formService" value={formService} onChange={e => setFormService(e.target.value)} placeholder="ví dụ: Cắt tóc" disabled={isSubmitting}/></div>
-            <div className="grid grid-cols-2 gap-4">
-                <div><Label htmlFor="formDate">Ngày</Label><Input id="formDate" type="date" value={formDate} onChange={e => setFormDate(e.target.value)} disabled={isSubmitting}/></div>
-                <div><Label htmlFor="formTime">Giờ</Label><Input id="formTime" type="time" value={formTime} onChange={e => setFormTime(e.target.value)} disabled={isSubmitting}/></div>
-            </div>
-            <div><Label htmlFor="formBranch">Chi nhánh</Label><Input id="formBranch" value={formBranch} onChange={e => setFormBranch(e.target.value)} placeholder="ví dụ: Chi nhánh Chính" disabled={isSubmitting}/></div>
             <div>
-                <Label htmlFor="formStaffIdModal">Nhân viên phụ trách</Label>
-                <Select value={formStaffId} onValueChange={setFormStaffId} disabled={isSubmitting}>
-                    <SelectTrigger id="formStaffIdModal"><SelectValue placeholder="Chọn nhân viên (tùy chọn)" /></SelectTrigger>
-                    <SelectContent>
-                        <SelectItem value={NO_STAFF_MODAL_VALUE}>Không chọn/Bất kỳ</SelectItem>
-                        {staffList.map(s => <SelectItem key={s.id} value={s.id}>{s.name} ({s.phoneNumber})</SelectItem>)}
-                    </SelectContent>
+              <Label htmlFor="formProductId">Dịch vụ</Label>
+              <Select
+                value={formProductId}
+                onValueChange={(value) => {
+                  setFormProductId(value);
+                  // Reset time based on new service's potential working hours
+                  const product = products.find(p => p.id === value);
+                  const appSettingsToUse = appSettingsFromContext || currentAppSettings;
+                  let serviceSpecificWorkingHours = product?.schedulingRules?.workingHours;
+                  if (product?.isSchedulable && product.schedulingRules && (!serviceSpecificWorkingHours || serviceSpecificWorkingHours.length === 0)) {
+                    serviceSpecificWorkingHours = appSettingsToUse?.workingHours;
+                  }
+                  const slots = generateTimeSlots(
+                    serviceSpecificWorkingHours?.length ? serviceSpecificWorkingHours : appSettingsToUse?.workingHours,
+                    product?.schedulingRules?.serviceDurationMinutes,
+                    appSettingsToUse?.defaultServiceDurationMinutes
+                  );
+                  if (slots.length > 0) setFormTime(slots[0]); else setFormTime('');
+                }}
+                disabled={isSubmitting || products.length === 0}
+              >
+                <SelectTrigger id="formProductId">
+                  <SelectValue placeholder={products.length === 0 ? "Không có dịch vụ có thể đặt lịch" : "Chọn dịch vụ"} />
+                </SelectTrigger>
+                <SelectContent>
+                  {products.map(p => <SelectItem key={p.id} value={p.id}>{p.name} ({p.category})</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor="formDate">Ngày</Label>
+                <Input
+                  id="formDate"
+                  type="date"
+                  value={formDate}
+                  onChange={e => setFormDate(e.target.value)}
+                  disabled={isSubmitting}
+                  min={formatDateToYYYYMMDD(new Date())}
+                />
+              </div>
+              <div>
+                <Label htmlFor="formTime">Giờ</Label>
+                <Select
+                  value={formTime}
+                  onValueChange={setFormTime}
+                  disabled={isSubmitting || timeSlots.length === 0}
+                >
+                  <SelectTrigger id="formTime">
+                    <SelectValue placeholder={timeSlots.length === 0 ? "Chọn dịch vụ để xem giờ" : "Chọn giờ"} />
+                  </SelectTrigger>
+                  <SelectContent className="max-h-60">
+                    {timeSlots.length === 0 && <SelectItem value="" disabled>Không có khung giờ</SelectItem>}
+                    {timeSlots.map(slot => <SelectItem key={slot} value={slot}>{slot}</SelectItem>)}
+                  </SelectContent>
                 </Select>
+              </div>
+            </div>
+            {branches.length > 0 && (
+              <div>
+                <Label htmlFor="formBranchId">Chi nhánh {branches.length === 1 ? '' : <span className="text-destructive">*</span>}</Label>
+                <Select
+                  value={formBranchId}
+                  onValueChange={setFormBranchId}
+                  disabled={isSubmitting || branches.length === 0}
+                  required={branches.length > 1}
+                >
+                  <SelectTrigger id="formBranchId">
+                    <SelectValue placeholder={branches.length === 1 && branches[0] ? branches[0].name : "Chọn chi nhánh"} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {branches.map(b => <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+            <div>
+              <Label htmlFor="formStaffIdModalStaff">Nhân viên phụ trách (tùy chọn)</Label>
+              <Select value={formStaffId} onValueChange={setFormStaffId} disabled={isSubmitting}>
+                <SelectTrigger id="formStaffIdModalStaff"><SelectValue placeholder="Chọn nhân viên" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={NO_STAFF_ASSIGNED_VALUE}>Không chọn</SelectItem>
+                  {staffList.map(s => <SelectItem key={s.id} value={s.id}>{s.name} ({s.phoneNumber})</SelectItem>)}
+                </SelectContent>
+              </Select>
             </div>
             <div>
               <Label htmlFor="formStatus">Trạng thái</Label>
@@ -386,7 +552,38 @@ export default function AdminViewAppointmentsPage() {
                 </SelectContent>
               </Select>
             </div>
-            <div><Label htmlFor="formNotes">Ghi chú</Label><Input id="formNotes" value={formNotes} onChange={e => setFormNotes(e.target.value)} placeholder="Ghi chú thêm (nếu có)" disabled={isSubmitting}/></div>
+            <div><Label htmlFor="formNotes">Ghi chú</Label><Input id="formNotes" value={formNotes} onChange={e => setFormNotes(e.target.value)} placeholder="Ghi chú thêm (nếu có)" disabled={isSubmitting} /></div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor="formRecurrenceType">Lặp lại</Label>
+                <Select value={formRecurrenceType} onValueChange={(value) => setFormRecurrenceType(value as any)} disabled={isSubmitting}>
+                  <SelectTrigger id="formRecurrenceType">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Không lặp lại</SelectItem>
+                    <SelectItem value="daily">Hàng ngày</SelectItem>
+                    <SelectItem value="weekly">Hàng tuần</SelectItem>
+                    <SelectItem value="monthly">Hàng tháng</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              {formRecurrenceType !== 'none' && (
+                <div>
+                  <Label htmlFor="formRecurrenceCount">Số lần lặp lại</Label>
+                  <Input
+                    id="formRecurrenceCount"
+                    type="number"
+                    value={formRecurrenceCount}
+                    onChange={e => setFormRecurrenceCount(Math.max(1, parseInt(e.target.value, 10) || 1))}
+                    min="1"
+                    max="52"
+                    disabled={isSubmitting}
+                    className="w-full"
+                  />
+                </div>
+              )}
+            </div>
             <DialogFooter className="sticky bottom-0 bg-background py-4 border-t -mx-1 px-1">
               <DialogClose asChild><Button type="button" variant="outline" disabled={isSubmitting}>Hủy</Button></DialogClose>
               <Button type="submit" disabled={isSubmitting}><Save className="mr-2 h-4 w-4" />{isSubmitting ? 'Đang lưu...' : 'Lưu Lịch hẹn'}</Button>
@@ -398,4 +595,4 @@ export default function AdminViewAppointmentsPage() {
   );
 }
 
-    
+

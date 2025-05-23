@@ -1,4 +1,3 @@
-
 // src/app/staff/chat/[customerId]/page.tsx
 'use client';
 
@@ -10,9 +9,9 @@ import { Card, CardHeader, CardTitle, CardContent, CardFooter } from '@/componen
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar'; 
+import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Send, Paperclip, Smile, UserCircle, Edit2, Tag, Clock, Phone, Info, X, StickyNote, PlusCircle, Trash2, UserPlus, LogOutIcon, UserCheck, Users, Pin, PinOff, Edit, Image as ImageIconLucide, ExternalLink, FileText, Download, Zap, MoreVertical, CalendarPlus, Loader2 } from 'lucide-react';
-import type { CustomerProfile, Message, AppointmentDetails, UserSession, Note, MessageEditState, Conversation, QuickReplyType, AppointmentBookingFormData } from '@/lib/types';
+import type { CustomerProfile, Message, AppointmentDetails, UserSession, Note, MessageEditState, Conversation, QuickReplyType, AppointmentBookingFormData, MessageViewerRole } from '@/lib/types';
 import {
   getCustomerDetails,
   sendStaffMessage,
@@ -85,7 +84,7 @@ export default function StaffIndividualChatPage() {
   const [newTagName, setNewTagName] = useState('');
   const [editingInternalName, setEditingInternalName] = useState(false);
   const [internalNameInput, setInternalNameInput] = useState('');
-  
+
   // Note states
   const [newNoteContent, setNewNoteContent] = useState('');
   const [newNoteImageDataUri, setNewNoteImageDataUri] = useState<string | undefined>(undefined);
@@ -99,7 +98,7 @@ export default function StaffIndividualChatPage() {
   const editNoteImageInputRef = useRef<HTMLInputElement>(null);
 
 
-  const [allStaff, setAllStaff] = useState<{id: string, name: string}[]>([]);
+  const [allStaff, setAllStaff] = useState<{ id: string, name: string }[]>([]);
   const [selectedStaffToAssign, setSelectedStaffToAssign] = useState<string>('');
 
   const [messageEditState, setMessageEditState] = useState<MessageEditState>(null);
@@ -118,16 +117,16 @@ export default function StaffIndividualChatPage() {
 
   const fetchPinnedMessagesForConversation = useCallback(async (conversation: Conversation | null) => {
     if (!conversation || !conversation.pinnedMessageIds || conversation.pinnedMessageIds.length === 0) {
-        setPinnedMessages([]);
-        return;
+      setPinnedMessages([]);
+      return;
     }
     try {
-        console.log(`[Staff] Fetching pinned messages for conv ${conversation.id}:`, conversation.pinnedMessageIds);
-        const fetchedPinned = await getMessagesByIds(conversation.pinnedMessageIds);
-        setPinnedMessages(fetchedPinned);
+      console.log(`[Staff] Fetching pinned messages for conv ${conversation.id}:`, conversation.pinnedMessageIds);
+      const fetchedPinned = await getMessagesByIds(conversation.pinnedMessageIds);
+      setPinnedMessages(fetchedPinned);
     } catch (error) {
-        console.error("Error fetching pinned messages for staff:", error);
-        setPinnedMessages([]);
+      console.error("Error fetching pinned messages for staff:", error);
+      setPinnedMessages([]);
     }
   }, []);
 
@@ -165,10 +164,10 @@ export default function StaffIndividualChatPage() {
         }
 
         const currentActiveConv = fetchedConversations && fetchedConversations.length > 0 ?
-            {
-                ...fetchedConversations[0],
-                pinnedMessageIds: fetchedConversations[0].pinnedMessageIds || []
-            } : null;
+          {
+            ...fetchedConversations[0],
+            pinnedMessageIds: fetchedConversations[0].pinnedMessageIds || []
+          } : null;
         setActiveConversation(currentActiveConv);
 
         if (currentActiveConv) {
@@ -181,7 +180,7 @@ export default function StaffIndividualChatPage() {
 
         if (fetchedCustomer && fetchedCustomer.interactionStatus === 'unread' && staffSession.role !== 'customer') {
           await markCustomerInteractionAsReadByStaff(customerId, staffSession.id);
-          setCustomer(prev => prev ? {...prev, interactionStatus: 'read'} : null);
+          setCustomer(prev => prev ? { ...prev, interactionStatus: 'read' } : null);
         }
 
       } catch (error) {
@@ -230,20 +229,20 @@ export default function StaffIndividualChatPage() {
   const handlePinnedMessagesUpdated = useCallback(({ conversationId: updatedConvId, pinnedMessageIds: newPinnedIds }: { conversationId: string, pinnedMessageIds: string[] }) => {
     console.log(`[Staff] Received pinnedMessagesUpdated for conv ${updatedConvId}. New IDs:`, newPinnedIds, "Current active conv ID:", activeConversation?.id);
     if (updatedConvId === activeConversation?.id) {
-        setActiveConversation(prev => {
-            if (prev && prev.id === updatedConvId) {
-                console.log(`[Staff] Updating pinned IDs for conv ${updatedConvId} from`, prev.pinnedMessageIds, "to", newPinnedIds);
-                return { ...prev, pinnedMessageIds: newPinnedIds || [] };
-            }
-            return prev;
-        });
+      setActiveConversation(prev => {
+        if (prev && prev.id === updatedConvId) {
+          console.log(`[Staff] Updating pinned IDs for conv ${updatedConvId} from`, prev.pinnedMessageIds, "to", newPinnedIds);
+          return { ...prev, pinnedMessageIds: newPinnedIds || [] };
+        }
+        return prev;
+      });
     }
   }, [activeConversation]);
 
   useEffect(() => {
-      if (activeConversation) { 
-          fetchPinnedMessagesForConversation(activeConversation);
-      }
+    if (activeConversation) {
+      fetchPinnedMessagesForConversation(activeConversation);
+    }
   }, [activeConversation, fetchPinnedMessagesForConversation]);
 
   useEffect(() => {
@@ -258,8 +257,8 @@ export default function StaffIndividualChatPage() {
       console.log('Staff/Admin received new message:', newMessage);
       if (newMessage.conversationId === activeConversation?.id && newMessage.userId !== staffSession?.id) {
         setMessages(prev => {
-            if (prev.find(m => m.id === newMessage.id)) return prev;
-            return [...prev, {...newMessage, timestamp: new Date(newMessage.timestamp)}];
+          if (prev.find(m => m.id === newMessage.id)) return prev;
+          return [...prev, { ...newMessage, timestamp: new Date(newMessage.timestamp) }];
         });
       }
     };
@@ -287,9 +286,9 @@ export default function StaffIndividualChatPage() {
     };
 
     const handleMessageEdited = ({ message: editedMessage, conversationId: convId }: { message: Message, conversationId: string }) => {
-       if (convId === activeConversation?.id) {
-        setMessages(prev => prev.map(m => m.id === editedMessage.id ? {...editedMessage, timestamp: new Date(editedMessage.timestamp)} : m));
-        setPinnedMessages(prev => prev.map(pm => pm.id === editedMessage.id ? {...editedMessage, timestamp: new Date(editedMessage.timestamp)} : pm));
+      if (convId === activeConversation?.id) {
+        setMessages(prev => prev.map(m => m.id === editedMessage.id ? { ...editedMessage, timestamp: new Date(editedMessage.timestamp) } : m));
+        setPinnedMessages(prev => prev.map(pm => pm.id === editedMessage.id ? { ...editedMessage, timestamp: new Date(editedMessage.timestamp) } : pm));
       }
     };
 
@@ -317,14 +316,14 @@ export default function StaffIndividualChatPage() {
 
 
   const handleSendMessage = async (messageContent: string) => {
-    console.log("Staff: handleSendMessage called with content:", messageContent.substring(0,50) + "...");
+    console.log("Staff: handleSendMessage called with content:", messageContent.substring(0, 50) + "...");
     if (!messageContent.trim() || !customer || !staffSession || !activeConversation?.id) {
-        toast({ title: "Lỗi", description: "Không thể gửi tin nhắn. Thiếu thông tin khách hàng, phiên làm việc hoặc cuộc trò chuyện.", variant: "destructive" });
-        console.error("Staff: Send message precondition failed.", {customer, staffSession, activeConversationId: activeConversation?.id, messageContent});
-        return;
+      toast({ title: "Lỗi", description: "Không thể gửi tin nhắn. Thiếu thông tin khách hàng, phiên làm việc hoặc cuộc trò chuyện.", variant: "destructive" });
+      console.error("Staff: Send message precondition failed.", { customer, staffSession, activeConversationId: activeConversation?.id, messageContent });
+      return;
     }
     setIsSendingMessage(true);
-    console.log("Staff: Variables before calling sendStaffMessage:", {staffSessionId: staffSession.id, customerId: customer.id, conversationId: activeConversation.id});
+    console.log("Staff: Variables before calling sendStaffMessage:", { staffSessionId: staffSession.id, customerId: customer.id, conversationId: activeConversation.id });
 
     if (socket && isConnected && onTyping) onTyping(false);
     if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
@@ -333,10 +332,10 @@ export default function StaffIndividualChatPage() {
       const sentMessage = await sendStaffMessage(staffSession!, customer!.id, activeConversation!.id, messageContent);
       console.log("Staff: Message object received from action to add to state:", sentMessage);
       if (sentMessage && sentMessage.id) {
-        setMessages(prev => [...prev, {...sentMessage, timestamp: new Date(sentMessage.timestamp)}]);
+        setMessages(prev => [...prev, { ...sentMessage, timestamp: new Date(sentMessage.timestamp) }]);
         // Optimistically update customer/conversation for UI responsiveness
-        setCustomer(prev => prev ? { ...prev, interactionStatus: 'replied_by_staff', lastMessagePreview: messageContent.substring(0,100), lastMessageTimestamp: new Date(sentMessage.timestamp) } : null);
-        setActiveConversation(prev => prev ? { ...prev, lastMessagePreview: messageContent.substring(0,100), lastMessageTimestamp: new Date(sentMessage.timestamp) } : null);
+        setCustomer(prev => prev ? { ...prev, interactionStatus: 'replied_by_staff', lastMessagePreview: messageContent.substring(0, 100), lastMessageTimestamp: new Date(sentMessage.timestamp) } : null);
+        setActiveConversation(prev => prev ? { ...prev, lastMessagePreview: messageContent.substring(0, 100), lastMessageTimestamp: new Date(sentMessage.timestamp) } : null);
 
         if (socket && isConnected) {
           socket.emit('sendMessage', { message: sentMessage, conversationId: activeConversation.id });
@@ -348,7 +347,7 @@ export default function StaffIndividualChatPage() {
       }
     } catch (error: any) {
       console.error("Staff: Error sending message:", error);
-      toast({ title: "Lỗi gửi tin nhắn", description: error.message || "Có lỗi xảy ra khi gửi tin nhắn.", variant: "destructive"});
+      toast({ title: "Lỗi gửi tin nhắn", description: error.message || "Có lỗi xảy ra khi gửi tin nhắn.", variant: "destructive" });
     } finally {
       setIsSendingMessage(false);
     }
@@ -363,7 +362,7 @@ export default function StaffIndividualChatPage() {
       if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
       typingTimeoutRef.current = setTimeout(() => {
         if (socket && isConnected && activeConversation?.id && staffSession?.id) {
-            socket.emit('stopTyping', { conversationId: activeConversation.id, userId: staffSession.id });
+          socket.emit('stopTyping', { conversationId: activeConversation.id, userId: staffSession.id });
         }
       }, 1500);
     }
@@ -414,8 +413,8 @@ export default function StaffIndividualChatPage() {
     try {
       const updatedMessage = await editStaffMessage(messageEditState.messageId, finalContent, staffSession);
       if (updatedMessage) {
-        setMessages(prev => prev.map(m => m.id === updatedMessage.id ? {...updatedMessage, timestamp: new Date(updatedMessage.timestamp)} : m));
-        setPinnedMessages(prev => prev.map(pm => pm.id === updatedMessage.id ? {...updatedMessage, timestamp: new Date(updatedMessage.timestamp)} : pm));
+        setMessages(prev => prev.map(m => m.id === updatedMessage.id ? { ...updatedMessage, timestamp: new Date(updatedMessage.timestamp) } : m));
+        setPinnedMessages(prev => prev.map(pm => pm.id === updatedMessage.id ? { ...updatedMessage, timestamp: new Date(updatedMessage.timestamp) } : pm));
         if (socket && isConnected) {
           socket.emit('editMessage', { message: updatedMessage, conversationId: activeConversation.id });
         }
@@ -437,7 +436,7 @@ export default function StaffIndividualChatPage() {
     if (file) {
       if (file.size > MAX_FILE_SIZE_BYTES) {
         toast({ title: "Tệp quá lớn", description: `Kích thước tệp không được vượt quá ${MAX_FILE_SIZE_MB}MB.`, variant: "destructive" });
-        if(editFileInputRef.current) editFileInputRef.current.value = "";
+        if (editFileInputRef.current) editFileInputRef.current.value = "";
         return;
       }
       const reader = new FileReader();
@@ -446,7 +445,7 @@ export default function StaffIndividualChatPage() {
           setStagedEditFile({ dataUri: reader.result as string, name: file.name, type: file.type });
           setCurrentAttachmentInEdit(null);
         }
-        if(editFileInputRef.current) editFileInputRef.current.value = "";
+        if (editFileInputRef.current) editFileInputRef.current.value = "";
       };
       reader.readAsDataURL(file);
     }
@@ -464,8 +463,8 @@ export default function StaffIndividualChatPage() {
         }
         toast({ title: "Thành công", description: "Đã xóa tin nhắn." });
         // If deleted message was the last one, refetch to update preview
-        if (result.conversationId === activeConversation.id && customer?.lastMessagePreview && messages.find(m=>m.id === messageId)?.content.startsWith(customer.lastMessagePreview)) {
-            fetchChatData();
+        if (result.conversationId === activeConversation.id && customer?.lastMessagePreview && messages.find(m => m.id === messageId)?.content.startsWith(customer.lastMessagePreview)) {
+          fetchChatData();
         }
       }
     } catch (error: any) {
@@ -476,23 +475,23 @@ export default function StaffIndividualChatPage() {
   const handlePinRequested = (messageId: string) => {
     if (!socket || !isConnected || !activeConversation?.id || !staffSession) return;
     console.log(`Staff: Requesting to pin message ${messageId} in conv ${activeConversation.id}`);
-    socket.emit('pinMessageRequested', { 
-        conversationId: activeConversation.id, 
-        messageId,
-        userSessionJsonString: JSON.stringify(staffSession) 
+    socket.emit('pinMessageRequested', {
+      conversationId: activeConversation.id,
+      messageId,
+      userSessionJsonString: JSON.stringify(staffSession)
     });
   };
 
   const handleUnpinRequested = (messageId: string) => {
     if (!socket || !isConnected || !activeConversation?.id || !staffSession) return;
     console.log(`Staff: Requesting to unpin message ${messageId} in conv ${activeConversation.id}`);
-    socket.emit('unpinMessageRequested', { 
-        conversationId: activeConversation.id, 
-        messageId,
-        userSessionJsonString: JSON.stringify(staffSession)
+    socket.emit('unpinMessageRequested', {
+      conversationId: activeConversation.id,
+      messageId,
+      userSessionJsonString: JSON.stringify(staffSession)
     });
   };
-  
+
   const handleScrollToMessage = (messageId: string) => {
     const element = document.getElementById(messageId);
     if (element) {
@@ -510,9 +509,9 @@ export default function StaffIndividualChatPage() {
     try {
       const updatedCustomer = await assignStaffToCustomer(customer.id, staffSession.id);
       setCustomer(updatedCustomer);
-      toast({ title: "Thành công", description: `Khách hàng đã được giao cho bạn.`});
+      toast({ title: "Thành công", description: `Khách hàng đã được giao cho bạn.` });
     } catch (error: any) {
-      toast({ title: "Lỗi", description: error.message, variant: "destructive"});
+      toast({ title: "Lỗi", description: error.message, variant: "destructive" });
     } finally {
       setIsAssigning(false);
     }
@@ -524,10 +523,10 @@ export default function StaffIndividualChatPage() {
     try {
       const updatedCustomer = await assignStaffToCustomer(customer.id, selectedStaffToAssign);
       setCustomer(updatedCustomer);
-      toast({ title: "Thành công", description: `Khách hàng đã được giao cho nhân viên đã chọn.`});
+      toast({ title: "Thành công", description: `Khách hàng đã được giao cho nhân viên đã chọn.` });
       setSelectedStaffToAssign('');
     } catch (error: any) {
-      toast({ title: "Lỗi", description: error.message, variant: "destructive"});
+      toast({ title: "Lỗi", description: error.message, variant: "destructive" });
     } finally {
       setIsAssigning(false);
     }
@@ -540,12 +539,12 @@ export default function StaffIndividualChatPage() {
       if (staffSession.role === 'admin' || customer.assignedStaffId === staffSession.id) {
         const updatedCustomer = await unassignStaffFromCustomer(customer.id);
         setCustomer(updatedCustomer);
-        toast({ title: "Thành công", description: `Khách hàng đã được đưa trở lại hàng đợi chung.`});
+        toast({ title: "Thành công", description: `Khách hàng đã được đưa trở lại hàng đợi chung.` });
       } else {
-        toast({ title: "Không được phép", description: "Bạn không được phép thực hiện hành động này.", variant: "destructive"});
+        toast({ title: "Không được phép", description: "Bạn không được phép thực hiện hành động này.", variant: "destructive" });
       }
     } catch (error: any) {
-      toast({ title: "Lỗi", description: error.message, variant: "destructive"});
+      toast({ title: "Lỗi", description: error.message, variant: "destructive" });
     } finally {
       setIsAssigning(false);
     }
@@ -554,28 +553,28 @@ export default function StaffIndividualChatPage() {
   const handleAddTag = async () => {
     if (!customer || !newTagName.trim() || !staffSession) return;
     if (newTagName.toLowerCase().startsWith("admin:") && staffSession.role !== 'admin') {
-       toast({title: "Thông báo", description: "Chỉ Admin mới có thể mời Admin khác bằng tag."});
-       return;
+      toast({ title: "Thông báo", description: "Chỉ Admin mới có thể mời Admin khác bằng tag." });
+      return;
     }
 
     try {
-        const updatedCustomer = await addTagToCustomer(customer.id, newTagName.trim());
-        setCustomer(updatedCustomer);
-        setNewTagName('');
-        toast({title: "Thành công", description: "Đã thêm nhãn."});
+      const updatedCustomer = await addTagToCustomer(customer.id, newTagName.trim());
+      setCustomer(updatedCustomer);
+      setNewTagName('');
+      toast({ title: "Thành công", description: "Đã thêm nhãn." });
     } catch (error: any) {
-        toast({title: "Lỗi", description: `Không thể thêm nhãn: ${error.message}`, variant: "destructive"});
+      toast({ title: "Lỗi", description: `Không thể thêm nhãn: ${error.message}`, variant: "destructive" });
     }
   };
 
   const handleRemoveTag = async (tagToRemove: string) => {
     if (!customer || !staffSession) return;
     try {
-        const updatedCustomer = await removeTagFromCustomer(customer.id, tagToRemove);
-        setCustomer(updatedCustomer);
-        toast({title: "Thành công", description: "Đã xóa nhãn."});
+      const updatedCustomer = await removeTagFromCustomer(customer.id, tagToRemove);
+      setCustomer(updatedCustomer);
+      toast({ title: "Thành công", description: "Đã xóa nhãn." });
     } catch (error: any) {
-        toast({title: "Lỗi", description: `Không thể xóa nhãn: ${error.message}`, variant: "destructive"});
+      toast({ title: "Lỗi", description: `Không thể xóa nhãn: ${error.message}`, variant: "destructive" });
     }
   };
 
@@ -585,12 +584,12 @@ export default function StaffIndividualChatPage() {
     if (customer.internalName === internalNameInput.trim()) return;
 
     try {
-        const updatedCustomer = await updateCustomerInternalName(customer.id, internalNameInput.trim());
-        setCustomer(updatedCustomer);
-        toast({title: "Thành công", description: "Đã cập nhật tên nội bộ."});
+      const updatedCustomer = await updateCustomerInternalName(customer.id, internalNameInput.trim());
+      setCustomer(updatedCustomer);
+      toast({ title: "Thành công", description: "Đã cập nhật tên nội bộ." });
     } catch (error: any) {
-        toast({title: "Lỗi", description: `Không thể cập nhật tên nội bộ: ${error.message}`, variant: "destructive"});
-        setInternalNameInput(customer.internalName || '');
+      toast({ title: "Lỗi", description: `Không thể cập nhật tên nội bộ: ${error.message}`, variant: "destructive" });
+      setInternalNameInput(customer.internalName || '');
     }
   };
 
@@ -618,8 +617,8 @@ export default function StaffIndividualChatPage() {
 
   const handleAddNote = async () => {
     if ((!newNoteContent.trim() && !newNoteImageDataUri) || !customer || !staffSession) {
-        toast({ title: "Thiếu thông tin", description: "Nội dung ghi chú hoặc hình ảnh là bắt buộc.", variant: "destructive"});
-        return;
+      toast({ title: "Thiếu thông tin", description: "Nội dung ghi chú hoặc hình ảnh là bắt buộc.", variant: "destructive" });
+      return;
     }
     try {
       const newNote = await addNoteToCustomer(customer.id, staffSession.id, newNoteContent.trim(), newNoteImageDataUri, newNoteImageFileName);
@@ -672,17 +671,17 @@ export default function StaffIndividualChatPage() {
 
   const handleSaveEditedNote = async () => {
     if (!editingNote || !staffSession || (!editingNoteContent.trim() && editingNoteImageDataUri === undefined)) {
-         toast({ title: "Thiếu thông tin", description: "Nội dung ghi chú hoặc hình ảnh là bắt buộc khi sửa.", variant: "destructive"});
-        return;
+      toast({ title: "Thiếu thông tin", description: "Nội dung ghi chú hoặc hình ảnh là bắt buộc khi sửa.", variant: "destructive" });
+      return;
     }
     try {
       const updatedNote = await updateCustomerNote(
-        editingNote.id, 
-        staffSession.id, 
+        editingNote.id,
+        staffSession.id,
         editingNoteContent.trim(),
-        editingNoteImageDataUri, 
-        editingNoteImageDataUri ? editingNoteImageFileName : undefined 
-        );
+        editingNoteImageDataUri,
+        editingNoteImageDataUri ? editingNoteImageFileName : undefined
+      );
       if (updatedNote) {
         setNotes(prevNotes => prevNotes.map(n => n.id === updatedNote.id ? updatedNote : n));
       }
@@ -709,10 +708,10 @@ export default function StaffIndividualChatPage() {
   };
 
   const handleDirectBookAppointment = async (formData: AppointmentBookingFormData) => {
-    if (!staffSession || !customer ) return;
+    if (!staffSession || !customer) return;
     setIsSendingMessage(true);
     try {
-      const result = await handleBookAppointmentFromForm({...formData, customerId: customer.id });
+      const result = await handleBookAppointmentFromForm({ ...formData, customerId: customer.id });
       toast({
         title: result.success ? "Thành công" : "Thất bại",
         description: result.message,
@@ -739,7 +738,7 @@ export default function StaffIndividualChatPage() {
         }
       }
 
-      if(result.success) {
+      if (result.success) {
         setIsBookingModalOpen(false);
         fetchChatData();
       }
@@ -753,9 +752,9 @@ export default function StaffIndividualChatPage() {
 
   if (isLoading && !customer && !staffSession) {
     return (
-        <div className="flex items-center justify-center h-full">
-            <Loader2 className="h-8 w-8 animate-spin text-primary"/> <p className="ml-2">Đang tải dữ liệu...</p>
-        </div>
+      <div className="flex items-center justify-center h-full">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" /> <p className="ml-2">Đang tải dữ liệu...</p>
+      </div>
     );
   }
 
@@ -763,9 +762,9 @@ export default function StaffIndividualChatPage() {
     return <div className="flex items-center justify-center h-full"><p>Không tìm thấy phiên làm việc. Vui lòng đăng nhập lại.</p></div>;
   }
   if (isLoading && !customer) {
-     return <div className="flex items-center justify-center h-full"><Loader2 className="h-8 w-8 animate-spin text-primary"/> <p className="ml-2">Đang tải thông tin khách hàng...</p></div>;
+    return <div className="flex items-center justify-center h-full"><Loader2 className="h-8 w-8 animate-spin text-primary" /> <p className="ml-2">Đang tải thông tin khách hàng...</p></div>;
   }
-  
+
   if (!customer) {
     // Ensure this condition doesn't prematurely return if there's just a brief moment where customer is null during load
     if (!isLoading) {
@@ -780,9 +779,9 @@ export default function StaffIndividualChatPage() {
     }
     // If still loading, the initial Loader2 above should cover it.
   }
-  
+
   if (!activeConversation) {
-     return (
+    return (
       <div className="flex flex-col items-center justify-center h-full text-center p-4">
         <Loader2 className="h-8 w-8 animate-spin text-primary mb-2" />
         <p className="text-muted-foreground">
@@ -831,13 +830,13 @@ export default function StaffIndividualChatPage() {
           <div className="flex gap-2">
             {staffSession?.role === 'staff' && !customer?.assignedStaffId && (
               <Button variant="outline" size="sm" onClick={handleAssignToSelf} disabled={isAssigning}>
-                <UserCheck className="mr-1 h-4 w-4"/> {isAssigning ? "Đang nhận..." : "Nhận xử lý"}
+                <UserCheck className="mr-1 h-4 w-4" /> {isAssigning ? "Đang nhận..." : "Nhận xử lý"}
               </Button>
             )}
-             {staffSession?.role === 'staff' && customer?.assignedStaffId === staffSession?.id && (
-                 <Button variant="outline" size="sm" onClick={handleUnassign} disabled={isAssigning}>
-                     <LogOutIcon className="mr-1 h-4 w-4"/> {isAssigning ? "Đang trả..." : "Trả về hàng đợi"}
-                 </Button>
+            {staffSession?.role === 'staff' && customer?.assignedStaffId === staffSession?.id && (
+              <Button variant="outline" size="sm" onClick={handleUnassign} disabled={isAssigning}>
+                <LogOutIcon className="mr-1 h-4 w-4" /> {isAssigning ? "Đang trả..." : "Trả về hàng đợi"}
+              </Button>
             )}
           </div>
         </CardHeader>
@@ -848,7 +847,7 @@ export default function StaffIndividualChatPage() {
           pinnedMessages={pinnedMessages}
           suggestedReplies={[]}
           onSendMessage={handleSendMessage}
-          onSuggestedReplyClick={() => {}}
+          onSuggestedReplyClick={() => { }}
           isLoading={isSendingMessage} // Only disable input when actively sending
           viewerRole={staffSession.role as MessageViewerRole}
           onPinRequested={handlePinRequested}
@@ -856,12 +855,11 @@ export default function StaffIndividualChatPage() {
           onDeleteMessage={handleDeleteMessage}
           onEditMessage={handleEditMessage}
           currentStaffSessionId={staffSession.id}
-          currentUserSessionId={customer?.id} // For MessageBubble to know who "user" is
           quickReplies={quickReplies}
           typingUsers={typingUsers}
           onTyping={onTyping}
           onScrollToMessage={handleScrollToMessage}
-          activeConversationId={activeConversation?.id}
+          // activeConversationId={activeConversation?.id}
           activeConversationPinnedMessageIds={activeConversation?.pinnedMessageIds || []}
           onBookAppointmentClick={() => setIsBookingModalOpen(true)}
         />
@@ -879,25 +877,25 @@ export default function StaffIndividualChatPage() {
                 {customer?.assignedStaffId ? (
                   <div className="flex items-center justify-between text-xs">
                     <span>Đang xử lý: {customer.assignedStaffName || customer.assignedStaffId}</span>
-                     <Button variant="outline" size="xs" onClick={handleUnassign} disabled={isAssigning}>
-                        {isAssigning ? "Đang hủy..." : "Hủy giao"}
-                     </Button>
+                    <Button variant="outline" size="sm" onClick={handleUnassign} disabled={isAssigning}>
+                      {isAssigning ? "Đang hủy..." : "Hủy giao"}
+                    </Button>
                   </div>
                 ) : <p className="text-xs text-muted-foreground mb-1">Khách chưa được giao.</p>}
                 <div className="flex gap-1 mt-1">
-                    <Select value={selectedStaffToAssign} onValueChange={setSelectedStaffToAssign} >
-                        <SelectTrigger className="h-7 text-xs flex-grow" disabled={isAssigning}>
-                            <SelectValue placeholder="Chọn nhân viên để giao" />
-                        </SelectTrigger>
-                        <SelectContent>
-                            {allStaff.map(staff => (
-                                <SelectItem key={staff.id} value={staff.id} className="text-xs">{staff.name}</SelectItem>
-                            ))}
-                        </SelectContent>
-                    </Select>
-                    <Button size="sm" onClick={handleAssignToSelectedStaff} className="h-7 text-xs px-2 shrink-0" disabled={!selectedStaffToAssign || isAssigning}>
-                        {isAssigning ? "Đang giao..." : "Giao"}
-                    </Button>
+                  <Select value={selectedStaffToAssign} onValueChange={setSelectedStaffToAssign} >
+                    <SelectTrigger className="h-7 text-xs flex-grow" disabled={isAssigning}>
+                      <SelectValue placeholder="Chọn nhân viên để giao" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {allStaff.map(staff => (
+                        <SelectItem key={staff.id} value={staff.id} className="text-xs">{staff.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Button size="sm" onClick={handleAssignToSelectedStaff} className="h-7 text-xs px-2 shrink-0" disabled={!selectedStaffToAssign || isAssigning}>
+                    {isAssigning ? "Đang giao..." : "Giao"}
+                  </Button>
                 </div>
               </div>
             )}
@@ -908,43 +906,43 @@ export default function StaffIndividualChatPage() {
               <div className="text-xs flex items-center">
                 <span className="text-muted-foreground mr-1">Tên nội bộ:</span>
                 {editingInternalName ? (
-                    <Input
-                        value={internalNameInput}
-                        onChange={(e) => setInternalNameInput(e.target.value)}
-                        onBlur={handleSaveInternalName}
-                        onKeyPress={(e) => { if (e.key === 'Enter') handleSaveInternalName(); }}
-                        className="h-6 text-xs p-1"
-                        autoFocus
-                    />
+                  <Input
+                    value={internalNameInput}
+                    onChange={(e) => setInternalNameInput(e.target.value)}
+                    onBlur={handleSaveInternalName}
+                    onKeyPress={(e) => { if (e.key === 'Enter') handleSaveInternalName(); }}
+                    className="h-6 text-xs p-1"
+                    autoFocus
+                  />
                 ) : (
-                    <span className="truncate max-w-[150px]">{customer?.internalName || 'Chưa có'}</span>
+                  <span className="truncate max-w-[150px]">{customer?.internalName || 'Chưa có'}</span>
                 )}
-                 <Button variant="ghost" size="icon" className="h-5 w-5 ml-1 shrink-0" onClick={() => setEditingInternalName(!editingInternalName)}><Edit2 className="h-3 w-3"/></Button>
+                <Button variant="ghost" size="icon" className="h-5 w-5 ml-1 shrink-0" onClick={() => setEditingInternalName(!editingInternalName)}><Edit2 className="h-3 w-3" /></Button>
               </div>
               <div>
                 <h5 className="font-semibold text-xs mt-2 mb-1 flex items-center"><Tag className="mr-2 h-3 w-3 text-primary" />Nhãn</h5>
                 <div className="flex flex-wrap gap-1 mb-2">
-                    {(customer?.tags || []).map(tag => (
-                        <span key={tag} className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full flex items-center">
-                            {tag}
-                            <Button variant="ghost" size="icon" className="h-4 w-4 ml-1 p-0 hover:bg-blue-200" onClick={() => handleRemoveTag(tag)}>
-                                <X className="h-3 w-3" />
-                            </Button>
-                        </span>
-                    ))}
-                     {customer?.tags?.includes(`Admin:${staffSession?.name}`) && staffSession?.role === 'admin' && (
-                        <span className="text-xs bg-yellow-100 text-yellow-700 px-2 py-0.5 rounded-full">Đã mời Admin</span>
-                    )}
+                  {(customer?.tags || []).map(tag => (
+                    <span key={tag} className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full flex items-center">
+                      {tag}
+                      <Button variant="ghost" size="icon" className="h-4 w-4 ml-1 p-0 hover:bg-blue-200" onClick={() => handleRemoveTag(tag)}>
+                        <X className="h-3 w-3" />
+                      </Button>
+                    </span>
+                  ))}
+                  {customer?.tags?.includes(`Admin:${staffSession?.name}`) && staffSession?.role === 'admin' && (
+                    <span className="text-xs bg-yellow-100 text-yellow-700 px-2 py-0.5 rounded-full">Đã mời Admin</span>
+                  )}
                 </div>
                 <div className="flex gap-1">
-                    <Input
-                        value={newTagName}
-                        onChange={(e) => setNewTagName(e.target.value)}
-                        placeholder="Thêm nhãn mới (vd: Admin:TênAdmin)"
-                        className="h-7 text-xs"
-                        onKeyPress={(e) => { if (e.key === 'Enter') handleAddTag(); }}
-                    />
-                    <Button size="sm" onClick={handleAddTag} className="h-7 text-xs px-2 shrink-0">Thêm</Button>
+                  <Input
+                    value={newTagName}
+                    onChange={(e) => setNewTagName(e.target.value)}
+                    placeholder="Thêm nhãn mới (vd: Admin:TênAdmin)"
+                    className="h-7 text-xs"
+                    onKeyPress={(e) => { if (e.key === 'Enter') handleAddTag(); }}
+                  />
+                  <Button size="sm" onClick={handleAddTag} className="h-7 text-xs px-2 shrink-0">Thêm</Button>
                 </div>
               </div>
             </div>
@@ -952,7 +950,7 @@ export default function StaffIndividualChatPage() {
             <Accordion type="multiple" className="w-full">
               <AccordionItem value="media-history">
                 <AccordionTrigger className="text-sm font-semibold py-2 hover:no-underline">
-                  <div className="flex items-center"><ImageIconLucide className="mr-2 h-4 w-4 text-primary"/>Ảnh/Video ({imageMedia.length})</div>
+                  <div className="flex items-center"><ImageIconLucide className="mr-2 h-4 w-4 text-primary" />Ảnh/Video ({imageMedia.length})</div>
                 </AccordionTrigger>
                 <AccordionContent className="pt-1 pb-2">
                   {imageMedia.length > 0 ? (
@@ -964,7 +962,7 @@ export default function StaffIndividualChatPage() {
                           const dataUri = match[1];
                           return (
                             <div key={msg.id} className="aspect-square relative rounded overflow-hidden bg-muted">
-                              <NextImage src={dataUri} alt="media thumbnail" layout="fill" objectFit="cover" data-ai-hint="thumbnail image"/>
+                              <NextImage src={dataUri} alt="media thumbnail" layout="fill" objectFit="cover" data-ai-hint="thumbnail image" />
                             </div>
                           );
                         })}
@@ -974,11 +972,11 @@ export default function StaffIndividualChatPage() {
                           <Link href={mediaViewPath}>Xem tất cả {imageMedia.length} ảnh/video</Link>
                         </Button>
                       )}
-                       {imageMedia.length > 0 && imageMedia.length <= 6 && (
-                          <Button variant="link" size="sm" className="p-0 h-auto text-xs w-full justify-center" asChild>
-                            <Link href={mediaViewPath}>Xem chi tiết</Link>
-                          </Button>
-                       )}
+                      {imageMedia.length > 0 && imageMedia.length <= 6 && (
+                        <Button variant="link" size="sm" className="p-0 h-auto text-xs w-full justify-center" asChild>
+                          <Link href={mediaViewPath}>Xem chi tiết</Link>
+                        </Button>
+                      )}
                     </>
                   ) : (
                     <p className="text-xs text-muted-foreground text-center py-2">Chưa có ảnh/video nào.</p>
@@ -987,11 +985,11 @@ export default function StaffIndividualChatPage() {
               </AccordionItem>
 
               <AccordionItem value="file-history">
-                 <AccordionTrigger className="text-sm font-semibold py-2 hover:no-underline">
-                    <div className="flex items-center"><FileText className="mr-2 h-4 w-4 text-primary"/>File ({fileMedia.length})</div>
-                 </AccordionTrigger>
+                <AccordionTrigger className="text-sm font-semibold py-2 hover:no-underline">
+                  <div className="flex items-center"><FileText className="mr-2 h-4 w-4 text-primary" />File ({fileMedia.length})</div>
+                </AccordionTrigger>
                 <AccordionContent className="pt-1 pb-2">
-                   {fileMedia.length > 0 ? (
+                  {fileMedia.length > 0 ? (
                     <>
                       <div className="space-y-1 mb-2 max-h-32 overflow-y-auto">
                         {fileMedia.map(msg => {
@@ -1004,7 +1002,7 @@ export default function StaffIndividualChatPage() {
                               download={fileName}
                               className="flex items-center gap-1.5 p-1.5 hover:bg-accent rounded text-xs"
                             >
-                              <FileText className="h-3.5 w-3.5 shrink-0"/>
+                              <FileText className="h-3.5 w-3.5 shrink-0" />
                               <span className="truncate" title={fileName}>{fileName}</span>
                             </a>
                           );
@@ -1025,16 +1023,16 @@ export default function StaffIndividualChatPage() {
 
             <div className="border-t pt-3">
               <h4 className="font-semibold text-sm flex items-center mb-1"><Clock className="mr-2 h-4 w-4 text-primary" />Lịch hẹn ({appointments.length})</h4>
-              {appointments.slice(0,2).map(appt => (
+              {appointments.slice(0, 2).map(appt => (
                 <div key={appt.appointmentId} className="text-xs p-1.5 bg-muted/50 rounded mb-1">
-                    <p>{appt.service} - {format(new Date(appt.date), 'dd/MM/yy', { locale: vi })} lúc {appt.time} ({getStatusLabel(appt.status)})</p>
+                  <p>{appt.service} - {format(new Date(appt.date), 'dd/MM/yy', { locale: vi })} lúc {appt.time} ({getStatusLabel(appt.status)})</p>
                 </div>
               ))}
               {appointments.length > 2 && staffSession &&
                 <Button variant="link" size="sm" className="p-0 h-auto text-primary" asChild>
-                    <Link href={staffSession.role === 'admin' ? '/admin/appointments/view' : '/staff/appointments'}>
-                        Xem tất cả
-                    </Link>
+                  <Link href={staffSession.role === 'admin' ? '/admin/appointments/view' : '/staff/appointments'}>
+                    Xem tất cả
+                  </Link>
                 </Button>
               }
             </div>
@@ -1046,51 +1044,51 @@ export default function StaffIndividualChatPage() {
                     {editingNote?.id === note.id ? (
                       <div className="space-y-1">
                         {editingNoteImageDataUri && (
-                             <div className="relative w-20 h-20 border rounded overflow-hidden">
-                                <NextImage src={editingNoteImageDataUri} alt={editingNoteImageFileName || "Note image"} layout="fill" objectFit="cover" data-ai-hint="note image" />
-                                <Button variant="ghost" size="icon" className="absolute top-0 right-0 h-5 w-5 bg-black/30 hover:bg-black/50 text-white" onClick={handleRemoveEditingNoteImage}><X className="h-3 w-3"/></Button>
-                            </div>
+                          <div className="relative w-20 h-20 border rounded overflow-hidden">
+                            <NextImage src={editingNoteImageDataUri} alt={editingNoteImageFileName || "Note image"} layout="fill" objectFit="cover" data-ai-hint="note image" />
+                            <Button variant="ghost" size="icon" className="absolute top-0 right-0 h-5 w-5 bg-black/30 hover:bg-black/50 text-white" onClick={handleRemoveEditingNoteImage}><X className="h-3 w-3" /></Button>
+                          </div>
                         )}
-                        <Input 
-                            type="file" 
-                            accept="image/*" 
-                            ref={editNoteImageInputRef} 
-                            onChange={handleEditNoteImageChange} 
-                            className="h-8 text-xs"
+                        <Input
+                          type="file"
+                          accept="image/*"
+                          ref={editNoteImageInputRef}
+                          onChange={handleEditNoteImageChange}
+                          className="h-8 text-xs"
                         />
-                        <Textarea value={editingNoteContent} onChange={e => setEditingNoteContent(e.target.value)} rows={2} className="text-xs"/>
+                        <Textarea value={editingNoteContent} onChange={e => setEditingNoteContent(e.target.value)} rows={2} className="text-xs" />
                         <div className="flex gap-1 justify-end">
-                            <Button size="xs" variant="ghost" onClick={() => setEditingNote(null)}>Hủy</Button>
-                            <Button size="xs" onClick={handleSaveEditedNote}>Lưu</Button>
+                          <Button size="sm" variant="ghost" onClick={() => setEditingNote(null)}>Hủy</Button>
+                          <Button size="sm" onClick={handleSaveEditedNote}>Lưu</Button>
                         </div>
                       </div>
                     ) : (
                       <>
                         {note.imageDataUri && (
-                             <div className="relative w-full aspect-video border rounded overflow-hidden my-1">
-                                <NextImage src={note.imageDataUri} alt={note.imageFileName || "Note image"} layout="fill" objectFit="contain" data-ai-hint="note image" />
-                            </div>
+                          <div className="relative w-full aspect-video border rounded overflow-hidden my-1">
+                            <NextImage src={note.imageDataUri} alt={note.imageFileName || "Note image"} layout="fill" objectFit="contain" data-ai-hint="note image" />
+                          </div>
                         )}
                         <p className="whitespace-pre-wrap">{note.content}</p>
                         <div className="flex justify-between items-center mt-1">
-                            <p className="text-muted-foreground">{note.staffName || 'Nhân viên'} - {format(new Date(note.createdAt), 'dd/MM HH:mm', { locale: vi })}</p>
-                            {note.staffId === staffSession?.id && (
-                                <div className="flex gap-1">
-                                    <Button variant="ghost" size="icon" className="h-5 w-5" onClick={() => handleEditNote(note)}><Edit2 className="h-3 w-3"/></Button>
-                                    <AlertDialog>
-                                      <AlertDialogTrigger asChild>
-                                        <Button variant="ghost" size="icon" className="h-5 w-5 text-destructive hover:text-destructive"><Trash2 className="h-3 w-3"/></Button>
-                                      </AlertDialogTrigger>
-                                      <AlertDialogContent>
-                                        <AlertDialogHeader><AlertDialogTitle>Xác nhận xóa ghi chú</AlertDialogTitle><AlertDialogDescription>Bạn có chắc muốn xóa ghi chú này?</AlertDialogDescription></AlertDialogHeader>
-                                        <AlertDialogFooter>
-                                          <AlertDialogCancel>Hủy</AlertDialogCancel>
-                                          <AlertDialogAction onClick={() => handleDeleteNote(note.id)} className="bg-destructive hover:bg-destructive/90">Xóa</AlertDialogAction>
-                                        </AlertDialogFooter>
-                                      </AlertDialogContent>
-                                    </AlertDialog>
-                                </div>
-                            )}
+                          <p className="text-muted-foreground">{note.staffName || 'Nhân viên'} - {format(new Date(note.createdAt), 'dd/MM HH:mm', { locale: vi })}</p>
+                          {note.staffId === staffSession?.id && (
+                            <div className="flex gap-1">
+                              <Button variant="ghost" size="icon" className="h-5 w-5" onClick={() => handleEditNote(note)}><Edit2 className="h-3 w-3" /></Button>
+                              <AlertDialog>
+                                <AlertDialogTrigger asChild>
+                                  <Button variant="ghost" size="icon" className="h-5 w-5 text-destructive hover:text-destructive"><Trash2 className="h-3 w-3" /></Button>
+                                </AlertDialogTrigger>
+                                <AlertDialogContent>
+                                  <AlertDialogHeader><AlertDialogTitle>Xác nhận xóa ghi chú</AlertDialogTitle><AlertDialogDescription>Bạn có chắc muốn xóa ghi chú này?</AlertDialogDescription></AlertDialogHeader>
+                                  <AlertDialogFooter>
+                                    <AlertDialogCancel>Hủy</AlertDialogCancel>
+                                    <AlertDialogAction onClick={() => handleDeleteNote(note.id)} className="bg-destructive hover:bg-destructive/90">Xóa</AlertDialogAction>
+                                  </AlertDialogFooter>
+                                </AlertDialogContent>
+                              </AlertDialog>
+                            </div>
+                          )}
                         </div>
                       </>
                     )}
@@ -1099,35 +1097,35 @@ export default function StaffIndividualChatPage() {
               </div>
               <div className="space-y-1">
                 {newNoteImageDataUri && (
-                    <div className="relative w-20 h-20 border rounded overflow-hidden">
-                        <NextImage src={newNoteImageDataUri} alt={newNoteImageFileName || "New note image"} layout="fill" objectFit="cover" data-ai-hint="note image" />
-                        <Button variant="ghost" size="icon" className="absolute top-0 right-0 h-5 w-5 bg-black/30 hover:bg-black/50 text-white" onClick={() => { setNewNoteImageDataUri(undefined); setNewNoteImageFileName(undefined); if(newNoteImageInputRef.current) newNoteImageInputRef.current.value = ""; }}><X className="h-3 w-3"/></Button>
-                    </div>
+                  <div className="relative w-20 h-20 border rounded overflow-hidden">
+                    <NextImage src={newNoteImageDataUri} alt={newNoteImageFileName || "New note image"} layout="fill" objectFit="cover" data-ai-hint="note image" />
+                    <Button variant="ghost" size="icon" className="absolute top-0 right-0 h-5 w-5 bg-black/30 hover:bg-black/50 text-white" onClick={() => { setNewNoteImageDataUri(undefined); setNewNoteImageFileName(undefined); if (newNoteImageInputRef.current) newNoteImageInputRef.current.value = ""; }}><X className="h-3 w-3" /></Button>
+                  </div>
                 )}
-                <Input 
-                    type="file" 
-                    accept="image/*" 
-                    ref={newNoteImageInputRef} 
-                    onChange={handleNewNoteImageChange} 
-                    className="h-8 text-xs"
+                <Input
+                  type="file"
+                  accept="image/*"
+                  ref={newNoteImageInputRef}
+                  onChange={handleNewNoteImageChange}
+                  className="h-8 text-xs"
                 />
                 <Textarea
-                    placeholder="Thêm ghi chú nội bộ mới..."
-                    rows={2}
-                    className="text-xs"
-                    value={newNoteContent}
-                    onChange={e => setNewNoteContent(e.target.value)}
+                  placeholder="Thêm ghi chú nội bộ mới..."
+                  rows={2}
+                  className="text-xs"
+                  value={newNoteContent}
+                  onChange={e => setNewNoteContent(e.target.value)}
                 />
               </div>
               <Button size="sm" className="mt-1 w-full" onClick={handleAddNote} disabled={!newNoteContent.trim() && !newNoteImageDataUri}>
-                <PlusCircle className="mr-1 h-3 w-3"/>Thêm Ghi chú
+                <PlusCircle className="mr-1 h-3 w-3" />Thêm Ghi chú
               </Button>
             </div>
           </CardContent>
         </ScrollArea>
       </Card>
 
-      <Dialog open={messageEditState !== null} onOpenChange={(isOpen) => { if (!isOpen) { setMessageEditState(null); setCurrentAttachmentInEdit(null); setStagedEditFile(null); setEditTextContent('');}}}>
+      <Dialog open={messageEditState !== null} onOpenChange={(isOpen) => { if (!isOpen) { setMessageEditState(null); setCurrentAttachmentInEdit(null); setStagedEditFile(null); setEditTextContent(''); } }}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>Sửa Tin nhắn</DialogTitle>
@@ -1139,7 +1137,7 @@ export default function StaffIndividualChatPage() {
                 <div className="flex items-center justify-between mt-1">
                   <div className="flex items-center gap-2 text-sm overflow-hidden">
                     {(stagedEditFile || currentAttachmentInEdit)?.type?.startsWith('image/') ? (
-                       <NextImage data-ai-hint="image file attachment" src={(stagedEditFile || currentAttachmentInEdit)!.dataUri} alt={(stagedEditFile || currentAttachmentInEdit)!.name} width={40} height={40} className="rounded object-cover flex-shrink-0" />
+                      <NextImage data-ai-hint="image file attachment" src={(stagedEditFile || currentAttachmentInEdit)!.dataUri} alt={(stagedEditFile || currentAttachmentInEdit)!.name} width={40} height={40} className="rounded object-cover flex-shrink-0" />
                     ) : (
                       <FileText className="h-6 w-6 text-muted-foreground flex-shrink-0" />
                     )}
@@ -1185,7 +1183,7 @@ export default function StaffIndividualChatPage() {
       </Dialog>
 
       {staffSession && customer && (
-         <AppointmentBookingForm
+        <AppointmentBookingForm
           isOpen={isBookingModalOpen}
           onClose={() => setIsBookingModalOpen(false)}
           onSubmit={handleDirectBookAppointment}

@@ -25,15 +25,15 @@ const generateTimeSlots = (workingHours?: string[], serviceDuration?: number, de
   if (workingHours && workingHours.length > 0) {
     return workingHours;
   }
-  
+
   let date = startOfHour(new Date());
-  date = setHours(date, 8); 
+  date = setHours(date, 8);
   date = setMinutes(date, 0);
-  const endDate = setHours(new Date(), 21); 
+  const endDate = setHours(new Date(), 21);
 
   while (date < endDate) {
     slots.push(format(date, 'HH:mm'));
-    date = addMinutes(date, 30); 
+    date = addMinutes(date, 30);
   }
   return slots;
 };
@@ -70,16 +70,16 @@ export function AppointmentBookingForm({ isOpen, onClose, onSubmit, currentUserS
   useEffect(() => {
     const appSettingsToUse = appSettingsFromContext || currentAppSettings;
     const selectedProduct = products.find(p => p.id === selectedProductId);
-    
+
     let serviceSpecificWorkingHours = selectedProduct?.schedulingRules?.workingHours;
     if (selectedProduct?.isSchedulable && selectedProduct.schedulingRules && (!serviceSpecificWorkingHours || serviceSpecificWorkingHours.length === 0)) {
-        // If product is schedulable but has no specific working hours, use global ones.
-        serviceSpecificWorkingHours = appSettingsToUse?.workingHours;
+      // If product is schedulable but has no specific working hours, use global ones.
+      serviceSpecificWorkingHours = appSettingsToUse?.workingHours;
     }
 
     let serviceSpecificDuration = selectedProduct?.schedulingRules?.serviceDurationMinutes;
-    if(selectedProduct?.isSchedulable && selectedProduct.schedulingRules && !serviceSpecificDuration){
-        serviceSpecificDuration = appSettingsToUse?.defaultServiceDurationMinutes;
+    if (selectedProduct?.isSchedulable && selectedProduct.schedulingRules && !serviceSpecificDuration) {
+      serviceSpecificDuration = appSettingsToUse?.defaultServiceDurationMinutes;
     }
 
 
@@ -90,11 +90,11 @@ export function AppointmentBookingForm({ isOpen, onClose, onSubmit, currentUserS
     );
     setTimeSlots(slots);
     if (slots.length > 0 && !slots.includes(time)) {
-        setTime(slots[0]);
+      setTime(slots[0]);
     } else if (slots.length === 0 && time) {
-        setTime(''); 
+      setTime('');
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedProductId, products, appSettingsFromContext, currentAppSettings, time]);
 
 
@@ -104,17 +104,17 @@ export function AppointmentBookingForm({ isOpen, onClose, onSubmit, currentUserS
         try {
           const settings = appSettingsFromContext || await getAppSettings();
           setCurrentAppSettings(settings);
-          
+
           const [fetchedProducts, fetchedBranches, fetchedCustomers] = await Promise.all([
             getAllProducts(),
-            getBranches(true), 
+            getBranches(true),
             (currentUserSession?.role === 'admin' || currentUserSession?.role === 'staff') ? getCustomerListForSelect() : Promise.resolve([]),
           ]);
-          
+
           setProducts(fetchedProducts.filter(p => p.isSchedulable));
           setBranches(fetchedBranches);
           setCustomerList(fetchedCustomers);
-          
+
           if (currentUserSession?.role === 'customer' && !selectedCustomerId) {
             setSelectedCustomerId(currentUserSession.id);
           }
@@ -122,7 +122,7 @@ export function AppointmentBookingForm({ isOpen, onClose, onSubmit, currentUserS
           if (fetchedBranches.length === 1 && !selectedBranchId) {
             setSelectedBranchId(fetchedBranches[0].id);
           }
-          
+
         } catch (error) {
           toast({ title: "Lỗi tải dữ liệu", description: "Không thể tải danh sách dịch vụ, chi nhánh hoặc khách hàng.", variant: "destructive" });
         }
@@ -131,7 +131,7 @@ export function AppointmentBookingForm({ isOpen, onClose, onSubmit, currentUserS
     } else {
       // Reset form fields when dialog closes
       setSelectedProductId('');
-      setTime('09:00'); 
+      setTime('09:00');
       setSelectedBranchId(branches.length === 1 ? branches[0].id : '');
       setNotes('');
       setRecurrenceType('none');
@@ -139,11 +139,11 @@ export function AppointmentBookingForm({ isOpen, onClose, onSubmit, currentUserS
       if (currentUserSession?.role !== 'customer') {
         setSelectedCustomerId(undefined);
       }
-       // Keep selectedDate as is or reset to today:
-       // setSelectedDate(new Date()); 
+      // Keep selectedDate as is or reset to today:
+      // setSelectedDate(new Date()); 
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen, currentUserSession, toast]); 
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, currentUserSession, toast]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -151,7 +151,7 @@ export function AppointmentBookingForm({ isOpen, onClose, onSubmit, currentUserS
     const selectedBranch = branches.find(b => b.id === selectedBranchId);
 
     let branchIsRequiredAndMissing = false;
-    if (branches.length > 1 && !selectedBranchId) { 
+    if (branches.length > 1 && !selectedBranchId) {
       branchIsRequiredAndMissing = true;
     }
 
@@ -161,14 +161,14 @@ export function AppointmentBookingForm({ isOpen, onClose, onSubmit, currentUserS
     }
     setIsSubmitting(true);
     const formData: AppointmentBookingFormData = {
-      service: selectedProduct!.name, 
+      service: selectedProduct!.name,
       productId: selectedProduct!.id,
       date: format(selectedDate, 'yyyy-MM-dd'),
       time,
-      branch: selectedBranch?.name, 
-      branchId: selectedBranchId || (branches.length === 1 ? branches[0].id : undefined), 
+      branch: selectedBranch?.name,
+      branchId: selectedBranchId || (branches.length === 1 ? branches[0].id : undefined),
       notes: notes.trim() || undefined,
-      customerId: selectedCustomerId!, 
+      customerId: selectedCustomerId!,
       recurrenceType: recurrenceType === 'none' ? undefined : recurrenceType,
       recurrenceCount: recurrenceType !== 'none' && recurrenceCount > 1 ? recurrenceCount : undefined,
     };
@@ -198,25 +198,25 @@ export function AppointmentBookingForm({ isOpen, onClose, onSubmit, currentUserS
           )}
           <div className="space-y-2">
             <Label htmlFor="service" className="text-sm font-medium">Dịch vụ <span className="text-destructive">*</span></Label>
-            <Select 
-                value={selectedProductId} 
-                onValueChange={(value) => {
-                    setSelectedProductId(value);
-                    // Reset time based on new service's potential working hours
-                    const product = products.find(p => p.id === value);
-                    const appSettingsToUse = appSettingsFromContext || currentAppSettings;
-                    let serviceSpecificWorkingHours = product?.schedulingRules?.workingHours;
-                    if (product?.isSchedulable && product.schedulingRules && (!serviceSpecificWorkingHours || serviceSpecificWorkingHours.length === 0)) {
-                        serviceSpecificWorkingHours = appSettingsToUse?.workingHours;
-                    }
-                    const slots = generateTimeSlots(
-                        serviceSpecificWorkingHours?.length ? serviceSpecificWorkingHours : appSettingsToUse?.workingHours,
-                        product?.schedulingRules?.serviceDurationMinutes,
-                        appSettingsToUse?.defaultServiceDurationMinutes
-                    );
-                    if (slots.length > 0) setTime(slots[0]); else setTime('');
-                }} 
-                disabled={isSubmitting || products.length === 0}
+            <Select
+              value={selectedProductId}
+              onValueChange={(value) => {
+                setSelectedProductId(value);
+                // Reset time based on new service's potential working hours
+                const product = products.find(p => p.id === value);
+                const appSettingsToUse = appSettingsFromContext || currentAppSettings;
+                let serviceSpecificWorkingHours = product?.schedulingRules?.workingHours;
+                if (product?.isSchedulable && product.schedulingRules && (!serviceSpecificWorkingHours || serviceSpecificWorkingHours.length === 0)) {
+                  serviceSpecificWorkingHours = appSettingsToUse?.workingHours;
+                }
+                const slots = generateTimeSlots(
+                  serviceSpecificWorkingHours?.length ? serviceSpecificWorkingHours : appSettingsToUse?.workingHours,
+                  product?.schedulingRules?.serviceDurationMinutes,
+                  appSettingsToUse?.defaultServiceDurationMinutes
+                );
+                if (slots.length > 0) setTime(slots[0]); else setTime('');
+              }}
+              disabled={isSubmitting || products.length === 0}
             >
               <SelectTrigger id="service" className="w-full">
                 <SelectValue placeholder={products.length === 0 ? "Không có dịch vụ có thể đặt lịch" : "Chọn dịch vụ"} />
@@ -226,7 +226,7 @@ export function AppointmentBookingForm({ isOpen, onClose, onSubmit, currentUserS
               </SelectContent>
             </Select>
           </div>
-          
+
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="date" className="text-sm font-medium">Ngày <span className="text-destructive">*</span></Label>
@@ -235,7 +235,7 @@ export function AppointmentBookingForm({ isOpen, onClose, onSubmit, currentUserS
                   mode="single"
                   selected={selectedDate}
                   onSelect={setSelectedDate}
-                  className="mx-auto" 
+                  className="mx-auto"
                   disabled={(date) => date < new Date(new Date().setDate(new Date().getDate() - 1)) || isSubmitting}
                   locale={vi}
                 />
@@ -259,14 +259,14 @@ export function AppointmentBookingForm({ isOpen, onClose, onSubmit, currentUserS
           {branches.length > 0 && (
             <div className="space-y-2">
               <Label htmlFor="branch" className="text-sm font-medium">Chi nhánh {branches.length === 1 ? '' : <span className="text-destructive">*</span>}</Label>
-              <Select 
-                value={selectedBranchId} 
-                onValueChange={setSelectedBranchId} 
+              <Select
+                value={selectedBranchId}
+                onValueChange={setSelectedBranchId}
                 disabled={isSubmitting || branches.length === 0}
-                required={branches.length > 1} 
+                required={branches.length > 1}
               >
                 <SelectTrigger id="branch" className="w-full">
-                   <SelectValue placeholder={branches.length === 1 && branches[0] ? branches[0].name : "Chọn chi nhánh"} />
+                  <SelectValue placeholder={branches.length === 1 && branches[0] ? branches[0].name : "Chọn chi nhánh"} />
                 </SelectTrigger>
                 <SelectContent>
                   {branches.map(b => <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>)}
@@ -277,24 +277,24 @@ export function AppointmentBookingForm({ isOpen, onClose, onSubmit, currentUserS
 
           {(currentUserSession?.role === 'admin' || currentUserSession?.role === 'staff') && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-end">
-                <div className="space-y-2">
+              <div className="space-y-2">
                 <Label htmlFor="recurrenceType" className="text-sm font-medium">Lặp lại</Label>
                 <Select value={recurrenceType} onValueChange={(value) => setRecurrenceType(value as any)} disabled={isSubmitting}>
-                    <SelectTrigger id="recurrenceType" className="w-full">
+                  <SelectTrigger id="recurrenceType" className="w-full">
                     <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
+                  </SelectTrigger>
+                  <SelectContent>
                     <SelectItem value="none">Không lặp lại</SelectItem>
                     <SelectItem value="daily">Hàng ngày</SelectItem>
                     <SelectItem value="weekly">Hàng tuần</SelectItem>
                     <SelectItem value="monthly">Hàng tháng</SelectItem>
-                    </SelectContent>
+                  </SelectContent>
                 </Select>
-                </div>
-                {recurrenceType !== 'none' && (
+              </div>
+              {recurrenceType !== 'none' && (
                 <div className="space-y-2">
-                    <Label htmlFor="recurrenceCount" className="text-sm font-medium">Số lần lặp lại</Label>
-                    <Input
+                  <Label htmlFor="recurrenceCount" className="text-sm font-medium">Số lần lặp lại</Label>
+                  <Input
                     id="recurrenceCount"
                     type="number"
                     value={recurrenceCount}
@@ -303,9 +303,9 @@ export function AppointmentBookingForm({ isOpen, onClose, onSubmit, currentUserS
                     max="52" // Example max
                     disabled={isSubmitting}
                     className="w-full"
-                    />
+                  />
                 </div>
-                )}
+              )}
             </div>
           )}
 

@@ -1,4 +1,3 @@
-
 // src/components/chat/ChatWindow.tsx
 'use client';
 
@@ -9,8 +8,8 @@ import { SuggestedReplies } from './SuggestedReplies';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import React, { useRef, useEffect } from 'react';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Pin } from 'lucide-react'; 
-import { Button } from '@/components/ui/button'; 
+import { Pin } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 
 type ChatWindowProps = {
   userSession: UserSession | null;
@@ -27,11 +26,12 @@ type ChatWindowProps = {
   onEditMessage?: (messageId: string, currentContent: string) => void;
   currentStaffSessionId?: string;
   onBookAppointmentClick?: () => void;
-  quickReplies?: QuickReplyType[]; 
-  typingUsers?: Record<string, string>; 
-  onTyping?: (isTyping: boolean) => void; 
+  quickReplies?: QuickReplyType[];
+  typingUsers?: Record<string, string>;
+  onTyping?: (isTyping: boolean) => void;
   onScrollToMessage?: (messageId: string) => void;
   activeConversationPinnedMessageIds?: string[];
+  activeConversationId?: string | null;
 };
 
 const TypingIndicator = ({ users }: { users: Record<string, string> }) => {
@@ -63,10 +63,11 @@ export function ChatWindow({
   currentStaffSessionId,
   onBookAppointmentClick,
   quickReplies,
-  typingUsers = {}, 
-  onTyping, 
+  typingUsers = {},
+  onTyping,
   onScrollToMessage,
   activeConversationPinnedMessageIds = [],
+  activeConversationId,
 }: ChatWindowProps) {
   const scrollAreaRef = useRef<HTMLDivElement>(null);
 
@@ -77,7 +78,7 @@ export function ChatWindow({
         viewport.scrollTop = viewport.scrollHeight;
       }
     }
-  }, [messages, typingUsers]); 
+  }, [messages, typingUsers]);
 
   if (!userSession) {
     return (
@@ -99,15 +100,15 @@ export function ChatWindow({
   return (
     <div className="flex-grow flex flex-col bg-background overflow-hidden h-full border-none shadow-none">
       {pinnedMessages.length > 0 && (
-        <div className="p-2 border-b bg-amber-50 max-h-36 overflow-y-auto"> 
+        <div className="p-2 border-b bg-amber-50 max-h-36 overflow-y-auto">
           <h4 className="text-xs font-semibold text-amber-700 mb-1 sticky top-0 bg-amber-50 py-1 z-10 flex items-center">
             <Pin className="h-3 w-3 mr-1 text-amber-600" /> Tin nhắn đã ghim:
           </h4>
           {pinnedMessages.filter(Boolean).map((msg) => (
             msg && msg.id ? (
-              <Button 
-                variant="ghost" 
-                key={`pinned-display-${msg.id}`} 
+              <Button
+                variant="ghost"
+                key={`pinned-display-${msg.id}`}
                 className="block w-full h-auto p-1.5 text-left mb-1 rounded-md hover:bg-amber-100"
                 onClick={() => onScrollToMessage && onScrollToMessage(msg.id)}
                 title="Nhấn để cuộn đến tin nhắn gốc"
@@ -120,31 +121,31 @@ export function ChatWindow({
           ))}
         </div>
       )}
-      <ScrollArea className="p-4 h-[calc(100vh-16rem)]" ref={scrollAreaRef}> 
+      <ScrollArea className="p-4 h-[calc(100vh-16rem)]" ref={scrollAreaRef}>
         <div className="space-y-2">
           {messages.filter(Boolean).map((msg) => {
-             if (!msg || !msg.id) return null;
-             const isCurrentlyPinned = activeConversationPinnedMessageIds.includes(msg.id);
-             const canPinMore = activeConversationPinnedMessageIds.length < 3 || isCurrentlyPinned;
+            if (!msg || !msg.id) return null;
+            const isCurrentlyPinned = activeConversationPinnedMessageIds.includes(msg.id);
+            const canPinMore = activeConversationPinnedMessageIds.length < 3 || isCurrentlyPinned;
 
-             return (
-                <MessageBubble
-                  key={msg.id}
-                  message={msg}
-                  viewerRole={viewerRole}
-                  currentStaffSessionId={currentStaffSessionId}
-                  currentUserSessionId={userSession.id}
-                  onPinRequested={onPinRequested}
-                  onUnpinRequested={onUnpinRequested}
-                  onDeleteMessage={onDeleteMessage}
-                  onEditMessage={onEditMessage}
-                  isCurrentlyPinned={isCurrentlyPinned}
-                  canPinMore={canPinMore}
-                />
-              );
-            }
+            return (
+              <MessageBubble
+                key={msg.id}
+                message={msg}
+                viewerRole={viewerRole}
+                currentStaffSessionId={currentStaffSessionId}
+                currentUserSessionId={userSession.id}
+                onPinRequested={onPinRequested}
+                onUnpinRequested={onUnpinRequested}
+                onDeleteMessage={onDeleteMessage}
+                onEditMessage={onEditMessage}
+                isCurrentlyPinned={isCurrentlyPinned}
+                canPinMore={canPinMore}
+              />
+            );
+          }
           )}
-          {isLoading && messages.length > 0 && messages[messages.length-1]?.sender === 'user' && <AILoadingIndicator />}
+          {isLoading && messages.length > 0 && messages[messages.length - 1]?.sender === 'user' && <AILoadingIndicator />}
         </div>
       </ScrollArea>
       {Object.keys(typingUsers).length > 0 && <TypingIndicator users={typingUsers} />}
@@ -157,10 +158,10 @@ export function ChatWindow({
         onSubmit={onSendMessage}
         isLoading={isLoading}
         onBookAppointmentClick={onBookAppointmentClick}
-        quickReplies={quickReplies} 
-        onTyping={onTyping} 
+        quickReplies={quickReplies}
+        onTyping={onTyping}
       />
     </div>
   );
 }
-    
+

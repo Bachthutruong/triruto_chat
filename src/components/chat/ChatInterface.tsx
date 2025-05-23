@@ -1,4 +1,3 @@
-
 // src/components/chat/ChatInterface.tsx
 'use client';
 
@@ -142,50 +141,50 @@ export function ChatInterface({
                 {sortedConversations.map((conv) => (
                   <li key={conv.id} className={cn(activeConversationId === conv.id && "bg-accent text-accent-foreground")}>
                     <div className="w-full text-left p-3 hover:bg-accent/50 transition-colors duration-150 flex items-center justify-between">
-                        <button
-                            className="flex-grow text-left flex flex-col gap-0.5 overflow-hidden"
-                            onClick={() => onSelectConversation(conv.id)}
-                            disabled={isChatLoading}
-                        >
-                            <span className="text-sm font-medium truncate flex items-center" title={conv.title || `Cuộc trò chuyện ${conv.id.slice(-4)}`}>
-                            {conv.isPinned && <Pin className="h-3 w-3 inline-block mr-1 text-amber-500 shrink-0" />}
-                            {conv.title || `Cuộc trò chuyện ${conv.id.slice(-4)}`}
-                            </span>
-                            {conv.lastMessagePreview && (
-                                <p className="text-xs text-muted-foreground truncate">
-                                {conv.lastMessagePreview}
-                                </p>
+                      <button
+                        className="flex-grow text-left flex flex-col gap-0.5 overflow-hidden"
+                        onClick={() => onSelectConversation(conv.id)}
+                        disabled={isChatLoading}
+                      >
+                        <span className="text-sm font-medium truncate flex items-center" title={conv.title || `Cuộc trò chuyện ${conv.id.slice(-4)}`}>
+                          {conv.isPinned && <Pin className="h-3 w-3 inline-block mr-1 text-amber-500 shrink-0" />}
+                          {conv.title || `Cuộc trò chuyện ${conv.id.slice(-4)}`}
+                        </span>
+                        {conv.lastMessagePreview && (
+                          <p className="text-xs text-muted-foreground truncate">
+                            {conv.lastMessagePreview}
+                          </p>
+                        )}
+                        <p className="text-xs text-muted-foreground/70">
+                          {conv.lastMessageTimestamp ? formatDistanceToNowStrict(new Date(conv.lastMessageTimestamp), { addSuffix: true, locale: vi }) : 'Chưa có tin nhắn'}
+                        </p>
+                      </button>
+                      {(onUpdateConversationTitle || onPinConversation || onUnpinConversation) && (
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="icon" className="h-6 w-6 p-0 shrink-0 ml-1" onClick={e => e.stopPropagation()}>
+                              <MoreVertical className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" onClick={e => e.stopPropagation()}>
+                            {onUpdateConversationTitle && (
+                              <DropdownMenuItem onClick={() => handleOpenTitleModal(conv)}>
+                                <Edit3 className="mr-2 h-4 w-4" /> Sửa tiêu đề
+                              </DropdownMenuItem>
                             )}
-                            <p className="text-xs text-muted-foreground/70">
-                                {conv.lastMessageTimestamp ? formatDistanceToNowStrict(new Date(conv.lastMessageTimestamp), { addSuffix: true, locale: vi }) : 'Chưa có tin nhắn'}
-                            </p>
-                        </button>
-                         {(onUpdateConversationTitle || onPinConversation || onUnpinConversation) && (
-                            <DropdownMenu>
-                                <DropdownMenuTrigger asChild>
-                                <Button variant="ghost" size="icon" className="h-6 w-6 p-0 shrink-0 ml-1" onClick={e => e.stopPropagation()}>
-                                    <MoreVertical className="h-4 w-4" />
-                                </Button>
-                                </DropdownMenuTrigger>
-                                <DropdownMenuContent align="end" onClick={e => e.stopPropagation()}>
-                                {onUpdateConversationTitle && (
-                                    <DropdownMenuItem onClick={() => handleOpenTitleModal(conv)}>
-                                    <Edit3 className="mr-2 h-4 w-4" /> Sửa tiêu đề
-                                    </DropdownMenuItem>
-                                )}
-                                {conv.isPinned && onUnpinConversation && (
-                                    <DropdownMenuItem onClick={() => onUnpinConversation(conv.id)}>
-                                    <PinOff className="mr-2 h-4 w-4 text-amber-600" /> Bỏ ghim cuộc trò chuyện
-                                    </DropdownMenuItem>
-                                )}
-                                {!conv.isPinned && onPinConversation && (
-                                    <DropdownMenuItem onClick={() => onPinConversation(conv.id)}>
-                                    <Pin className="mr-2 h-4 w-4" /> Ghim cuộc trò chuyện
-                                    </DropdownMenuItem>
-                                )}
-                                </DropdownMenuContent>
-                            </DropdownMenu>
-                         )}
+                            {conv.isPinned && onUnpinConversation && (
+                              <DropdownMenuItem onClick={() => onUnpinConversation(conv.id)}>
+                                <PinOff className="mr-2 h-4 w-4 text-amber-600" /> Bỏ ghim cuộc trò chuyện
+                              </DropdownMenuItem>
+                            )}
+                            {!conv.isPinned && onPinConversation && (
+                              <DropdownMenuItem onClick={() => onPinConversation(conv.id)}>
+                                <Pin className="mr-2 h-4 w-4" /> Ghim cuộc trò chuyện
+                              </DropdownMenuItem>
+                            )}
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      )}
                     </div>
                   </li>
                 ))}

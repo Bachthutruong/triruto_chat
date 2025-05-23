@@ -1,4 +1,3 @@
-
 // src/app/page.tsx
 'use client';
 
@@ -8,24 +7,24 @@ import Link from 'next/link';
 import { AppHeader } from '@/components/layout/AppHeader';
 import { ChatWindow } from '@/components/chat/ChatWindow';
 import type { Message, UserSession, Conversation, MessageViewerRole, AppointmentBookingFormData } from '@/lib/types';
-import { 
-  handleCustomerAccess, 
-  processUserMessage, 
+import {
+  handleCustomerAccess,
+  processUserMessage,
   getUserConversations, // For fetching all conversations for a user if needed later
   getMessagesByIds,     // For fetching pinned messages
-  updateConversationTitle, 
+  updateConversationTitle,
   pinMessageToConversation, // Renamed
   unpinMessageFromConversation, // Renamed
   getAppSettings,
   handleBookAppointmentFromForm // For direct booking
-} from './actions'; 
+} from './actions';
 import { useToast } from '@/hooks/use-toast';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { LogIn, Loader2 } from 'lucide-react';
 import { useAppSettingsContext } from '@/contexts/AppSettingsContext';
 import { AppointmentBookingForm } from '@/components/chat/AppointmentBookingForm';
-import { useSocket } from '@/contexts/SocketContext'; 
+import { useSocket } from '@/contexts/SocketContext';
 import { cn } from '@/lib/utils';
 
 
@@ -44,7 +43,7 @@ export default function HomePage() {
 
   const { toast } = useToast();
   const router = useRouter();
-  const pathname = usePathname(); 
+  const pathname = usePathname();
   const appSettingsContext = useAppSettingsContext();
   const [brandName, setBrandName] = useState('AetherChat');
 
@@ -90,23 +89,23 @@ export default function HomePage() {
       return;
     }
     setIsLoadingSession(true);
-    setHasLoadedInitialData(false); 
+    setHasLoadedInitialData(false);
     console.log("HomePage: Starting loadInitialData for session:", session.id);
     try {
-      const result = await handleCustomerAccess(session.phoneNumber); 
+      const result = await handleCustomerAccess(session.phoneNumber);
 
-      setCurrentUserSession(result.userSession); 
-      setCurrentMessages((result.initialMessages || []).map((m: Message) => ({...m, timestamp: new Date(m.timestamp)})));
+      setCurrentUserSession(result.userSession);
+      setCurrentMessages((result.initialMessages || []).map((m: Message) => ({ ...m, timestamp: new Date(m.timestamp) })));
       setCurrentSuggestedReplies(result.initialSuggestedReplies || []);
-      
-      const primaryConversation = (result.conversations && result.conversations.length > 0) ? 
+
+      const primaryConversation = (result.conversations && result.conversations.length > 0) ?
         result.conversations.map((c: Conversation) => ({
           ...c,
           createdAt: new Date(c.createdAt),
           updatedAt: new Date(c.updatedAt),
           lastMessageTimestamp: c.lastMessageTimestamp ? new Date(c.lastMessageTimestamp) : undefined,
           pinnedMessageIds: c.pinnedMessageIds || [], // Ensure pinnedMessageIds is always an array
-        }))[0] 
+        }))[0]
         : null;
 
       setActiveConversation(primaryConversation);
@@ -125,7 +124,7 @@ export default function HomePage() {
     } finally {
       setIsLoadingSession(false);
     }
-  }, [toast, router, fetchPinnedMessages]); 
+  }, [toast, router, fetchPinnedMessages]);
 
   useEffect(() => {
     console.log("HomePage: Initial session check effect running. Pathname:", pathname);
@@ -156,7 +155,7 @@ export default function HomePage() {
   useEffect(() => {
     if (initialSessionFromStorage) {
       if (initialSessionFromStorage.role === 'customer') {
-        setCurrentUserSession(initialSessionFromStorage); 
+        setCurrentUserSession(initialSessionFromStorage);
 
         const prefetchedDataRaw = sessionStorage.getItem('aetherChatPrefetchedData');
         if (prefetchedDataRaw && !hasLoadedInitialData) {
@@ -164,10 +163,10 @@ export default function HomePage() {
             const prefetchedData = JSON.parse(prefetchedDataRaw);
             if (prefetchedData.userSession && prefetchedData.userSession.id === initialSessionFromStorage.id) {
               console.log("HomePage: Using pre-fetched data for session:", initialSessionFromStorage.id);
-              
-              setCurrentMessages((prefetchedData.initialMessages || []).map((m: Message) => ({...m, timestamp: new Date(m.timestamp)})));
+
+              setCurrentMessages((prefetchedData.initialMessages || []).map((m: Message) => ({ ...m, timestamp: new Date(m.timestamp) })));
               setCurrentSuggestedReplies(prefetchedData.initialSuggestedReplies || []);
-              
+
               const custConvs: Conversation[] = (prefetchedData.conversations || []).map((c: Conversation) => ({
                 ...c,
                 createdAt: new Date(c.createdAt),
@@ -181,24 +180,24 @@ export default function HomePage() {
               if (primaryConv) {
                 fetchPinnedMessages(primaryConv);
               }
-              
+
               setHasLoadedInitialData(true);
               sessionStorage.removeItem('aetherChatPrefetchedData');
               setIsLoadingSession(false);
-              return; 
+              return;
             } else {
-               sessionStorage.removeItem('aetherChatPrefetchedData');
+              sessionStorage.removeItem('aetherChatPrefetchedData');
             }
           } catch (e) {
             console.error("HomePage: Error parsing pre-fetched data. Clearing.", e);
             sessionStorage.removeItem('aetherChatPrefetchedData');
           }
         }
-        
+
         if (!hasLoadedInitialData) {
           loadInitialData(initialSessionFromStorage);
         } else {
-           setIsLoadingSession(false);
+          setIsLoadingSession(false);
         }
 
       } else if (initialSessionFromStorage.role === 'admin' || initialSessionFromStorage.role === 'staff') {
@@ -207,7 +206,7 @@ export default function HomePage() {
       } else {
         setIsLoadingSession(false);
       }
-    } else if (router && router.pathname && !router.pathname.startsWith('/enter-phone')) { 
+    } else if (router && pathname && !pathname.startsWith('/enter-phone')) {
       setIsLoadingSession(false);
     }
   }, [initialSessionFromStorage, loadInitialData, router, hasLoadedInitialData, fetchPinnedMessages, pathname]);
@@ -222,22 +221,56 @@ export default function HomePage() {
   const handlePinnedMessagesUpdated = useCallback(({ conversationId: updatedConvId, pinnedMessageIds: newPinnedIds }: { conversationId: string, pinnedMessageIds: string[] }) => {
     console.log(`[Customer] Received pinnedMessagesUpdated for conv ${updatedConvId}. New IDs:`, newPinnedIds, "Current active conv ID:", activeConversation?.id);
     if (updatedConvId === activeConversation?.id) {
-        setActiveConversation(prev => {
-            if (prev && prev.id === updatedConvId) {
-                console.log(`[Customer] Updating pinned IDs for conv ${updatedConvId} from`, prev.pinnedMessageIds, "to", newPinnedIds);
-                return { ...prev, pinnedMessageIds: newPinnedIds || [] }; 
-            }
-            return prev;
-        });
+      setActiveConversation(prev => {
+        if (prev && prev.id === updatedConvId) {
+          console.log(`[Customer] Updating pinned IDs for conv ${updatedConvId} from`, prev.pinnedMessageIds, "to", newPinnedIds);
+          return { ...prev, pinnedMessageIds: newPinnedIds || [] };
+        }
+        return prev;
+      });
     }
   }, [activeConversation]);
 
   useEffect(() => {
     if (activeConversation) { // This effect will run when activeConversation itself changes (e.g., its pinnedMessageIds array)
-        fetchPinnedMessages(activeConversation);
+      fetchPinnedMessages(activeConversation);
     }
   }, [activeConversation, fetchPinnedMessages]);
 
+
+  useEffect(() => {
+    if (!socket) {
+      console.log("Socket not initialized");
+      return;
+    }
+
+    const handleConnect = () => {
+      console.log("Socket connected");
+    };
+
+    const handleDisconnect = () => {
+      console.log("Socket disconnected");
+    };
+
+    const handleConnectError = (error: Error) => {
+      console.error("Socket connection error:", error);
+      toast({
+        title: "Lỗi kết nối",
+        description: "Không thể kết nối đến máy chủ. Đang thử kết nối lại...",
+        variant: "destructive",
+      });
+    };
+
+    socket.on('connect', handleConnect);
+    socket.on('disconnect', handleDisconnect);
+    socket.on('connect_error', handleConnectError);
+
+    return () => {
+      socket.off('connect', handleConnect);
+      socket.off('disconnect', handleDisconnect);
+      socket.off('connect_error', handleConnectError);
+    };
+  }, [socket, toast]);
 
   useEffect(() => {
     if (!socket || !isConnected || !activeConversation?.id || !currentUserSession || currentUserSession.role !== 'customer') {
@@ -252,7 +285,7 @@ export default function HomePage() {
       if (newMessage.conversationId === activeConversation?.id && newMessage.userId !== currentUserSession?.id) {
         setCurrentMessages(prev => {
           if (prev.find(m => m.id === newMessage.id)) return prev;
-          return [...prev, {...newMessage, timestamp: new Date(newMessage.timestamp)}];
+          return [...prev, { ...newMessage, timestamp: new Date(newMessage.timestamp) }];
         });
       }
     };
@@ -271,18 +304,18 @@ export default function HomePage() {
         setTypingUsers({ ...usersTypingMapRef.current });
       }
     };
-        
+
     const handleMessageDeleted = ({ messageId, conversationId: convId }: { messageId: string, conversationId: string }) => {
       if (convId === activeConversation?.id) {
         setCurrentMessages(prev => prev.filter(m => m.id !== messageId));
-        setPinnedMessages(prev => prev.filter(pm => pm.id !== messageId)); 
+        setPinnedMessages(prev => prev.filter(pm => pm.id !== messageId));
       }
     };
 
     const handleMessageEdited = ({ message: editedMessage, conversationId: convId }: { message: Message, conversationId: string }) => {
-       if (convId === activeConversation?.id) {
-        setCurrentMessages(prev => prev.map(m => m.id === editedMessage.id ? {...editedMessage, timestamp: new Date(editedMessage.timestamp)} : m));
-        setPinnedMessages(prev => prev.map(pm => pm.id === editedMessage.id ? {...editedMessage, timestamp: new Date(editedMessage.timestamp)} : pm)); 
+      if (convId === activeConversation?.id) {
+        setCurrentMessages(prev => prev.map(m => m.id === editedMessage.id ? { ...editedMessage, timestamp: new Date(editedMessage.timestamp) } : m));
+        setPinnedMessages(prev => prev.map(pm => pm.id === editedMessage.id ? { ...editedMessage, timestamp: new Date(editedMessage.timestamp) } : pm));
       }
     };
 
@@ -292,7 +325,6 @@ export default function HomePage() {
     socket.on('pinnedMessagesUpdated', handlePinnedMessagesUpdated);
     socket.on('messageDeleted', handleMessageDeleted);
     socket.on('messageEdited', handleMessageEdited);
-
 
     return () => {
       if (socket && activeConversation?.id && currentUserSession) {
@@ -308,7 +340,6 @@ export default function HomePage() {
     };
   }, [socket, isConnected, activeConversation, currentUserSession, handlePinnedMessagesUpdated]);
 
-
   const handleLogout = () => {
     const currentSessionString = sessionStorage.getItem('aetherChatUserSession');
     let role: UserSession['role'] | null = null;
@@ -322,8 +353,8 @@ export default function HomePage() {
       clearTimeout(typingTimeoutRef.current);
       typingTimeoutRef.current = null;
     }
-    if(socket && isConnected && activeConversation?.id && currentUserSession?.id && onTyping) {
-        onTyping(false); 
+    if (socket && isConnected && activeConversation?.id && currentUserSession?.id && onTyping) {
+      onTyping(false);
     }
 
     setCurrentUserSession(null);
@@ -335,7 +366,7 @@ export default function HomePage() {
     setCurrentSuggestedReplies([]);
     setActiveConversation(null);
     setTypingUsers({});
-    setHasLoadedInitialData(false); 
+    setHasLoadedInitialData(false);
 
     if (role === 'admin' || role === 'staff') {
       router.push('/login');
@@ -353,9 +384,9 @@ export default function HomePage() {
       if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
       typingTimeoutRef.current = setTimeout(() => {
         if (socket && isConnected && activeConversation?.id && currentUserSession?.id) {
-            socket.emit('stopTyping', { conversationId: activeConversation.id, userId: currentUserSession.id });
+          socket.emit('stopTyping', { conversationId: activeConversation.id, userId: currentUserSession.id });
         }
-      }, 1500); 
+      }, 1500);
     }
   };
 
@@ -364,7 +395,7 @@ export default function HomePage() {
     if (!currentUserSession || !activeConversation?.id) return;
 
     const userMessage: Message = {
-      id: `msg_local_user_${Date.now()}`, 
+      id: `msg_local_user_${Date.now()}`,
       sender: 'user',
       content: messageContent,
       timestamp: new Date(),
@@ -374,10 +405,10 @@ export default function HomePage() {
     };
 
     setCurrentMessages((prevMessages) => [...prevMessages, userMessage]);
-    setCurrentSuggestedReplies([]); 
+    setCurrentSuggestedReplies([]);
     setIsChatLoading(true);
     if (socket && isConnected && onTyping) {
-      onTyping(false); 
+      onTyping(false);
       if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
     }
 
@@ -386,13 +417,13 @@ export default function HomePage() {
         messageContent,
         currentUserSession,
         activeConversation.id,
-        currentMessages 
+        currentMessages
       );
 
-      setCurrentMessages((prevMessages) => 
-        prevMessages.map(m => m.id === userMessage.id ? {...savedUserMessage, timestamp: new Date(savedUserMessage.timestamp)} : m)
+      setCurrentMessages((prevMessages) =>
+        prevMessages.map(m => m.id === userMessage.id ? { ...savedUserMessage, timestamp: new Date(savedUserMessage.timestamp) } : m)
       );
-      setCurrentMessages(prev => [...prev, {...aiMessage, timestamp: new Date(aiMessage.timestamp)}]);
+      setCurrentMessages(prev => [...prev, { ...aiMessage, timestamp: new Date(aiMessage.timestamp) }]);
 
 
       if (socket && isConnected) {
@@ -416,7 +447,7 @@ export default function HomePage() {
         timestamp: new Date(),
         conversationId: activeConversation.id,
       };
-      setCurrentMessages((prevMessages) => [...prevMessages.filter(m => m.id !== userMessage.id), errorMessage]); 
+      setCurrentMessages((prevMessages) => [...prevMessages.filter(m => m.id !== userMessage.id), errorMessage]);
       toast({
         title: "Lỗi tin nhắn",
         description: "Không thể xử lý tin nhắn của bạn. Vui lòng thử lại.",
@@ -426,25 +457,201 @@ export default function HomePage() {
       setIsChatLoading(false);
     }
   };
-  
-  const handlePinRequested = (messageId: string) => {
-    if (!socket || !isConnected || !activeConversation?.id || !currentUserSession) return;
-    socket.emit('pinMessage', { 
-        conversationId: activeConversation.id, 
-        messageId,
-        userSessionJsonString: JSON.stringify(currentUserSession) 
-    });
-  };
 
-  const handleUnpinRequested = (messageId: string) => {
-    if (!socket || !isConnected || !activeConversation?.id || !currentUserSession) return;
-    socket.emit('unpinMessage', { 
-        conversationId: activeConversation.id, 
+  const handlePinRequested = useCallback((messageId: string) => {
+    console.log("Pin requested for message:", messageId, {
+      socket: !!socket,
+      isConnected,
+      activeConversation: activeConversation?.id,
+      currentUserSession: !!currentUserSession,
+      userRole: currentUserSession?.role
+    });
+
+    if (!socket) {
+      console.error("Cannot pin message: Socket is not initialized");
+      toast({
+        title: "Lỗi kết nối",
+        description: "Đang khởi tạo kết nối. Vui lòng thử lại sau.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!isConnected) {
+      console.error("Cannot pin message: Socket is not connected");
+      // Try to reconnect with timeout
+      const reconnectTimeout = setTimeout(() => {
+        if (!socket.connected) {
+          toast({
+            title: "Lỗi kết nối",
+            description: "Không thể kết nối đến máy chủ. Vui lòng tải lại trang.",
+            variant: "destructive",
+          });
+        }
+      }, 5000);
+
+      socket.connect();
+      toast({
+        title: "Đang kết nối lại",
+        description: "Đang thử kết nối lại đến máy chủ...",
+        variant: "default",
+      });
+      return;
+    }
+
+    if (!activeConversation?.id) {
+      console.error("Cannot pin message: No active conversation");
+      toast({
+        title: "Lỗi",
+        description: "Không tìm thấy cuộc trò chuyện hiện tại.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!currentUserSession) {
+      console.error("Cannot pin message: No user session");
+      toast({
+        title: "Lỗi",
+        description: "Phiên đăng nhập không hợp lệ. Vui lòng đăng nhập lại.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (currentUserSession.role !== 'customer') {
+      console.error("Cannot pin message: Invalid user role");
+      toast({
+        title: "Lỗi",
+        description: "Bạn không có quyền thực hiện thao tác này.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      console.log(`[Customer] Requesting to pin message ${messageId} in conv ${activeConversation.id}`);
+      socket.emit('pinMessageRequested', {
+        conversationId: activeConversation.id,
         messageId,
         userSessionJsonString: JSON.stringify(currentUserSession)
+      }, (response: { success: boolean; error?: string }) => {
+        if (!response.success) {
+          console.error("Server error pinning message:", response.error);
+          toast({
+            title: "Lỗi",
+            description: response.error || "Không thể ghim tin nhắn. Vui lòng thử lại.",
+            variant: "destructive",
+          });
+        }
+      });
+    } catch (error) {
+      console.error("Error pinning message:", error);
+      toast({
+        title: "Lỗi",
+        description: "Không thể ghim tin nhắn. Vui lòng thử lại.",
+        variant: "destructive",
+      });
+    }
+  }, [socket, isConnected, activeConversation, currentUserSession, toast]);
+
+  const handleUnpinRequested = useCallback((messageId: string) => {
+    console.log("Unpin requested for message:", messageId, {
+      socket: !!socket,
+      isConnected,
+      activeConversation: activeConversation?.id,
+      currentUserSession: !!currentUserSession,
+      userRole: currentUserSession?.role
     });
-  };
-  
+
+    if (!socket) {
+      console.error("Cannot unpin message: Socket is not initialized");
+      toast({
+        title: "Lỗi kết nối",
+        description: "Đang khởi tạo kết nối. Vui lòng thử lại sau.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!isConnected) {
+      console.error("Cannot unpin message: Socket is not connected");
+      // Try to reconnect with timeout
+      const reconnectTimeout = setTimeout(() => {
+        if (!socket.connected) {
+          toast({
+            title: "Lỗi kết nối",
+            description: "Không thể kết nối đến máy chủ. Vui lòng tải lại trang.",
+            variant: "destructive",
+          });
+        }
+      }, 5000);
+
+      socket.connect();
+      toast({
+        title: "Đang kết nối lại",
+        description: "Đang thử kết nối lại đến máy chủ...",
+        variant: "default",
+      });
+      return;
+    }
+
+    if (!activeConversation?.id) {
+      console.error("Cannot unpin message: No active conversation");
+      toast({
+        title: "Lỗi",
+        description: "Không tìm thấy cuộc trò chuyện hiện tại.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!currentUserSession) {
+      console.error("Cannot unpin message: No user session");
+      toast({
+        title: "Lỗi",
+        description: "Phiên đăng nhập không hợp lệ. Vui lòng đăng nhập lại.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (currentUserSession.role !== 'customer') {
+      console.error("Cannot unpin message: Invalid user role");
+      toast({
+        title: "Lỗi",
+        description: "Bạn không có quyền thực hiện thao tác này.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      console.log(`[Customer] Requesting to unpin message ${messageId} in conv ${activeConversation.id}`);
+      socket.emit('unpinMessageRequested', {
+        conversationId: activeConversation.id,
+        messageId,
+        userSessionJsonString: JSON.stringify(currentUserSession)
+      }, (response: { success: boolean; error?: string }) => {
+        if (!response.success) {
+          console.error("Server error unpinning message:", response.error);
+          toast({
+            title: "Lỗi",
+            description: response.error || "Không thể bỏ ghim tin nhắn. Vui lòng thử lại.",
+            variant: "destructive",
+          });
+        }
+      });
+    } catch (error) {
+      console.error("Error unpinning message:", error);
+      toast({
+        title: "Lỗi",
+        description: "Không thể bỏ ghim tin nhắn. Vui lòng thử lại.",
+        variant: "destructive",
+      });
+    }
+  }, [socket, isConnected, activeConversation, currentUserSession, toast]);
+
   const handleScrollToMessage = (messageId: string) => {
     const element = document.getElementById(messageId);
     if (element) {
@@ -464,12 +671,12 @@ export default function HomePage() {
       <ChatWindow
         userSession={currentUserSession}
         messages={currentMessages}
-        pinnedMessages={pinnedMessages} 
-        suggestedReplies={currentMessages.length <=1 ? currentSuggestedReplies : []}
+        pinnedMessages={pinnedMessages}
+        suggestedReplies={currentMessages.length <= 1 ? currentSuggestedReplies : []}
         onSendMessage={handleSendMessage}
-        onSuggestedReplyClick={handleSendMessage} 
+        onSuggestedReplyClick={handleSendMessage}
         isLoading={isChatLoading || isLoadingSession}
-        viewerRole="customer_view" 
+        viewerRole="customer_view"
         onBookAppointmentClick={() => setIsBookingModalOpen(true)}
         onTyping={onTyping}
         typingUsers={typingUsers}
@@ -478,16 +685,15 @@ export default function HomePage() {
         activeConversationPinnedMessageIds={activeConversation?.pinnedMessageIds || []}
         onPinRequested={handlePinRequested}
         onUnpinRequested={handleUnpinRequested}
-        currentUserSessionId={currentUserSession.id} // For MessageBubble to know who "user" is
       />
     );
   };
 
-  const handleDirectBookAppointment = async (formData: AppointmentBookingFormData) => { 
+  const handleDirectBookAppointment = async (formData: AppointmentBookingFormData) => {
     if (!currentUserSession || !activeConversation?.id) return;
     setIsChatLoading(true);
     try {
-      const result = await handleBookAppointmentFromForm({...formData, customerId: currentUserSession.id });
+      const result = await handleBookAppointmentFromForm({ ...formData, customerId: currentUserSession.id });
       toast({
         title: result.success ? "Thành công" : "Thất bại",
         description: result.message,
@@ -511,7 +717,7 @@ export default function HomePage() {
       if (socket && isConnected) {
         socket.emit('sendMessage', { message: systemMessage, conversationId: activeConversation.id });
       }
-      if(result.success) setIsBookingModalOpen(false);
+      if (result.success) setIsBookingModalOpen(false);
 
     } catch (error: any) {
       toast({ title: "Lỗi đặt lịch", description: error.message || "Không thể đặt lịch hẹn.", variant: "destructive" });
@@ -575,23 +781,23 @@ export default function HomePage() {
         </div>
       );
     }
-   
+
     if (pathname !== '/enter-phone' && pathname !== '/login' && pathname !== '/register') {
-        return (
-             <div className="flex-grow flex items-center justify-center p-4">
-                <p className="text-muted-foreground">Đang chuyển hướng hoặc có lỗi xảy ra...</p>
-             </div>
-        )
+      return (
+        <div className="flex-grow flex items-center justify-center p-4">
+          <p className="text-muted-foreground">Đang chuyển hướng hoặc có lỗi xảy ra...</p>
+        </div>
+      )
     }
-    return null; 
+    return null;
   };
 
   return (
     <div className="flex flex-col min-h-screen bg-background h-screen">
       <AppHeader userSession={currentUserSession} onLogout={handleLogout} />
       <main className={cn(
-        "flex-grow flex items-stretch w-full overflow-hidden pt-16", 
-        currentUserSession?.role === 'customer' ? "h-[calc(100vh-4rem)] md:max-w-screen-lg md:mx-auto" : "h-auto items-center justify-center" 
+        "flex-grow flex items-stretch w-full overflow-hidden pt-16",
+        currentUserSession?.role === 'customer' ? "h-[calc(100vh-4rem)] md:max-w-screen-lg md:mx-auto" : "h-auto items-center justify-center"
       )}>
         {renderContent()}
       </main>
