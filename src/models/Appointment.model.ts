@@ -2,7 +2,7 @@
 // src/models/Appointment.model.ts
 import type { AppointmentDetails, AppointmentStatus } from '@/lib/types';
 import mongoose, { Schema, Document, models, Model } from 'mongoose';
-
+//@ts-ignore
 export interface IAppointment extends Document, Omit<AppointmentDetails, 'appointmentId' | 'userId' > {
   customerId: Schema.Types.ObjectId;
   productId: Schema.Types.ObjectId;

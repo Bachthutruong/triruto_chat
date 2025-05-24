@@ -67,9 +67,18 @@ export function ChatWindow({
   onTyping,
   onScrollToMessage,
   activeConversationPinnedMessageIds = [],
-  activeConversationId,
+  activeConversationId, 
 }: ChatWindowProps) {
   const scrollAreaRef = useRef<HTMLDivElement>(null);
+  // Manage local pinned messages for immediate UI update on unpin
+  const [localPinnedMessages, setLocalPinnedMessages] = React.useState<Message[]>(pinnedMessages);
+  useEffect(() => {
+    setLocalPinnedMessages(pinnedMessages);
+  }, [pinnedMessages]);
+  const handleUnpinMessage = (messageId: string) => {
+    if (onUnpinRequested) onUnpinRequested(messageId);
+    setLocalPinnedMessages(prev => prev.filter(msg => msg.id !== messageId));
+  };
 
   useEffect(() => {
     if (scrollAreaRef.current) {
@@ -99,12 +108,12 @@ export function ChatWindow({
 
   return (
     <div className="flex-grow flex flex-col bg-background overflow-hidden h-full border-none shadow-none">
-      {pinnedMessages.length > 0 && (
-        <div className="p-2 border-b bg-amber-50 max-h-36 overflow-y-auto">
+      {localPinnedMessages.length > 0 && (
+        <div className="p-2 border-b bg-amber-50 max-h-36">
           <h4 className="text-xs font-semibold text-amber-700 mb-1 sticky top-0 bg-amber-50 py-1 z-10 flex items-center">
             <Pin className="h-3 w-3 mr-1 text-amber-600" /> Tin nhắn đã ghim:
           </h4>
-          {pinnedMessages.filter(Boolean).map((msg) => (
+          {localPinnedMessages.filter(Boolean).map((msg) => (
             msg && msg.id ? (
               <Button
                 variant="ghost"
@@ -136,7 +145,7 @@ export function ChatWindow({
                 currentStaffSessionId={currentStaffSessionId}
                 currentUserSessionId={userSession.id}
                 onPinRequested={onPinRequested}
-                onUnpinRequested={onUnpinRequested}
+                onUnpinRequested={handleUnpinMessage}
                 onDeleteMessage={onDeleteMessage}
                 onEditMessage={onEditMessage}
                 isCurrentlyPinned={isCurrentlyPinned}

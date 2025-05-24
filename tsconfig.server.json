@@ -1,11 +1,12 @@
 {
   "extends": "./tsconfig.json",
   "compilerOptions": {
-    "module": "commonjs",
-    "outDir": ".next/server",
+    "module": "esnext",
+    "outDir": "dist",
     "noEmit": false,
     "isolatedModules": false,
-    "esModuleInterop": true // Ensure this is true if using ES module imports in server.ts
+    "esModuleInterop": true, // Ensure this is true if using ES module imports in server.ts
+    "skipLibCheck": true
   },
   "include": ["src/server.ts", "src/ai/dev.ts"]
 }

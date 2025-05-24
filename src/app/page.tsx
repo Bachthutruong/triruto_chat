@@ -555,102 +555,27 @@ export default function HomePage() {
     }
   }, [socket, isConnected, activeConversation, currentUserSession, toast]);
 
-  const handleUnpinRequested = useCallback((messageId: string) => {
-    console.log("Unpin requested for message:", messageId, {
-      socket: !!socket,
-      isConnected,
-      activeConversation: activeConversation?.id,
-      currentUserSession: !!currentUserSession,
-      userRole: currentUserSession?.role
-    });
-
-    if (!socket) {
-      console.error("Cannot unpin message: Socket is not initialized");
-      toast({
-        title: "Lỗi kết nối",
-        description: "Đang khởi tạo kết nối. Vui lòng thử lại sau.",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    if (!isConnected) {
-      console.error("Cannot unpin message: Socket is not connected");
-      // Try to reconnect with timeout
-      const reconnectTimeout = setTimeout(() => {
-        if (!socket.connected) {
-          toast({
-            title: "Lỗi kết nối",
-            description: "Không thể kết nối đến máy chủ. Vui lòng tải lại trang.",
-            variant: "destructive",
-          });
-        }
-      }, 5000);
-
-      socket.connect();
-      toast({
-        title: "Đang kết nối lại",
-        description: "Đang thử kết nối lại đến máy chủ...",
-        variant: "default",
-      });
-      return;
-    }
-
+  const handleUnpinRequested = useCallback(async (messageId: string) => {
+    // Use server action to persist unpin and refresh pinned messages
     if (!activeConversation?.id) {
-      console.error("Cannot unpin message: No active conversation");
-      toast({
-        title: "Lỗi",
-        description: "Không tìm thấy cuộc trò chuyện hiện tại.",
-        variant: "destructive",
-      });
+      toast({ title: "Lỗi", description: "Không tìm thấy cuộc trò chuyện hiện tại.", variant: "destructive" });
       return;
     }
-
     if (!currentUserSession) {
-      console.error("Cannot unpin message: No user session");
-      toast({
-        title: "Lỗi",
-        description: "Phiên đăng nhập không hợp lệ. Vui lòng đăng nhập lại.",
-        variant: "destructive",
-      });
+      toast({ title: "Lỗi", description: "Phiên đăng nhập không hợp lệ.", variant: "destructive" });
       return;
     }
-
-    if (currentUserSession.role !== 'customer') {
-      console.error("Cannot unpin message: Invalid user role");
-      toast({
-        title: "Lỗi",
-        description: "Bạn không có quyền thực hiện thao tác này.",
-        variant: "destructive",
-      });
-      return;
-    }
-
     try {
-      console.log(`[Customer] Requesting to unpin message ${messageId} in conv ${activeConversation.id}`);
-      socket.emit('unpinMessageRequested', {
-        conversationId: activeConversation.id,
-        messageId,
-        userSessionJsonString: JSON.stringify(currentUserSession)
-      }, (response: { success: boolean; error?: string }) => {
-        if (!response.success) {
-          console.error("Server error unpinning message:", response.error);
-          toast({
-            title: "Lỗi",
-            description: response.error || "Không thể bỏ ghim tin nhắn. Vui lòng thử lại.",
-            variant: "destructive",
-          });
-        }
-      });
-    } catch (error) {
-      console.error("Error unpinning message:", error);
-      toast({
-        title: "Lỗi",
-        description: "Không thể bỏ ghim tin nhắn. Vui lòng thử lại.",
-        variant: "destructive",
-      });
+      const updatedConv = await unpinMessageFromConversation(activeConversation.id, messageId, currentUserSession);
+      if (updatedConv) {
+        setActiveConversation(updatedConv);
+        fetchPinnedMessages(updatedConv);
+      }
+    } catch (error: any) {
+      console.error("Error unpinning message via action:", error);
+      toast({ title: "Lỗi bỏ ghim", description: error.message || "Không thể bỏ ghim tin nhắn.", variant: "destructive" });
     }
-  }, [socket, isConnected, activeConversation, currentUserSession, toast]);
+  }, [activeConversation, currentUserSession, fetchPinnedMessages, toast]);
 
   const handleScrollToMessage = (messageId: string) => {
     const element = document.getElementById(messageId);

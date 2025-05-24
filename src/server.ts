@@ -1,14 +1,21 @@
-
 // src/server.ts
+import { config } from 'dotenv';
+import { resolve } from 'path';
+
+// Load environment variables from all possible .env files
+config({ path: resolve(process.cwd(), '.env.local') });
+config({ path: resolve(process.cwd(), '.env') });
+
+// Log environment status
+console.log('Environment variables loaded. MONGODB_URI is', process.env.MONGODB_URI ? 'set' : 'not set');
+
 import { createServer } from 'http';
 import { parse } from 'url';
 import next from 'next';
 import { Server as SocketIOServer, Socket } from 'socket.io';
-import dotenv from 'dotenv';
 import { pinMessageToConversation, unpinMessageFromConversation } from './app/actions'; 
 import type { UserSession } from './lib/types';
 
-dotenv.config();
 console.log("Socket.IO Server: dotenv configured.");
 
 const dev = process.env.NODE_ENV !== 'production';
@@ -98,9 +105,9 @@ app.prepare().then(() => {
         if (updatedConversation) {
           io.to(conversationId).emit('pinnedMessagesUpdated', { 
             conversationId, 
-            pinnedMessageIds: updatedConversation.pinnedMessageIds || [] 
+            pinnedMessageIds: updatedConversation.pinnedMessageIds || []
           });
-          console.log(`Socket.IO Server: Emitted pinnedMessagesUpdated for convId: ${conversationId} after pin`);
+          console.log(`Socket.IO Server: Emitted pinnedMessagesUpdated for convId: ${conversationId} with IDs:`, updatedConversation.pinnedMessageIds);
         }
       } catch (error: any) {
         console.error(`Socket.IO Server: Error processing pinMessageRequested for convId ${conversationId}:`, error.message);
