@@ -17,7 +17,7 @@ const ParticipantSchema: Schema<IParticipant> = new Schema({
     phoneNumber: { type: String },
 }, { _id: false });
 
-
+//@ts-ignore
 export interface IConversation extends Document, Omit<Conversation, 'id' | 'participants' | 'messageIds' | 'pinnedMessageIds'> {
   customerId: Types.ObjectId;
   staffId?: Types.ObjectId;

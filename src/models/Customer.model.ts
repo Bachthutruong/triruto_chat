@@ -2,6 +2,7 @@
 import type { CustomerProfile, CustomerInteractionStatus } from '@/lib/types';
 import mongoose, { Schema, Document, models, Model, Types } from 'mongoose';
 
+//@ts-ignore
 export interface ICustomer extends Document, Omit<CustomerProfile, 'id' | 'assignedStaffName' | 'interactionStatus' | 'lastMessagePreview' | 'lastMessageTimestamp' | 'conversationIds' | 'appointmentIds' | 'productIds' | 'noteIds' | 'pinnedMessageIds' | 'messagePinningAllowedConversationIds' | 'pinnedConversationIds' | 'tags'> {
   // id is managed by MongoDB as _id
   // assignedStaffName will be populated

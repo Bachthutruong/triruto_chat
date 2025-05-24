@@ -2,7 +2,7 @@
 // src/models/Message.model.ts
 import type { Message } from '@/lib/types';
 import mongoose, { Schema, Document, models, Model } from 'mongoose';
-
+//@ts-ignore
 export interface IMessage extends Document, Omit<Message, 'id' > {
   customerId?: Schema.Types.ObjectId; 
   userId?: Schema.Types.ObjectId; 

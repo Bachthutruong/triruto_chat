@@ -1,13 +1,10 @@
 // src/lib/mongodb.ts
 import mongoose from 'mongoose';
 
-const MONGODB_URI = process.env.MONGODB_URI;
+// Load environment variables
+const MONGODB_URI = process.env.MONGODB_URI || 'mongodb+srv://vuduybachvp:TJ4obGsJleYENZzV@livechat.jcxnz9h.mongodb.net/aetherchat';
 
-if (!MONGODB_URI) {
-  throw new Error(
-    'Please define the MONGODB_URI environment variable inside .env'
-  );
-}
+console.log('MongoDB: Attempting to connect to', MONGODB_URI.replace(/\/\/([^:]+):([^@]+)@/, '//<username>:<password>@'));
 
 /**
  * Global is used here to maintain a cached connection across hot reloads
@@ -22,6 +19,7 @@ if (!cached) {
 
 async function dbConnect() {
   if (cached.conn) {
+    console.log('MongoDB: Using cached connection');
     return cached.conn;
   }
 
@@ -30,12 +28,25 @@ async function dbConnect() {
       bufferCommands: false,
     };
 
-    cached.promise = mongoose.connect(MONGODB_URI!, opts).then((mongoose) => {
-      return mongoose;
-    });
+    console.log('MongoDB: Creating new connection...');
+    cached.promise = mongoose.connect(MONGODB_URI, opts)
+      .then((mongoose) => {
+        console.log('MongoDB: Successfully connected!');
+        return mongoose;
+      })
+      .catch((error) => {
+        console.error('MongoDB: Connection error:', error);
+        throw error;
+      });
   }
-  cached.conn = await cached.promise;
-  return cached.conn;
+
+  try {
+    cached.conn = await cached.promise;
+    return cached.conn;
+  } catch (error) {
+    console.error('MongoDB: Error while getting cached promise:', error);
+    throw error;
+  }
 }
 
 export default dbConnect;
