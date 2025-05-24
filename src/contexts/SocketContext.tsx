@@ -1,4 +1,3 @@
-
 // src/contexts/SocketContext.tsx
 'use client';
 
@@ -39,12 +38,14 @@ export function SocketProvider({ children }: SocketProviderProps) {
           const socketConnectionUrl = window.location.origin; 
           console.log(`SocketProvider: Connecting to Socket.IO server at ${socketConnectionUrl} with path '/socket.io/'`);
           
+          const isProd = process.env.NODE_ENV === 'production';
           newSocketInstance = ioClient(socketConnectionUrl, {
-            path: '/socket.io/', 
-            transports: ['websocket', 'polling'], 
+            path: '/socket.io/',
+            transports: isProd ? ['polling'] : ['websocket', 'polling'],
+            upgrade: !isProd,
             reconnection: true,
-            reconnectionAttempts: 5, 
-            reconnectionDelay: 3000, 
+            reconnectionAttempts: 5,
+            reconnectionDelay: 3000,
             timeout: 10000, // Client-side connection attempt timeout
           });
 
