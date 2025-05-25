@@ -10,7 +10,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import { Send, Paperclip, Smile, UserCircle, Edit2, Tag, Clock, Phone, Info, X, StickyNote, PlusCircle, Trash2, UserPlus, LogOutIcon, UserCheck, Users, Pin, PinOff, Edit, Image as ImageIconLucide, ExternalLink, FileText, Download, Zap, MoreVertical, CalendarPlus, Loader2 } from 'lucide-react';
+import { Send, Paperclip, Smile, UserCircle, Edit2, Tag, Clock, Phone, Info, X, StickyNote, PlusCircle, Trash2, UserPlus, LogOutIcon, UserCheck, Users, Pin, PinOff, Edit, Image as ImageIconLucide, ExternalLink, FileText, Download, Zap, MoreVertical, CalendarPlus, Loader2, Bell } from 'lucide-react';
 import type { CustomerProfile, Message, AppointmentDetails, UserSession, Note, MessageEditState, Conversation, QuickReplyType, AppointmentBookingFormData, MessageViewerRole } from '@/lib/types';
 import {
   getCustomerDetails,
@@ -32,7 +32,11 @@ import {
   editStaffMessage,
   getQuickReplies,
   handleBookAppointmentFromForm,
-  getCustomerMediaMessages
+  getCustomerMediaMessages,
+  getAllReminders,
+  createReminder,
+  updateReminder,
+  deleteReminder,
 } from '@/app/actions';
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
@@ -47,6 +51,9 @@ import Link from 'next/link';
 import { useSocket } from '@/contexts/SocketContext';
 import { AppointmentBookingForm } from '@/components/chat/AppointmentBookingForm';
 import { cn } from '@/lib/utils';
+import { ReminderService } from '@/lib/services/reminder.service';
+import mongoose from 'mongoose';
+import { IReminder } from '@/models/Reminder.model';
 
 const MAX_FILE_SIZE_MB = 5;
 const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
@@ -75,7 +82,6 @@ export default function StaffIndividualChatPage() {
   const [notes, setNotes] = useState<Note[]>([]);
   const [activeConversation, setActiveConversation] = useState<Conversation | null>(null);
   const [allMediaMessages, setAllMediaMessages] = useState<Message[]>([]);
-
 
   const [isLoading, setIsLoading] = useState(true);
   const [isSendingMessage, setIsSendingMessage] = useState(false);
@@ -114,6 +120,18 @@ export default function StaffIndividualChatPage() {
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const [typingUsers, setTypingUsers] = useState<Record<string, string>>({});
   const [isBookingModalOpen, setIsBookingModalOpen] = useState(false);
+
+  const [isReminderModalOpen, setIsReminderModalOpen] = useState(false);
+  const [reminderTitle, setReminderTitle] = useState('');
+  const [reminderDescription, setReminderDescription] = useState('');
+  const [reminderDueDate, setReminderDueDate] = useState('');
+  const [reminderPriority, setReminderPriority] = useState<'low' | 'medium' | 'high'>('medium');
+  const [reminderType, setReminderType] = useState<'one_time' | 'recurring'>('one_time');
+  const [reminderIntervalType, setReminderIntervalType] = useState<'days' | 'weeks' | 'months'>('days');
+  const [reminderIntervalValue, setReminderIntervalValue] = useState(1);
+
+  const [reminders, setReminders] = useState<any[]>([]);
+  const [editingReminder, setEditingReminder] = useState<any | null>(null);
 
   const fetchPinnedMessagesForConversation = useCallback(async (conversation: Conversation | null) => {
     if (!conversation || !conversation.pinnedMessageIds || conversation.pinnedMessageIds.length === 0) {
@@ -750,6 +768,96 @@ export default function StaffIndividualChatPage() {
     }
   };
 
+  const handleDeleteReminder = async (reminderId: string) => {
+    try {
+      await deleteReminder(reminderId);
+      setReminders(reminders => reminders.filter(r => r.id !== reminderId));
+      toast({ title: 'Thành công', description: 'Đã xóa nhắc nhở.' });
+    } catch (error: any) {
+      toast({ title: 'Lỗi', description: error.message || 'Không thể xóa nhắc nhở.', variant: 'destructive' });
+    }
+  };
+
+  const handleEditReminder = (reminder: any) => {
+    setEditingReminder(reminder);
+    setReminderTitle(reminder.title);
+    setReminderDescription(reminder.description);
+    setReminderDueDate(reminder.dueDate ? new Date(reminder.dueDate).toISOString().slice(0, 16) : '');
+    setReminderPriority(reminder.priority || 'medium');
+    setReminderType(reminder.reminderType || 'one_time');
+    setReminderIntervalType(reminder.interval?.type || 'days');
+    setReminderIntervalValue(reminder.interval?.value || 1);
+    setIsReminderModalOpen(true);
+  };
+
+  const handleCreateOrUpdateReminder = async () => {
+    if (!staffSession || !customer) return;
+    setIsSendingMessage(true);
+    try {
+      if (!reminderTitle || !reminderDescription || !reminderDueDate || !reminderPriority || !reminderType) {
+        toast({ title: "Thiếu thông tin", description: "Vui lòng điền đầy đủ các trường.", variant: "destructive" });
+        setIsSendingMessage(false);
+        return;
+      }
+      const reminderData: any = {
+        customerId: customer.id,
+        staffId: staffSession.id,
+        title: reminderTitle,
+        description: reminderDescription,
+        dueDate: new Date(reminderDueDate),
+        priority: reminderPriority || 'medium',
+        reminderType: reminderType || 'one_time',
+      };
+      if (reminderType === 'recurring') {
+        reminderData.interval = {
+          type: reminderIntervalType || 'days',
+          value: reminderIntervalValue || 1
+        };
+      }
+      //@ts-ignore
+      let newOrUpdatedReminder;
+      if (editingReminder) {
+        //@ts-ignore
+        newOrUpdatedReminder = await updateReminder(editingReminder.id, reminderData);
+        //@ts-ignore
+        setReminders(reminders => reminders.map(r => r.id === editingReminder.id ? newOrUpdatedReminder : r));
+        toast({ title: 'Thành công', description: 'Đã cập nhật nhắc nhở.' });
+      } else {
+        //@ts-ignore
+        newOrUpdatedReminder = await createReminder(reminderData);
+        //@ts-ignore
+        setReminders(reminders => [newOrUpdatedReminder, ...reminders]);
+        toast({ title: 'Thành công', description: 'Đã tạo nhắc nhở.' });
+      }
+      setIsReminderModalOpen(false);
+      setEditingReminder(null);
+      setReminderTitle('');
+      setReminderDescription('');
+      setReminderDueDate('');
+      setReminderPriority('medium');
+      setReminderType('one_time');
+      setReminderIntervalType('days');
+      setReminderIntervalValue(1);
+    } catch (error: any) {
+      toast({ title: "Lỗi", description: error.message || "Không thể tạo/cập nhật nhắc nhở", variant: "destructive" });
+    } finally {
+      setIsSendingMessage(false);
+    }
+  };
+
+  useEffect(() => {
+    async function fetchReminders() {
+      if (!customer) return;
+      try {
+        const res = await getAllReminders({ customerId: customer.id });
+        setReminders(res || []);
+      } catch (error) {
+        setReminders([]);
+      }
+    }
+    fetchReminders();
+  }, [customer]);
+
   if (isLoading && !customer && !staffSession) {
     return (
       <div className="flex items-center justify-center h-full">
@@ -899,6 +1007,46 @@ export default function StaffIndividualChatPage() {
                 </div>
               </div>
             )}
+            <div className="flex flex-col gap-2 p-2 border-b">
+              <Button
+                variant="outline"
+                onClick={() => { setIsReminderModalOpen(true); setEditingReminder(null); }}
+                title="Tạo nhắc nhở chăm sóc"
+                className="flex items-center gap-2 px-3 py-2 w-full"
+              >
+                <Bell className="h-4 w-4 mr-2" />
+                <span className="whitespace-nowrap">Tạo nhắc nhở chăm sóc</span>
+              </Button>
+              {reminders.length > 0 && (
+                <div className="mt-2">
+                  <h4 className="font-semibold text-sm mb-2 flex items-center">
+                    <Bell className="mr-2 h-4 w-4 text-primary" />
+                    Danh sách nhắc nhở
+                  </h4>
+                  <ul className="space-y-2">
+                    {reminders.map(reminder => (
+                      <li key={reminder.id} className="p-2 border rounded flex flex-col md:flex-row md:items-center md:justify-between gap-2 bg-muted/50">
+                        <div>
+                          <div className="font-medium">{reminder.title}</div>
+                          <div className="text-xs text-muted-foreground">{reminder.description}</div>
+                          <div className="text-xs">
+                            Ngày: {reminder.dueDate ? new Date(reminder.dueDate).toLocaleString() : ''} | Ưu tiên: {reminder.priority}
+                          </div>
+                        </div>
+                        <div className="flex gap-2">
+                          <Button size="sm" variant="outline" onClick={() => handleEditReminder(reminder)}>
+                            <Edit2 className="h-4 w-4 mr-1" />
+                          </Button>
+                          <Button size="sm" variant="destructive" onClick={() => handleDeleteReminder(reminder.id)}>
+                            <Trash2 className="h-4 w-4 mr-1" />
+                          </Button>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
 
             <div>
               <h4 className="font-semibold text-sm flex items-center mb-1"><UserCircle className="mr-2 h-4 w-4 text-primary" />Chi tiết</h4>
@@ -1188,8 +1336,117 @@ export default function StaffIndividualChatPage() {
           onClose={() => setIsBookingModalOpen(false)}
           onSubmit={handleDirectBookAppointment}
           currentUserSession={staffSession}
+          currentChatCustomerId={customer.id}
         />
       )}
+
+      {/* Reminder Creation Modal */}
+      <Dialog open={isReminderModalOpen} onOpenChange={(open) => { setIsReminderModalOpen(open); if (!open) setEditingReminder(null); }}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>{editingReminder ? 'Sửa nhắc nhở' : 'Tạo nhắc nhở chăm sóc'}</DialogTitle>
+            <DialogDescription>
+              {editingReminder ? 'Chỉnh sửa thông tin nhắc nhở' : 'Tạo nhắc nhở để chăm sóc khách hàng'}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="grid gap-2">
+              <Label htmlFor="title">Tiêu đề</Label>
+              <Input
+                id="title"
+                value={reminderTitle}
+                onChange={(e) => setReminderTitle(e.target.value)}
+                placeholder="Nhập tiêu đề nhắc nhở"
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="description">Nội dung</Label>
+              <Textarea
+                id="description"
+                value={reminderDescription}
+                onChange={(e) => setReminderDescription(e.target.value)}
+                placeholder="Nhập nội dung nhắc nhở"
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="dueDate">Ngày nhắc nhở</Label>
+              <Input
+                id="dueDate"
+                type="datetime-local"
+                value={reminderDueDate}
+                onChange={(e) => setReminderDueDate(e.target.value)}
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="priority">Mức độ ưu tiên</Label>
+              <Select value={reminderPriority} onValueChange={(value: 'low' | 'medium' | 'high') => setReminderPriority(value)}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Chọn mức độ ưu tiên" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="low">Thấp</SelectItem>
+                  <SelectItem value="medium">Trung bình</SelectItem>
+                  <SelectItem value="high">Cao</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="reminderType">Loại nhắc nhở</Label>
+              <Select value={reminderType} onValueChange={(value: 'one_time' | 'recurring') => setReminderType(value)}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Chọn loại nhắc nhở" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="one_time">Một lần</SelectItem>
+                  <SelectItem value="recurring">Định kỳ</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            {reminderType === 'recurring' && (
+              <div className="grid grid-cols-2 gap-2">
+                <div className="grid gap-2">
+                  <Label htmlFor="intervalType">Loại khoảng thời gian</Label>
+                  <Select value={reminderIntervalType} onValueChange={(value: 'days' | 'weeks' | 'months') => setReminderIntervalType(value)}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Chọn loại" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="days">Ngày</SelectItem>
+                      <SelectItem value="weeks">Tuần</SelectItem>
+                      <SelectItem value="months">Tháng</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="intervalValue">Số lượng</Label>
+                  <Input
+                    id="intervalValue"
+                    type="number"
+                    min="1"
+                    value={reminderIntervalValue}
+                    onChange={(e) => setReminderIntervalValue(parseInt(e.target.value))}
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setIsReminderModalOpen(false); setEditingReminder(null); }}>
+              Hủy
+            </Button>
+            <Button onClick={handleCreateOrUpdateReminder} disabled={isSendingMessage}>
+              {isSendingMessage ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  {editingReminder ? 'Đang lưu...' : 'Đang tạo...'}
+                </>
+              ) : (
+                editingReminder ? 'Lưu thay đổi' : 'Tạo nhắc nhở'
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -1,4 +1,3 @@
-
 // src/models/AppSettings.model.ts
 import mongoose, { Schema, Document, models, Model } from 'mongoose';
 import type { AppSettings, SpecificDayRule } from '@/lib/types';
@@ -12,6 +11,7 @@ const SpecificDayRuleSchema: Schema<SpecificDayRule> = new Schema({
   serviceDurationMinutes: { type: Number },
 }, { _id: true });
 
+//@ts-ignore
 export interface IAppSettings extends Document, Omit<AppSettings, 'id' | 'specificDayRules' | 'updatedAt'> {
   specificDayRules?: mongoose.Types.DocumentArray<Omit<SpecificDayRule, 'id'>>; // For Mongoose array handling
   createdAt?: Date; // Added for consistency if needed, though timestamps:true handles it
@@ -23,12 +23,12 @@ const AppSettingsSchema: Schema<IAppSettings> = new Schema({
   greetingMessageNewCustomer: { type: String, default: 'Chào mừng bạn lần đầu đến với chúng tôi! Bạn cần hỗ trợ gì ạ?' },
   greetingMessageReturningCustomer: { type: String, default: 'Chào mừng bạn quay trở lại! Rất vui được gặp lại bạn.' },
   suggestedQuestions: { type: [String], default: ['Các dịch vụ của bạn?', 'Đặt lịch hẹn', 'Địa chỉ của bạn ở đâu?'] },
-  successfulBookingMessageTemplate: { type: String, default: "Lịch hẹn của bạn cho {{service}} vào lúc {{time}} ngày {{date}}{{#if branch}} tại {{branch}}{{/if}} đã được đặt thành công! Chúng tôi sẽ gửi tin nhắn xác nhận chi tiết cho bạn." },
+  successfulBookingMessageTemplate: { type: String, default: "Lịch hẹn của bạn cho {{service}} vào lúc {{time}} ngày {{date}}{{#if branch}} tại {{branch}}{{/if}} đã được đặt thành công!" },
   brandName: { type: String, default: 'AetherChat' },
   logoUrl: { type: String },
   logoDataUri: { type: String },
   footerText: { type: String, default: `© ${new Date().getFullYear()} AetherChat. Đã đăng ký Bản quyền.` },
-  metaTitle: { type: String, default: 'AetherChat - Live Chat Thông Minh' },
+  metaTitle: { type: String, default: 'Triruto' },
   metaDescription: { type: String, default: 'Live chat tích hợp AI cho giao tiếp khách hàng liền mạch.' },
   metaKeywords: { type: [String], default: [] },
   openGraphImageUrl: { type: String },
@@ -48,10 +48,16 @@ const AppSettingsSchema: Schema<IAppSettings> = new Schema({
   officeHoursEnd: { type: String, default: "17:00" },
   officeDays: { type: [Number], default: [1, 2, 3, 4, 5] }, // Mon-Fri
 
+  // Appointment reminder settings
+  appointmentReminderEnabled: { type: Boolean, default: true },
+  appointmentReminderMessageTemplate: { type: String, default: "Nhắc nhở: Bạn có lịch hẹn {{service}} vào lúc {{time}} ngày {{date}}{{#if branch}} tại {{branch}}{{/if}}. Vui lòng đến đúng giờ!" },
+  appointmentReminderTime: { type: String, default: "09:00" }, // Time of day to send reminders
+  appointmentReminderDaysBefore: { type: Number, default: 1, min: 1 }, // Days before appointment to send reminder
+
 }, { timestamps: true, versionKey: false });
 
 // Ensure default for sitemapXmlContent if it's not set
-AppSettingsSchema.pre('save', function(next) {
+AppSettingsSchema.pre('save', function (next) {
   if (!this.sitemapXmlContent) {
     const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:9002';
     this.sitemapXmlContent = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n  <url>\n    <loc>${siteUrl}</loc>\n    <lastmod>${new Date().toISOString().split('T')[0]}</lastmod>\n  </url>\n</urlset>`;

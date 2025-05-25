@@ -107,14 +107,6 @@ export function MessageBubble({
   }
 
 
-  if (isSystemSender) {
-    return (
-      <div className="my-2 text-center text-xs text-muted-foreground italic px-4">
-        {message.content}
-      </div>
-    );
-  }
-
   const renderContent = () => {
     const dataUriRegex = /^(data:[^;]+;base64,[^#]+)#filename=([^#\s]+)(?:\n([\s\S]*))?$/;
     const match = message.content.match(dataUriRegex);

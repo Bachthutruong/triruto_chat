@@ -1,35 +1,41 @@
-
 // src/components/chat/MessageInputForm.tsx
 'use client';
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import NextImage from 'next/image'; 
+import NextImage from 'next/image';
 import { Button } from '@/components/ui/button';
-import { Textarea } from '@/components/ui/textarea'; 
-import { Send, Paperclip, X, FileText, Smile, CalendarPlus, Zap } from 'lucide-react'; 
+import { Textarea } from '@/components/ui/textarea';
+import { Send, Paperclip, X, FileText, Smile, CalendarPlus, Zap } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
-import { ScrollArea } from '@/components/ui/scroll-area'; 
-import type { QuickReplyType } from '@/lib/types'; 
+import { ScrollArea } from '@/components/ui/scroll-area';
+import type { QuickReplyType, AppointmentDetails } from '@/lib/types';
+import { AppointmentManager } from './AppointmentManager';
 
 type MessageInputFormProps = {
   onSubmit: (messageContent: string) => void;
   isLoading?: boolean;
-  onBookAppointmentClick?: () => void; 
-  quickReplies?: QuickReplyType[]; 
-  onTyping?: (isTyping: boolean) => void; 
+  onBookAppointmentClick?: () => void;
+  quickReplies?: QuickReplyType[];
+  onTyping?: (isTyping: boolean) => void;
+  appointments?: AppointmentDetails[];
+  onCancelAppointment?: (appointmentId: string) => Promise<void>;
+  onAppointmentBooked?: () => Promise<void>;
 };
 
 const MAX_FILE_SIZE_MB = 5;
 const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
 const commonEmojis = ['😀', '😂', '😍', '😊', '👍', '🙏', '❤️', '🎉'];
 
-export function MessageInputForm({ 
-    onSubmit, 
-    isLoading, 
-    onBookAppointmentClick, 
-    quickReplies = [],
-    onTyping
+export function MessageInputForm({
+  onSubmit,
+  isLoading,
+  onBookAppointmentClick,
+  quickReplies = [],
+  onTyping,
+  appointments = [],
+  onCancelAppointment,
+  onAppointmentBooked
 }: MessageInputFormProps) {
   const [message, setMessage] = useState('');
   const [stagedFile, setStagedFile] = useState<{ dataUri: string; name: string; type: string } | null>(null);
@@ -39,11 +45,11 @@ export function MessageInputForm({
   const typingDebounceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const [isDraggingOver, setIsDraggingOver] = useState(false);
   const dropZoneRef = useRef<HTMLDivElement>(null);
-
+  const [isAppointmentManagerOpen, setIsAppointmentManagerOpen] = useState(false);
 
   const adjustTextareaHeight = useCallback(() => {
     if (textareaRef.current) {
-      textareaRef.current.style.height = 'auto'; 
+      textareaRef.current.style.height = 'auto';
       textareaRef.current.style.height = `${textareaRef.current.scrollHeight}px`;
     }
   }, []);
@@ -51,7 +57,6 @@ export function MessageInputForm({
   useEffect(() => {
     adjustTextareaHeight();
   }, [message, adjustTextareaHeight]);
-
 
   const handleSubmit = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
@@ -67,10 +72,10 @@ export function MessageInputForm({
       onSubmit(contentToSend);
       setMessage('');
       setStagedFile(null);
-      if (textareaRef.current) { 
+      if (textareaRef.current) {
         textareaRef.current.style.height = 'auto';
       }
-      if (onTyping) onTyping(false); 
+      if (onTyping) onTyping(false);
       if (typingDebounceTimeoutRef.current) clearTimeout(typingDebounceTimeoutRef.current);
 
     } else if (stagedFile && !contentToSend) {
@@ -83,41 +88,40 @@ export function MessageInputForm({
       if (textareaRef.current) {
         textareaRef.current.style.height = 'auto';
       }
-      if (onTyping) onTyping(false); 
+      if (onTyping) onTyping(false);
       if (typingDebounceTimeoutRef.current) clearTimeout(typingDebounceTimeoutRef.current);
     }
   };
-  
+
   const processFile = (file: File) => {
     if (file.size > MAX_FILE_SIZE_BYTES) {
-        toast({
-          title: "Tệp quá lớn",
-          description: `Kích thước tệp không được vượt quá ${MAX_FILE_SIZE_MB}MB.`,
-          variant: "destructive",
+      toast({
+        title: "Tệp quá lớn",
+        description: `Kích thước tệp không được vượt quá ${MAX_FILE_SIZE_MB}MB.`,
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      if (reader.result) {
+        setStagedFile({
+          dataUri: reader.result as string,
+          name: file.name,
+          type: file.type,
         });
-        return;
       }
-
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        if (reader.result) {
-          setStagedFile({
-            dataUri: reader.result as string,
-            name: file.name,
-            type: file.type,
-          });
-        }
-      };
-      reader.onerror = () => {
-        toast({
-          title: "Lỗi đọc tệp",
-          description: "Không thể đọc tệp đã chọn. Vui lòng thử lại.",
-          variant: "destructive",
-        });
-      };
-      reader.readAsDataURL(file);
+    };
+    reader.onerror = () => {
+      toast({
+        title: "Lỗi đọc tệp",
+        description: "Không thể đọc tệp đã chọn. Vui lòng thử lại.",
+        variant: "destructive",
+      });
+    };
+    reader.readAsDataURL(file);
   };
-
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -143,29 +147,28 @@ export function MessageInputForm({
   const handleQuickReplySelect = (content: string) => {
     setMessage(prevMessage => prevMessage ? `${prevMessage} ${content}` : content);
     textareaRef.current?.focus();
-    if (onTyping) onTyping(true); 
+    if (onTyping) onTyping(true);
     if (typingDebounceTimeoutRef.current) clearTimeout(typingDebounceTimeoutRef.current);
     typingDebounceTimeoutRef.current = setTimeout(() => {
-        if (onTyping) onTyping(false);
+      if (onTyping) onTyping(false);
     }, 1500);
   };
 
   const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     setMessage(e.target.value);
     if (onTyping) {
-        onTyping(true);
-        if (typingDebounceTimeoutRef.current) clearTimeout(typingDebounceTimeoutRef.current);
-        typingDebounceTimeoutRef.current = setTimeout(() => {
-            if (onTyping) onTyping(false);
-        }, 1500); 
+      onTyping(true);
+      if (typingDebounceTimeoutRef.current) clearTimeout(typingDebounceTimeoutRef.current);
+      typingDebounceTimeoutRef.current = setTimeout(() => {
+        if (onTyping) onTyping(false);
+      }, 1500);
     }
   };
-
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
-      handleSubmit(); 
+      handleSubmit();
     }
   };
 
@@ -199,10 +202,20 @@ export function MessageInputForm({
     }
   };
 
+  const handleAppointmentButtonClick = () => {
+    if (appointments.length > 0) {
+      setIsAppointmentManagerOpen(true);
+    } else if (onBookAppointmentClick) {
+      onBookAppointmentClick();
+      if (onAppointmentBooked) {
+        onAppointmentBooked();
+      }
+    }
+  };
 
   return (
     <>
-      <div 
+      <div
         ref={dropZoneRef}
         onDragEnter={handleDragEnter}
         onDragLeave={handleDragLeave}
@@ -237,7 +250,7 @@ export function MessageInputForm({
             </Button>
           </div>
         )}
-        <form onSubmit={handleSubmit} className="p-2 flex items-end gap-1"> 
+        <form onSubmit={handleSubmit} className="p-2 flex items-end gap-1">
           <Button type="button" variant="ghost" size="icon" onClick={triggerFileInput} disabled={isLoading} aria-label="Đính kèm tệp">
             <Paperclip className="h-5 w-5" />
           </Button>
@@ -271,8 +284,17 @@ export function MessageInputForm({
             </PopoverContent>
           </Popover>
           {onBookAppointmentClick && (
-            <Button type="button" variant="ghost" size="icon" onClick={onBookAppointmentClick} disabled={isLoading} aria-label="Đặt lịch hẹn">
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={handleAppointmentButtonClick}
+              disabled={isLoading}
+              aria-label={appointments.length > 0 ? "Xem lịch hẹn" : "Đặt lịch hẹn"}
+              className="flex items-center gap-2"
+            >
               <CalendarPlus className="h-5 w-5" />
+              <span>{appointments.length > 0 ? "Xem lịch hẹn" : "Đặt lịch hẹn"}</span>
             </Button>
           )}
           {quickReplies.length > 0 && (
@@ -283,19 +305,19 @@ export function MessageInputForm({
                 </Button>
               </PopoverTrigger>
               <PopoverContent className="w-64 p-0">
-                  <div className="p-2 text-sm font-medium border-b">Chọn câu trả lời nhanh</div>
-                  <ScrollArea className="max-h-60">
-                      {quickReplies.map(reply => (
-                          <Button 
-                              key={reply.id} 
-                              variant="ghost" 
-                              className="w-full justify-start text-left h-auto py-2 px-3 text-sm"
-                              onClick={() => handleQuickReplySelect(reply.content)}
-                          >
-                              {reply.title}
-                          </Button>
-                      ))}
-                  </ScrollArea>
+                <div className="p-2 text-sm font-medium border-b">Chọn câu trả lời nhanh</div>
+                <ScrollArea className="max-h-60">
+                  {quickReplies.map(reply => (
+                    <Button
+                      key={reply.id}
+                      variant="ghost"
+                      className="w-full justify-start text-left h-auto py-2 px-3 text-sm"
+                      onClick={() => handleQuickReplySelect(reply.content)}
+                    >
+                      {reply.title}
+                    </Button>
+                  ))}
+                </ScrollArea>
               </PopoverContent>
             </Popover>
           )}
@@ -305,7 +327,7 @@ export function MessageInputForm({
             onChange={handleInputChange}
             onKeyDown={handleKeyDown}
             placeholder="Nhập tin nhắn của bạn..."
-            className="flex-grow resize-none overflow-y-hidden min-h-[40px] max-h-[120px] leading-tight py-2" 
+            className="flex-grow resize-none overflow-y-hidden min-h-[40px] max-h-[120px] leading-tight py-2"
             rows={1}
             disabled={isLoading}
             autoComplete="off"
@@ -316,6 +338,14 @@ export function MessageInputForm({
           </Button>
         </form>
       </div>
+      {onCancelAppointment && (
+        <AppointmentManager
+          isOpen={isAppointmentManagerOpen}
+          onClose={() => setIsAppointmentManagerOpen(false)}
+          appointments={appointments}
+          onCancelAppointment={onCancelAppointment}
+        />
+      )}
     </>
   );
 }

@@ -1,4 +1,3 @@
-
 // src/app/admin/chat/layout.tsx
 'use client';
 import { useState, useEffect, type ReactNode, useCallback, useRef } from 'react';
@@ -10,7 +9,7 @@ import { Users, Search, Filter, Loader2, AlertTriangle, Tag, CircleDot } from 'l
 import Link from 'next/link';
 import type { CustomerProfile, UserSession, CustomerInteractionStatus } from '@/lib/types';
 import { getCustomersForStaffView, getAllCustomerTags } from '@/app/actions';
-import { DynamicTimeDisplay } from '@/components/layout/DynamicTimeDisplay'; 
+import { DynamicTimeDisplay } from '@/components/layout/DynamicTimeDisplay';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
@@ -67,13 +66,13 @@ export default function AdminChatLayout({ children }: { children: ReactNode }) {
     }
 
     const fetchTags = async () => {
-        try {
-          const tags = await getAllCustomerTags();
-          setAllAvailableTags(tags);
-        } catch (err) {
-          console.error("Không thể tải danh sách nhãn (Admin):", err);
-        }
-      };
+      try {
+        const tags = await getAllCustomerTags();
+        setAllAvailableTags(tags);
+      } catch (err) {
+        console.error("Không thể tải danh sách nhãn (Admin):", err);
+      }
+    };
     fetchTags();
   }, []);
 
@@ -129,7 +128,7 @@ export default function AdminChatLayout({ children }: { children: ReactNode }) {
     (customer.tags || []).some(tag => tag.toLowerCase().includes(searchTerm.toLowerCase()))
   );
 
-   const handleApplyTagFilter = () => {
+  const handleApplyTagFilter = () => {
     // fetchCustomers will be re-run by its own useEffect due to selectedTags change
     setIsTagPopoverOpen(false);
   };
@@ -140,17 +139,17 @@ export default function AdminChatLayout({ children }: { children: ReactNode }) {
   };
 
 
-   if (isLoading && !error && !adminSession) {
+  if (isLoading && !error && !adminSession) {
     return (
-       <div className="flex h-[calc(100vh-var(--header-height,4rem)-2rem)] items-center justify-center">
-           <Loader2 className="h-12 w-12 animate-spin text-primary" />
-       </div>
+      <div className="flex h-[calc(100vh-var(--header-height,4rem))] items-center justify-center">
+        <Loader2 className="h-12 w-12 animate-spin text-primary" />
+      </div>
     );
   }
 
   if (error && !adminSession) {
     return (
-      <div className="flex flex-col items-center justify-center h-[calc(100vh-var(--header-height,4rem)-2rem)]">
+      <div className="flex flex-col items-center justify-center h-[calc(100vh-var(--header-height,4rem))]">
         <AlertTriangle className="h-12 w-12 text-destructive" />
         <p className="mt-4 text-xl text-destructive">{error}</p>
         <Button onClick={() => window.location.reload()} className="mt-4">Thử lại</Button>
@@ -159,12 +158,12 @@ export default function AdminChatLayout({ children }: { children: ReactNode }) {
   }
 
   return (
-    <div className="flex h-full gap-0"> 
-      <Card className="w-full md:w-1/3 lg:w-1/4 h-full flex flex-col rounded-none border-r border-border"> 
-        <CardHeader className="border-b border-border"> 
+    <div className="flex h-[calc(100vh-var(--header-height,4rem))] gap-0">
+      <Card className="w-full md:w-1/3 lg:w-1/4 h-full flex flex-col rounded-none border-r border-border overflow-hidden">
+        <CardHeader className="border-b border-border shrink-0">
           <CardTitle className="flex items-center"><Users className="mr-2 h-5 w-5" /> Danh sách Khách hàng</CardTitle>
           <CardDescription>Tất cả khách hàng trong hệ thống.</CardDescription>
-           <div className="flex flex-col gap-2 pt-2">
+          <div className="flex flex-col gap-2 pt-2">
             <Input
               placeholder="Tìm theo tên, SĐT, nhãn..."
               value={searchTerm}
@@ -174,7 +173,7 @@ export default function AdminChatLayout({ children }: { children: ReactNode }) {
             />
             <Popover open={isTagPopoverOpen} onOpenChange={setIsTagPopoverOpen}>
               <PopoverTrigger asChild>
-                 <Button variant="outline" className="h-9 w-full justify-start text-left font-normal">
+                <Button variant="outline" className="h-9 w-full justify-start text-left font-normal">
                   <Filter className="mr-2 h-4 w-4" />
                   {selectedTags.length > 0 ? `Đã chọn ${selectedTags.length} nhãn` : "Lọc theo Nhãn"}
                 </Button>
@@ -212,54 +211,54 @@ export default function AdminChatLayout({ children }: { children: ReactNode }) {
             </Popover>
           </div>
         </CardHeader>
-        <ScrollArea className="flex-grow">
+        <ScrollArea className="flex-1">
           <CardContent className="p-0">
-            {isLoading && <div className="p-4 text-center text-muted-foreground"><Loader2 className="h-5 w-5 animate-spin inline mr-2"/>Đang tải danh sách...</div>}
+            {isLoading && <div className="p-4 text-center text-muted-foreground"><Loader2 className="h-5 w-5 animate-spin inline mr-2" />Đang tải danh sách...</div>}
             {!isLoading && error && <p className="p-4 text-destructive text-center">{error}</p>}
             {!isLoading && !error && filteredCustomersBySearch.length === 0 && <p className="p-4 text-muted-foreground text-center">Không tìm thấy khách hàng phù hợp.</p>}
             <ul className="divide-y divide-border">
               {filteredCustomersBySearch.map(customer => (
-                 <li key={customer.id} className={cn(
-                     customer.interactionStatus === 'unread' && 'bg-primary/5',
-                     currentCustomerId === customer.id && 'bg-accent'
-                    )}>
+                <li key={customer.id} className={cn(
+                  customer.interactionStatus === 'unread' && 'bg-primary/5',
+                  currentCustomerId === customer.id && 'bg-accent'
+                )}>
                   <Button variant="ghost" className="w-full justify-start h-auto p-3 rounded-none" asChild>
                     <Link href={`/admin/chat/${customer.id}`}>
-                       <div className="flex flex-col items-start text-left w-full">
+                      <div className="flex flex-col items-start text-left w-full">
                         <div className="flex justify-between w-full items-center">
-                           <span className={cn("font-semibold truncate max-w-[calc(100%-100px)]", customer.interactionStatus === 'unread' && 'font-bold')}>
+                          <span className={cn("font-semibold truncate max-w-[calc(100%-100px)]", customer.interactionStatus === 'unread' && 'font-bold')}>
                             {customer.interactionStatus === 'unread' && <CircleDot className="inline-block h-3 w-3 mr-1 text-red-500" />}
                             {customer.internalName || customer.name || customer.phoneNumber}
-                           </span>
-                           <span className={cn("text-xs ml-1 shrink-0", getInteractionStatusColor(customer.interactionStatus))}>
-                             {getInteractionStatusText(customer.interactionStatus)}
-                           </span>
+                          </span>
+                          <span className={cn("text-xs ml-1 shrink-0", getInteractionStatusColor(customer.interactionStatus))}>
+                            {getInteractionStatusText(customer.interactionStatus)}
+                          </span>
                         </div>
-                        { (customer.internalName && (customer.name || customer.phoneNumber !== customer.internalName)) &&
-                            <span className="text-xs text-muted-foreground truncate max-w-full">({customer.name || customer.phoneNumber})</span>
+                        {(customer.internalName && (customer.name || customer.phoneNumber !== customer.internalName)) &&
+                          <span className="text-xs text-muted-foreground truncate max-w-full">({customer.name || customer.phoneNumber})</span>
                         }
-                         {customer.lastMessagePreview && (
-                           <p className="text-xs text-muted-foreground truncate max-w-full mt-0.5">
-                                {customer.lastMessagePreview}
-                           </p>
+                        {customer.lastMessagePreview && (
+                          <p className="text-xs text-muted-foreground truncate max-w-full mt-0.5">
+                            {customer.lastMessagePreview}
+                          </p>
                         )}
                         <div className="flex justify-between w-full items-center mt-0.5">
-                            <DynamicTimeDisplay 
-                              timestamp={customer.lastMessageTimestamp || customer.lastInteractionAt} 
-                              type={customer.lastMessageTimestamp ? "distance" : "format"}
-                              className="text-xs text-muted-foreground"
-                            />
-                           {customer.assignedStaffId && <span className="text-xs text-blue-600">({customer.assignedStaffName || 'NV được giao'})</span>}
-                           {!customer.assignedStaffId && <span className="text-xs text-amber-600">(Chưa giao)</span>}
+                          <DynamicTimeDisplay
+                            timestamp={customer.lastMessageTimestamp || customer.lastInteractionAt}
+                            type={customer.lastMessageTimestamp ? "distance" : "format"}
+                            className="text-xs text-muted-foreground"
+                          />
+                          {customer.assignedStaffId && <span className="text-xs text-blue-600">({customer.assignedStaffName || 'NV được giao'})</span>}
+                          {!customer.assignedStaffId && <span className="text-xs text-amber-600">(Chưa giao)</span>}
                         </div>
-                         {customer.tags && customer.tags.length > 0 &&
-                            <div className="mt-1 flex flex-wrap gap-1">
-                                {customer.tags.slice(0,3).map(tag => (
-                                    <span key={tag} className="text-xs bg-secondary text-secondary-foreground px-1.5 py-0.5 rounded-full">{tag}</span>
-                                ))}
-                                {customer.tags.length > 3 && <span className="text-xs text-muted-foreground">...</span>}
-                            </div>
-                         }
+                        {customer.tags && customer.tags.length > 0 &&
+                          <div className="mt-1 flex flex-wrap gap-1">
+                            {customer.tags.slice(0, 3).map(tag => (
+                              <span key={tag} className="text-xs bg-secondary text-secondary-foreground px-1.5 py-0.5 rounded-full">{tag}</span>
+                            ))}
+                            {customer.tags.length > 3 && <span className="text-xs text-muted-foreground">...</span>}
+                          </div>
+                        }
                       </div>
                     </Link>
                   </Button>
@@ -269,7 +268,7 @@ export default function AdminChatLayout({ children }: { children: ReactNode }) {
           </CardContent>
         </ScrollArea>
       </Card>
-      <div className="flex-grow h-full">
+      <div className="flex-1 h-full overflow-auto">
         {children}
       </div>
     </div>

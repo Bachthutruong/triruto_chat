@@ -22,7 +22,7 @@ const MAX_LOGO_SIZE_MB = 1;
 const MAX_LOGO_SIZE_BYTES = MAX_LOGO_SIZE_MB * 1024 * 1024;
 
 const initialSettingsState: AppSettings = {
-  id: '', 
+  id: '',
   brandName: defaultInitialBrandName,
   logoUrl: '',
   logoDataUri: '',
@@ -30,7 +30,7 @@ const initialSettingsState: AppSettings = {
   greetingMessageNewCustomer: 'Chào mừng bạn lần đầu đến với chúng tôi! Bạn cần hỗ trợ gì ạ?',
   greetingMessageReturningCustomer: 'Chào mừng bạn quay trở lại! Rất vui được gặp lại bạn.',
   suggestedQuestions: ['Các dịch vụ của bạn?', 'Đặt lịch hẹn', 'Địa chỉ của bạn ở đâu?'],
-  successfulBookingMessageTemplate: "Lịch hẹn của bạn cho {{service}} vào lúc {{time}} ngày {{date}}{{#if branch}} tại {{branch}}{{/if}} đã được đặt thành công! Chúng tôi sẽ gửi tin nhắn xác nhận chi tiết cho bạn.",
+  successfulBookingMessageTemplate: "Lịch hẹn của bạn cho {{service}} vào lúc {{time}} ngày {{date}}{{#if branch}} tại {{branch}}{{/if}} đã được đặt thành công!",
   footerText: `© ${new Date().getFullYear()} ${defaultInitialBrandName}. Đã đăng ký Bản quyền.`,
   metaTitle: `${defaultInitialBrandName} - Live Chat Thông Minh`,
   metaDescription: 'Live chat tích hợp AI cho giao tiếp khách hàng liền mạch.',
@@ -48,13 +48,13 @@ const initialSettingsState: AppSettings = {
   outOfOfficeMessage: 'Cảm ơn bạn đã liên hệ! Hiện tại chúng tôi đang ngoài giờ làm việc. Vui lòng để lại lời nhắn và chúng tôi sẽ phản hồi sớm nhất có thể.',
   officeHoursStart: "09:00",
   officeHoursEnd: "17:00",
-  officeDays: [1, 2, 3, 4, 5], 
+  officeDays: [1, 2, 3, 4, 5],
 };
 
 const daysOfWeek = [
   { id: 1, label: 'Thứ 2' }, { id: 2, label: 'Thứ 3' }, { id: 3, label: 'Thứ 4' },
   { id: 4, label: 'Thứ 5' }, { id: 5, label: 'Thứ 6' }, { id: 6, label: 'Thứ 7' },
-  { id: 0, label: 'Chủ nhật' } 
+  { id: 0, label: 'Chủ nhật' }
 ];
 
 export default function AdminSettingsPage() {
@@ -78,8 +78,8 @@ export default function AdminSettingsPage() {
       const fetchedSettings = await getAppSettings();
       if (fetchedSettings) {
         const mergedSettings: AppSettings = {
-          ...initialSettingsState, 
-          ...fetchedSettings,     
+          ...initialSettingsState,
+          ...fetchedSettings,
           suggestedQuestions: fetchedSettings.suggestedQuestions && fetchedSettings.suggestedQuestions.length > 0 ? fetchedSettings.suggestedQuestions : initialSettingsState.suggestedQuestions || [],
           successfulBookingMessageTemplate: fetchedSettings.successfulBookingMessageTemplate || initialSettingsState.successfulBookingMessageTemplate,
           metaKeywords: fetchedSettings.metaKeywords && fetchedSettings.metaKeywords.length > 0 ? fetchedSettings.metaKeywords : initialSettingsState.metaKeywords || [],
@@ -147,7 +147,7 @@ export default function AdminSettingsPage() {
     setSettings(prev => {
       const currentOffDays = prev.weeklyOffDays || [];
       if (checked === true) {
-        return { ...prev, weeklyOffDays: [...currentOffDays, dayId].filter((v, i, a) => a.indexOf(v) === i) }; 
+        return { ...prev, weeklyOffDays: [...currentOffDays, dayId].filter((v, i, a) => a.indexOf(v) === i) };
       } else {
         return { ...prev, weeklyOffDays: currentOffDays.filter(d => d !== dayId) };
       }
@@ -158,7 +158,7 @@ export default function AdminSettingsPage() {
     setSettings(prev => {
       const currentOfficeDays = prev.officeDays || [];
       if (checked === true) {
-        return { ...prev, officeDays: [...currentOfficeDays, dayId].filter((v, i, a) => a.indexOf(v) === i) }; 
+        return { ...prev, officeDays: [...currentOfficeDays, dayId].filter((v, i, a) => a.indexOf(v) === i) };
       } else {
         return { ...prev, officeDays: currentOfficeDays.filter(d => d !== dayId) };
       }
@@ -261,7 +261,7 @@ export default function AdminSettingsPage() {
         }),
         officeDays: settings.officeDays || [],
       };
-      
+
       // Ensure number fields are numbers or undefined, not NaN
       const numFields: (keyof AppSettings)[] = ['numberOfStaff', 'defaultServiceDurationMinutes'];
       numFields.forEach(field => {
@@ -274,16 +274,16 @@ export default function AdminSettingsPage() {
 
       if (settingsToSave.specificDayRules) {
         settingsToSave.specificDayRules = settingsToSave.specificDayRules.map(rule => {
-            const newRule = {...rule};
-            if (newRule.numberOfStaff !== undefined) {
-                const parsed = parseFloat(newRule.numberOfStaff as any);
-                newRule.numberOfStaff = isNaN(parsed) ? undefined : parsed;
-            }
-            if (newRule.serviceDurationMinutes !== undefined) {
-                const parsed = parseFloat(newRule.serviceDurationMinutes as any);
-                newRule.serviceDurationMinutes = isNaN(parsed) ? undefined : parsed;
-            }
-            return newRule;
+          const newRule = { ...rule };
+          if (newRule.numberOfStaff !== undefined) {
+            const parsed = parseFloat(newRule.numberOfStaff as any);
+            newRule.numberOfStaff = isNaN(parsed) ? undefined : parsed;
+          }
+          if (newRule.serviceDurationMinutes !== undefined) {
+            const parsed = parseFloat(newRule.serviceDurationMinutes as any);
+            newRule.serviceDurationMinutes = isNaN(parsed) ? undefined : parsed;
+          }
+          return newRule;
         });
       }
 
@@ -331,7 +331,7 @@ export default function AdminSettingsPage() {
             <div className="flex items-center gap-4">
               {logoPreview && (
                 <div className="relative w-20 h-20 border rounded-md overflow-hidden bg-muted">
-                  <NextImage src={logoPreview} alt="Xem trước logo" layout="fill" objectFit="contain" data-ai-hint="logo preview"/>
+                  <NextImage src={logoPreview} alt="Xem trước logo" layout="fill" objectFit="contain" data-ai-hint="logo preview" />
                 </div>
               )}
               <div className="flex-grow space-y-2">
@@ -344,7 +344,7 @@ export default function AdminSettingsPage() {
                   className="block w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20"
                   disabled={isSubmitting}
                 />
-                 <p className="text-xs text-muted-foreground">Tải lên logo (khuyên dùng .png, .svg, tối đa {MAX_LOGO_SIZE_MB}MB).</p>
+                <p className="text-xs text-muted-foreground">Tải lên logo (khuyên dùng .png, .svg, tối đa {MAX_LOGO_SIZE_MB}MB).</p>
               </div>
               {logoPreview && (
                 <Button variant="ghost" size="icon" onClick={handleRemoveLogo} disabled={isSubmitting} title="Xóa logo đã tải lên">
@@ -355,10 +355,10 @@ export default function AdminSettingsPage() {
           </div>
           <div className="space-y-2">
             <Label htmlFor="logoUrl">Hoặc URL Logo bên ngoài</Label>
-            <Input id="logoUrl" name="logoUrl" type="url" placeholder="https://example.com/logo.png" value={settings.logoUrl || ''} onChange={(e) => { handleInputChange(e); if (e.target.value) { setLogoPreview(e.target.value); setSettings(prev => ({...prev, logoDataUri: undefined}));} }} disabled={isSubmitting} />
-             <p className="text-xs text-muted-foreground">Nếu bạn tải lên logo, trường này sẽ bị bỏ qua.</p>
+            <Input id="logoUrl" name="logoUrl" type="url" placeholder="https://example.com/logo.png" value={settings.logoUrl || ''} onChange={(e) => { handleInputChange(e); if (e.target.value) { setLogoPreview(e.target.value); setSettings(prev => ({ ...prev, logoDataUri: undefined })); } }} disabled={isSubmitting} />
+            <p className="text-xs text-muted-foreground">Nếu bạn tải lên logo, trường này sẽ bị bỏ qua.</p>
           </div>
-           <div className="space-y-2">
+          <div className="space-y-2">
             <Label htmlFor="footerText">Chữ Chân trang</Label>
             <Input id="footerText" name="footerText" value={settings.footerText || ''} onChange={handleInputChange} disabled={isSubmitting} />
           </div>
@@ -368,30 +368,30 @@ export default function AdminSettingsPage() {
       {/* Greeting and Initial Interaction Settings */}
       <Card>
         <CardHeader>
-            <CardTitle className="flex items-center"><MessagesSquare className="mr-2 h-5 w-5 text-primary" /> Lời chào & Tương tác Ban đầu</CardTitle>
+          <CardTitle className="flex items-center"><MessagesSquare className="mr-2 h-5 w-5 text-primary" /> Lời chào & Tương tác Ban đầu</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-            <div className="space-y-2">
-                <Label htmlFor="greetingMessage">Lời chào mặc định</Label>
-                <Textarea id="greetingMessage" name="greetingMessage" value={settings.greetingMessage || ''} onChange={handleInputChange} disabled={isSubmitting} placeholder="Ví dụ: Chào bạn! Tôi là trợ lý AI của spa..." />
-            </div>
-            <div className="space-y-2">
-                <Label htmlFor="greetingMessageNewCustomer">Lời chào cho Khách Mới (tùy chọn)</Label>
-                <Textarea id="greetingMessageNewCustomer" name="greetingMessageNewCustomer" value={settings.greetingMessageNewCustomer || ''} onChange={handleInputChange} disabled={isSubmitting} placeholder="Ví dụ: Chào mừng bạn lần đầu đến với chúng tôi!"/>
-            </div>
-            <div className="space-y-2">
-                <Label htmlFor="greetingMessageReturningCustomer">Lời chào cho Khách Cũ (tùy chọn)</Label>
-                <Textarea id="greetingMessageReturningCustomer" name="greetingMessageReturningCustomer" value={settings.greetingMessageReturningCustomer || ''} onChange={handleInputChange} disabled={isSubmitting} placeholder="Ví dụ: Chào mừng bạn quay trở lại!"/>
-            </div>
-            <div className="space-y-2">
-                <Label htmlFor="suggestedQuestionsTextarea">Câu hỏi gợi ý ban đầu (Mỗi câu một dòng)</Label>
-                <Textarea id="suggestedQuestionsTextarea" name="suggestedQuestions" value={(settings.suggestedQuestions || []).join('\n')} onChange={handleSuggestedQuestionsChange} disabled={isSubmitting} placeholder="Dịch vụ của bạn là gì?\nĐặt lịch hẹn"/>
-            </div>
-             <div className="space-y-2">
-                <Label htmlFor="successfulBookingMessageTemplate">Mẫu tin nhắn Đặt lịch thành công</Label>
-                <Textarea id="successfulBookingMessageTemplate" name="successfulBookingMessageTemplate" value={settings.successfulBookingMessageTemplate || ''} onChange={handleInputChange} disabled={isSubmitting} placeholder="VD: Lịch hẹn cho {{service}} vào {{time}} {{date}} đã được xác nhận!" />
-                <p className="text-xs text-muted-foreground">Sử dụng: {'\'{{service}}\''}, {'\'{{date}}\''}, {'\'{{time}}\''}, {'\'{{branch}}\''}.</p>
-            </div>
+          <div className="space-y-2">
+            <Label htmlFor="greetingMessage">Lời chào mặc định</Label>
+            <Textarea id="greetingMessage" name="greetingMessage" value={settings.greetingMessage || ''} onChange={handleInputChange} disabled={isSubmitting} placeholder="Ví dụ: Chào bạn! Tôi là trợ lý AI của spa..." />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="greetingMessageNewCustomer">Lời chào cho Khách Mới (tùy chọn)</Label>
+            <Textarea id="greetingMessageNewCustomer" name="greetingMessageNewCustomer" value={settings.greetingMessageNewCustomer || ''} onChange={handleInputChange} disabled={isSubmitting} placeholder="Ví dụ: Chào mừng bạn lần đầu đến với chúng tôi!" />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="greetingMessageReturningCustomer">Lời chào cho Khách Cũ (tùy chọn)</Label>
+            <Textarea id="greetingMessageReturningCustomer" name="greetingMessageReturningCustomer" value={settings.greetingMessageReturningCustomer || ''} onChange={handleInputChange} disabled={isSubmitting} placeholder="Ví dụ: Chào mừng bạn quay trở lại!" />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="suggestedQuestionsTextarea">Câu hỏi gợi ý ban đầu (Mỗi câu một dòng)</Label>
+            <Textarea id="suggestedQuestionsTextarea" name="suggestedQuestions" value={(settings.suggestedQuestions || []).join('\n')} onChange={handleSuggestedQuestionsChange} disabled={isSubmitting} placeholder="Dịch vụ của bạn là gì?\nĐặt lịch hẹn" />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="successfulBookingMessageTemplate">Mẫu tin nhắn Đặt lịch thành công</Label>
+            <Textarea id="successfulBookingMessageTemplate" name="successfulBookingMessageTemplate" value={settings.successfulBookingMessageTemplate || ''} onChange={handleInputChange} disabled={isSubmitting} placeholder="VD: Lịch hẹn cho {{service}} vào {{time}} {{date}} đã được xác nhận!" />
+            <p className="text-xs text-muted-foreground">Sử dụng: {'\'{{service}}\''}, {'\'{{date}}\''}, {'\'{{time}}\''}, {'\'{{branch}}\''}.</p>
+          </div>
         </CardContent>
       </Card>
 
@@ -402,7 +402,7 @@ export default function AdminSettingsPage() {
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex items-center space-x-2">
-            <Checkbox id="outOfOfficeResponseEnabled" name="outOfOfficeResponseEnabled" checked={settings.outOfOfficeResponseEnabled} onCheckedChange={(checked) => handleCheckboxChange('outOfOfficeResponseEnabled', checked)} disabled={isSubmitting}/>
+            <Checkbox id="outOfOfficeResponseEnabled" name="outOfOfficeResponseEnabled" checked={settings.outOfOfficeResponseEnabled} onCheckedChange={(checked) => handleCheckboxChange('outOfOfficeResponseEnabled', checked)} disabled={isSubmitting} />
             <Label htmlFor="outOfOfficeResponseEnabled">Bật phản hồi ngoài giờ</Label>
           </div>
           {settings.outOfOfficeResponseEnabled && (
@@ -460,15 +460,15 @@ export default function AdminSettingsPage() {
             <Label htmlFor="metaKeywordsInput">Từ khóa Meta (cách nhau bằng dấu phẩy)</Label>
             <Input id="metaKeywordsInput" name="metaKeywords" value={(settings.metaKeywords || []).join(', ')} onChange={handleMetaKeywordsChange} disabled={isSubmitting} />
           </div>
-           <div className="space-y-2">
+          <div className="space-y-2">
             <Label htmlFor="openGraphImageUrl">URL Hình ảnh OpenGraph</Label>
             <Input id="openGraphImageUrl" name="openGraphImageUrl" type="url" placeholder="https://example.com/og-image.png" value={settings.openGraphImageUrl || ''} onChange={handleInputChange} disabled={isSubmitting} />
           </div>
-           <div className="space-y-2">
+          <div className="space-y-2">
             <Label htmlFor="robotsTxtContent">Nội dung robots.txt</Label>
             <Textarea id="robotsTxtContent" name="robotsTxtContent" rows={5} value={settings.robotsTxtContent || ''} onChange={handleInputChange} disabled={isSubmitting} />
           </div>
-           <div className="space-y-2">
+          <div className="space-y-2">
             <Label htmlFor="sitemapXmlContent">Nội dung sitemap.xml (cơ bản)</Label>
             <Textarea id="sitemapXmlContent" name="sitemapXmlContent" rows={5} value={settings.sitemapXmlContent || ''} onChange={handleInputChange} disabled={isSubmitting} />
           </div>
@@ -536,19 +536,19 @@ export default function AdminSettingsPage() {
             </ul>
           </div>
           <Separator />
-           <div>
+          <div>
             <h4 className="text-md font-semibold mb-2">Quy tắc cho Ngày Cụ thể (chung)</h4>
             <p className="text-sm text-muted-foreground mb-3">Ghi đè các quy tắc chung cho một ngày nhất định. Để trống các trường nếu muốn dùng giá trị chung.</p>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 p-3 border rounded-md mb-4">
-                <Input type="date" value={newSpecificRuleDate} onChange={e => setNewSpecificRuleDate(e.target.value)} placeholder="Ngày (YYYY-MM-DD)" className="h-9"/>
-                <Input value={newSpecificRuleWorkingHours} onChange={e => setNewSpecificRuleWorkingHours(e.target.value)} placeholder="Giờ làm việc (HH:MM, HH:MM)" className="h-9"/>
-                <Input type="number" value={newSpecificRuleStaff} onChange={e => setNewSpecificRuleStaff(e.target.value)} placeholder="Số nhân viên" className="h-9"/>
-                <Input type="number" value={newSpecificRuleDuration} onChange={e => setNewSpecificRuleDuration(e.target.value)} placeholder="Thời gian DV (phút)" className="h-9"/>
-                <div className="flex items-center space-x-2 col-span-full md:col-span-1">
-                    <Checkbox id="newSpecificRuleIsOff" checked={newSpecificRuleIsOff} onCheckedChange={(checked) => setNewSpecificRuleIsOff(!!checked)} />
-                    <Label htmlFor="newSpecificRuleIsOff">Ngày nghỉ</Label>
-                </div>
-                <Button onClick={handleAddSpecificRule} size="sm" className="col-span-full md:col-span-1 h-9"><PlusCircle className="mr-1 h-4 w-4"/>Thêm quy tắc ngày</Button>
+              <Input type="date" value={newSpecificRuleDate} onChange={e => setNewSpecificRuleDate(e.target.value)} placeholder="Ngày (YYYY-MM-DD)" className="h-9" />
+              <Input value={newSpecificRuleWorkingHours} onChange={e => setNewSpecificRuleWorkingHours(e.target.value)} placeholder="Giờ làm việc (HH:MM, HH:MM)" className="h-9" />
+              <Input type="number" value={newSpecificRuleStaff} onChange={e => setNewSpecificRuleStaff(e.target.value)} placeholder="Số nhân viên" className="h-9" />
+              <Input type="number" value={newSpecificRuleDuration} onChange={e => setNewSpecificRuleDuration(e.target.value)} placeholder="Thời gian DV (phút)" className="h-9" />
+              <div className="flex items-center space-x-2 col-span-full md:col-span-1">
+                <Checkbox id="newSpecificRuleIsOff" checked={newSpecificRuleIsOff} onCheckedChange={(checked) => setNewSpecificRuleIsOff(!!checked)} />
+                <Label htmlFor="newSpecificRuleIsOff">Ngày nghỉ</Label>
+              </div>
+              <Button onClick={handleAddSpecificRule} size="sm" className="col-span-full md:col-span-1 h-9"><PlusCircle className="mr-1 h-4 w-4" />Thêm quy tắc ngày</Button>
             </div>
 
             {(settings.specificDayRules || []).length > 0 && (
@@ -556,16 +556,16 @@ export default function AdminSettingsPage() {
                 {(settings.specificDayRules || []).map((rule) => (
                   <Card key={rule.id} className="p-3 bg-muted/30">
                     <div className="flex justify-between items-start mb-2">
-                        <p className="font-semibold text-sm">Ngày: {isValidDateFns(parse(rule.date, 'yyyy-MM-dd', new Date())) ? format(parse(rule.date, 'yyyy-MM-dd', new Date()), 'dd/MM/yyyy') : 'Ngày không hợp lệ'}</p>
-                        <Button variant="ghost" size="icon" onClick={() => handleRemoveSpecificRule(rule.id!)} className="h-6 w-6">
-                           <Trash2 className="h-3 w-3 text-destructive"/>
-                        </Button>
+                      <p className="font-semibold text-sm">Ngày: {isValidDateFns(parse(rule.date, 'yyyy-MM-dd', new Date())) ? format(parse(rule.date, 'yyyy-MM-dd', new Date()), 'dd/MM/yyyy') : 'Ngày không hợp lệ'}</p>
+                      <Button variant="ghost" size="icon" onClick={() => handleRemoveSpecificRule(rule.id!)} className="h-6 w-6">
+                        <Trash2 className="h-3 w-3 text-destructive" />
+                      </Button>
                     </div>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
-                        <p>Ngày nghỉ: {rule.isOff ? <span className="text-red-500">Có</span> : 'Không'}</p>
-                        <p>Giờ làm việc: {rule.workingHours?.join(', ') || <span className="italic">Như chung</span>}</p>
-                        <p>Số nhân viên: {rule.numberOfStaff !== undefined ? rule.numberOfStaff : <span className="italic">Như chung</span>}</p>
-                        <p>Thời gian DV: {rule.serviceDurationMinutes !== undefined ? `${rule.serviceDurationMinutes} phút` : <span className="italic">Như chung</span>}</p>
+                      <p>Ngày nghỉ: {rule.isOff ? <span className="text-red-500">Có</span> : 'Không'}</p>
+                      <p>Giờ làm việc: {rule.workingHours?.join(', ') || <span className="italic">Như chung</span>}</p>
+                      <p>Số nhân viên: {rule.numberOfStaff !== undefined ? rule.numberOfStaff : <span className="italic">Như chung</span>}</p>
+                      <p>Thời gian DV: {rule.serviceDurationMinutes !== undefined ? `${rule.serviceDurationMinutes} phút` : <span className="italic">Như chung</span>}</p>
                     </div>
                   </Card>
                 ))}
@@ -580,13 +580,13 @@ export default function AdminSettingsPage() {
           <CardTitle className="flex items-center"><Settings2 className="mr-2 h-5 w-5 text-primary" /> Cấu hình Khác</CardTitle>
         </CardHeader>
         <CardContent>
-            <p className="text-muted-foreground">Chưa có cấu hình chung khác.</p>
+          <p className="text-muted-foreground">Chưa có cấu hình chung khác.</p>
         </CardContent>
       </Card>
 
       <div className="py-6 flex justify-end">
         <Button onClick={handleSaveSettings} disabled={isSubmitting || isLoading}>
-            <Save className="mr-2 h-4 w-4" /> {isSubmitting ? 'Đang lưu...' : 'Lưu Tất cả Cài đặt'}
+          <Save className="mr-2 h-4 w-4" /> {isSubmitting ? 'Đang lưu...' : 'Lưu Tất cả Cài đặt'}
         </Button>
       </div>
     </div>

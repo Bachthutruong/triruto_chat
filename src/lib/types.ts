@@ -1,4 +1,3 @@
-
 // src/lib/types.ts
 
 export type Message = {
@@ -141,38 +140,38 @@ export type SpecificDayRule = {
 
 export type AppSettings = {
   id: string;
-  greetingMessage?: string;
-  greetingMessageNewCustomer?: string;
-  greetingMessageReturningCustomer?: string;
-  suggestedQuestions?: string[];
-  successfulBookingMessageTemplate?: string;
-
-  brandName?: string;
+  greetingMessage: string;
+  greetingMessageNewCustomer: string;
+  greetingMessageReturningCustomer: string;
+  suggestedQuestions: string[];
+  successfulBookingMessageTemplate: string;
+  brandName: string;
   logoUrl?: string;
   logoDataUri?: string;
-  footerText?: string;
-
-  metaTitle?: string;
-  metaDescription?: string;
-  metaKeywords?: string[];
+  footerText: string;
+  metaTitle: string;
+  metaDescription: string;
+  metaKeywords: string[];
   openGraphImageUrl?: string;
-  robotsTxtContent?: string;
+  robotsTxtContent: string;
   sitemapXmlContent?: string;
-
-  numberOfStaff?: number;
-  defaultServiceDurationMinutes?: number;
-  workingHours?: string[];
-  weeklyOffDays?: number[];
-  oneTimeOffDates?: string[];
-  specificDayRules?: SpecificDayRule[];
-
-  outOfOfficeResponseEnabled?: boolean;
-  outOfOfficeMessage?: string;
-  officeHoursStart?: string;
-  officeHoursEnd?: string;
-  officeDays?: number[];
-
-  updatedAt?: Date;
+  numberOfStaff: number;
+  defaultServiceDurationMinutes: number;
+  workingHours: string[];
+  weeklyOffDays: number[];
+  oneTimeOffDates: string[];
+  specificDayRules: SpecificDayRule[];
+  outOfOfficeResponseEnabled: boolean;
+  outOfOfficeMessage: string;
+  officeHoursStart: string;
+  officeHoursEnd: string;
+  officeDays: number[];
+  appointmentReminderEnabled: boolean;
+  appointmentReminderMessageTemplate: string;
+  appointmentReminderTime: string;
+  appointmentReminderDaysBefore: number;
+  createdAt: Date;
+  updatedAt: Date;
 };
 
 export type BranchSpecificDayRule = {

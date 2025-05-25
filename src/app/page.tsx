@@ -6,7 +6,7 @@ import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
 import { AppHeader } from '@/components/layout/AppHeader';
 import { ChatWindow } from '@/components/chat/ChatWindow';
-import type { Message, UserSession, Conversation, MessageViewerRole, AppointmentBookingFormData } from '@/lib/types';
+import type { Message, UserSession, Conversation, MessageViewerRole, AppointmentBookingFormData, AppointmentDetails } from '@/lib/types';
 import {
   handleCustomerAccess,
   processUserMessage,
@@ -16,7 +16,11 @@ import {
   pinMessageToConversation, // Renamed
   unpinMessageFromConversation, // Renamed
   getAppSettings,
-  handleBookAppointmentFromForm // For direct booking
+  handleBookAppointmentFromForm, // For direct booking
+  getAppointments,
+  deleteExistingAppointment,
+  createSystemMessage,
+  getConversationHistory
 } from './actions';
 import { useToast } from '@/hooks/use-toast';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -54,6 +58,8 @@ export default function HomePage() {
   const [hasLoadedInitialData, setHasLoadedInitialData] = useState(false);
 
   const { socket, isConnected } = useSocket();
+
+  const [appointments, setAppointments] = useState<AppointmentDetails[]>([]);
 
   useEffect(() => {
     const updateBrandName = async () => {
@@ -588,6 +594,53 @@ export default function HomePage() {
     }
   };
 
+  const handleDirectBookAppointment = async (formData: AppointmentBookingFormData) => {
+    if (!currentUserSession || !activeConversation?.id) return;
+    setIsChatLoading(true);
+    try {
+      const result = await handleBookAppointmentFromForm({ ...formData, customerId: currentUserSession.id });
+      toast({
+        title: result.success ? "Thành công" : "Thất bại",
+        description: result.message,
+        variant: result.success ? "default" : "destructive",
+      });
+
+      let systemMessageContent = result.message;
+      if (!result.success && result.suggestedSlots && result.suggestedSlots.length > 0) {
+        systemMessageContent += "\nCác khung giờ gợi ý khác:\n" +
+          result.suggestedSlots.map(s => `- ${s.date} lúc ${s.time}`).join("\n");
+      }
+
+      if (activeConversation.id) {
+        await createSystemMessage({ conversationId: activeConversation.id, content: systemMessageContent });
+        // Fetch lại messages từ server để cập nhật giao diện
+        if (activeConversation.id) {
+          const updatedMessages = await getConversationHistory(activeConversation.id);
+          setCurrentMessages(updatedMessages);
+        }
+      }
+
+      if (result.success) {
+        setIsBookingModalOpen(false);
+        // Refresh appointments after successful booking
+        const updatedAppointments = await getAppointments({ customerId: currentUserSession.id });
+        setAppointments(updatedAppointments);
+      }
+
+    } catch (error: any) {
+      toast({ title: "Lỗi đặt lịch", description: error.message || "Không thể đặt lịch hẹn.", variant: "destructive" });
+    } finally {
+      setIsChatLoading(false);
+    }
+  };
+
+  const refreshAppointments = async () => {
+    if (currentUserSession?.id) {
+      const updatedAppointments = await getAppointments({ customerId: currentUserSession.id });
+      setAppointments(updatedAppointments);
+    }
+  };
+
   const renderCustomerChatInterface = () => {
     if (!currentUserSession || !activeConversation?.id) {
       return <div className="flex-grow flex items-center justify-center p-4"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
@@ -610,44 +663,29 @@ export default function HomePage() {
         activeConversationPinnedMessageIds={activeConversation?.pinnedMessageIds || []}
         onPinRequested={handlePinRequested}
         onUnpinRequested={handleUnpinRequested}
+        appointments={appointments}
+        onCancelAppointment={handleCancelAppointment}
+        onAppointmentBooked={refreshAppointments}
       />
     );
   };
 
-  const handleDirectBookAppointment = async (formData: AppointmentBookingFormData) => {
-    if (!currentUserSession || !activeConversation?.id) return;
-    setIsChatLoading(true);
+  const handleCancelAppointment = async (appointmentId: string) => {
     try {
-      const result = await handleBookAppointmentFromForm({ ...formData, customerId: currentUserSession.id });
+      await deleteExistingAppointment(appointmentId);
+      // Refresh appointments list
+      const updatedAppointments = await getAppointments({ customerId: currentUserSession?.id || '' });
+      setAppointments(updatedAppointments);
       toast({
-        title: result.success ? "Thành công" : "Thất bại",
-        description: result.message,
-        variant: result.success ? "default" : "destructive",
+        title: "Hủy lịch thành công",
+        description: "Lịch hẹn đã được hủy thành công.",
       });
-
-      let systemMessageContent = result.message;
-      if (!result.success && result.suggestedSlots && result.suggestedSlots.length > 0) {
-        systemMessageContent += "\nCác khung giờ gợi ý khác:\n" +
-          result.suggestedSlots.map(s => `- ${s.date} lúc ${s.time}`).join("\n");
-      }
-
-      const systemMessage: Message = {
-        id: `msg_system_booking_${Date.now()}`,
-        sender: 'system',
-        content: systemMessageContent,
-        timestamp: new Date(),
-        conversationId: activeConversation.id,
-      };
-      setCurrentMessages(prev => [...prev, systemMessage]);
-      if (socket && isConnected) {
-        socket.emit('sendMessage', { message: systemMessage, conversationId: activeConversation.id });
-      }
-      if (result.success) setIsBookingModalOpen(false);
-
-    } catch (error: any) {
-      toast({ title: "Lỗi đặt lịch", description: error.message || "Không thể đặt lịch hẹn.", variant: "destructive" });
-    } finally {
-      setIsChatLoading(false);
+    } catch (error) {
+      toast({
+        title: "Lỗi",
+        description: "Không thể hủy lịch hẹn. Vui lòng thử lại sau.",
+        variant: "destructive",
+      });
     }
   };
 
@@ -717,6 +755,13 @@ export default function HomePage() {
     return null;
   };
 
+  useEffect(() => {
+    if (currentUserSession?.id) {
+      getAppointments({ customerId: currentUserSession.id }).then(setAppointments);
+    }
+  }, [currentUserSession?.id, activeConversation?.id]);
+  console.log('activeConversation', activeConversation);
+
   return (
     <div className="flex flex-col min-h-screen bg-background h-screen">
       <AppHeader userSession={currentUserSession} onLogout={handleLogout} />
@@ -732,6 +777,7 @@ export default function HomePage() {
           onClose={() => setIsBookingModalOpen(false)}
           onSubmit={handleDirectBookAppointment}
           currentUserSession={currentUserSession}
+          currentChatCustomerId={currentUserSession.id}
         />
       )}
     </div>

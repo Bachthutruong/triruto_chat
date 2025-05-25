@@ -16,11 +16,33 @@ const ReminderSchema = new Schema({
         default: 'medium'
     },
     completedAt: { type: Date },
+    reminderType: {
+        type: String,
+        enum: ['one_time', 'recurring'],
+        default: 'one_time'
+    },
+    interval: {
+        type: {
+            type: String,
+            enum: ['days', 'weeks', 'months']
+        },
+        value: { type: Number, min: 1 }
+    },
+    nextReminderDate: { type: Date },
+    lastReminderSent: { type: Date }
 }, { timestamps: true });
 // Create indexes for better query performance
 ReminderSchema.index({ customerId: 1, status: 1 });
-ReminderSchema.index({ staffId: 1, status: 1 });
-ReminderSchema.index({ dueDate: 1 });
-// Create or return existing model
-const ReminderModel = mongoose.models.Reminder || mongoose.model('Reminder', ReminderSchema);
+ReminderSchema.index({ dueDate: 1, status: 1 });
+ReminderSchema.index({ nextReminderDate: 1, status: 1 });
+// Fix for mongoose models initialization
+let ReminderModel;
+try {
+    // Try to get existing model
+    ReminderModel = mongoose.model('Reminder');
+}
+catch (_a) {
+    // If model doesn't exist, create it
+    ReminderModel = mongoose.model('Reminder', ReminderSchema);
+}
 export default ReminderModel;

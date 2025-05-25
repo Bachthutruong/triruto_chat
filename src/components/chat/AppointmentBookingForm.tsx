@@ -1,4 +1,3 @@
-
 // src/components/chat/AppointmentBookingForm.tsx
 'use client';
 
@@ -43,10 +42,17 @@ interface AppointmentBookingFormProps {
   onClose: () => void;
   onSubmit: (formData: AppointmentBookingFormData) => Promise<void>;
   currentUserSession: UserSession | null;
+  currentChatCustomerId?: string;
 }
 
 
-export function AppointmentBookingForm({ isOpen, onClose, onSubmit, currentUserSession }: AppointmentBookingFormProps) {
+export function AppointmentBookingForm({
+  isOpen,
+  onClose,
+  onSubmit,
+  currentUserSession,
+  currentChatCustomerId
+}: AppointmentBookingFormProps) {
   const [selectedProductId, setSelectedProductId] = useState<string>('');
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(new Date());
   const [time, setTime] = useState('09:00');
@@ -60,7 +66,7 @@ export function AppointmentBookingForm({ isOpen, onClose, onSubmit, currentUserS
 
   const [customerList, setCustomerList] = useState<{ id: string, name: string, phoneNumber: string }[]>([]);
   const [selectedCustomerId, setSelectedCustomerId] = useState<string | undefined>(
-    currentUserSession?.role === 'customer' ? currentUserSession.id : undefined
+    currentChatCustomerId || (currentUserSession?.role === 'customer' ? currentUserSession.id : undefined)
   );
   const [products, setProducts] = useState<ProductItem[]>([]);
   const [branches, setBranches] = useState<Branch[]>([]);
@@ -115,7 +121,9 @@ export function AppointmentBookingForm({ isOpen, onClose, onSubmit, currentUserS
           setBranches(fetchedBranches);
           setCustomerList(fetchedCustomers);
 
-          if (currentUserSession?.role === 'customer' && !selectedCustomerId) {
+          if (currentChatCustomerId) {
+            setSelectedCustomerId(currentChatCustomerId);
+          } else if (currentUserSession?.role === 'customer' && !selectedCustomerId) {
             setSelectedCustomerId(currentUserSession.id);
           }
 
@@ -136,14 +144,9 @@ export function AppointmentBookingForm({ isOpen, onClose, onSubmit, currentUserS
       setNotes('');
       setRecurrenceType('none');
       setRecurrenceCount(1);
-      if (currentUserSession?.role !== 'customer') {
-        setSelectedCustomerId(undefined);
-      }
-      // Keep selectedDate as is or reset to today:
-      // setSelectedDate(new Date()); 
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen, currentUserSession, toast]);
+  }, [isOpen, currentUserSession, currentChatCustomerId, toast]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -183,19 +186,6 @@ export function AppointmentBookingForm({ isOpen, onClose, onSubmit, currentUserS
           <DialogTitle className="text-xl font-semibold">Đặt lịch hẹn trực tiếp</DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-5 max-h-[70vh] overflow-y-auto p-1">
-          {(currentUserSession?.role === 'admin' || currentUserSession?.role === 'staff') && (
-            <div className="space-y-2">
-              <Label htmlFor="customer" className="text-sm font-medium">Khách hàng <span className="text-destructive">*</span></Label>
-              <Select value={selectedCustomerId} onValueChange={setSelectedCustomerId} disabled={isSubmitting}>
-                <SelectTrigger id="customer" className="w-full">
-                  <SelectValue placeholder="Chọn khách hàng" />
-                </SelectTrigger>
-                <SelectContent>
-                  {customerList.map(c => <SelectItem key={c.id} value={c.id}>{c.name} ({c.phoneNumber})</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-          )}
           <div className="space-y-2">
             <Label htmlFor="service" className="text-sm font-medium">Dịch vụ <span className="text-destructive">*</span></Label>
             <Select

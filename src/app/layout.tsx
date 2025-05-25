@@ -23,15 +23,15 @@ const robotoMonoFont = Roboto_Mono({
 export async function generateMetadata(): Promise<Metadata> {
   const settings = await getAppSettings();
   return {
-    title: settings?.metaTitle || 'AetherChat - Live Chat Thông Minh',
+    title: settings?.metaTitle || 'Triruto',
     description: settings?.metaDescription || 'Live chat tích hợp AI cho giao tiếp khách hàng và đặt lịch hẹn liền mạch.',
     keywords: settings?.metaKeywords || ['live chat', 'AI', 'chatbot', 'customer support', 'vietnamese'],
-    openGraph: settings?.openGraphImageUrl ? { 
+    openGraph: settings?.openGraphImageUrl ? {
       images: [settings.openGraphImageUrl],
-      title: settings?.metaTitle || 'AetherChat - Live Chat Thông Minh',
+      title: settings?.metaTitle || 'Triruto',
       description: settings?.metaDescription || 'Live chat tích hợp AI cho giao tiếp khách hàng và đặt lịch hẹn liền mạch.',
     } : {
-      title: settings?.metaTitle || 'AetherChat - Live Chat Thông Minh',
+      title: settings?.metaTitle || 'Triruto',
       description: settings?.metaDescription || 'Live chat tích hợp AI cho giao tiếp khách hàng và đặt lịch hẹn liền mạch.',
     },
   };

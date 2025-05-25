@@ -6,7 +6,7 @@ import Image from 'next/image';
 import { Logo } from '@/components/icons/Logo';
 import { Button } from '@/components/ui/button';
 import type { UserSession } from '@/lib/types';
-import { LogOut, UserCircle, LayoutDashboard, LogIn } from 'lucide-react'; 
+import { LogOut, UserCircle, LayoutDashboard, LogIn } from 'lucide-react';
 import { useAppSettingsContext } from '@/contexts/AppSettingsContext';
 import type { ReactNode } from 'react';
 
@@ -25,10 +25,10 @@ export function AppHeader({ userSession, onLogout, sidebarTrigger }: AppHeaderPr
 
   const renderLogo = () => {
     if (logoDataUri) {
-      return <Image src={logoDataUri} alt={`${brandName} Logo`} width={32} height={32} className="rounded-md h-8 w-8 md:h-10 md:w-10 object-contain" data-ai-hint="logo brand" />;
+      return <Image src={logoDataUri} alt={`${brandName} Logo`} width={32} height={32} className="rounded-md h-8 w-8 md:h-20 md:w-20 object-contain" data-ai-hint="logo brand" />;
     }
     if (logoUrl) {
-      return <Image src={logoUrl} alt={`${brandName} Logo`} width={32} height={32} className="rounded-md h-8 w-8 md:h-10 md:w-10 object-contain" data-ai-hint="logo brand" />;
+      return <Image src={logoUrl} alt={`${brandName} Logo`} width={32} height={32} className="rounded-md h-8 w-8 md:h-20 md:w-20 object-contain" data-ai-hint="logo brand" />;
     }
     return <Logo className="h-8 w-8 md:h-10 md:w-10" />;
   };
@@ -46,13 +46,13 @@ export function AppHeader({ userSession, onLogout, sidebarTrigger }: AppHeaderPr
             </div>
           </Link>
         </div>
-        
+
         <nav className="flex items-center gap-2 md:gap-4">
-          {userSession ? ( 
+          {userSession ? (
             <>
               <span className="text-xs sm:text-sm text-muted-foreground hidden md:flex items-center">
                 <UserCircle className="inline mr-1 h-4 w-4" />
-                {userSession.name || userSession.phoneNumber} 
+                {userSession.name || userSession.phoneNumber}
                 {userSession.role !== 'customer' && ` (${userSession.role === 'admin' ? 'Quản trị' : 'Nhân viên'})`}
               </span>
               {userSession.role === 'admin' && (
@@ -73,12 +73,12 @@ export function AppHeader({ userSession, onLogout, sidebarTrigger }: AppHeaderPr
                 <LogOut className="mr-0 md:mr-2 h-4 w-4" /> <span className="hidden md:inline">Đăng xuất</span>
               </Button>
             </>
-          ) : ( 
-             <Button variant="outline" size="sm" asChild>
-               <Link href="/login">
-                 <LogIn className="mr-2 h-4 w-4" /> Đăng nhập
-               </Link>
-             </Button>
+          ) : (
+            <Button variant="outline" size="sm" asChild>
+              <Link href="/login">
+                <LogIn className="mr-2 h-4 w-4" /> Đăng nhập
+              </Link>
+            </Button>
           )}
         </nav>
       </div>

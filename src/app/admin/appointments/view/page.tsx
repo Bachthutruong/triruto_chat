@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Calendar } from '@/components/ui/calendar';
 import { PlusCircle, ListFilter, Edit, Trash2, Save, Users, Clock, Search } from 'lucide-react';
 import type { AppointmentDetails, UserSession, GetAppointmentsFilters, ProductItem, Branch, AppSettings } from '@/lib/types';
-import { getAppointments, createNewAppointment, updateExistingAppointment, deleteExistingAppointment, getCustomerListForSelect, getAllUsers, getAllProducts, getBranches, getAppSettings } from '@/app/actions';
+import { getAppointments, createNewAppointment, updateExistingAppointment, deleteExistingAppointment, getCustomerListForSelect, getAllUsers, getAllProducts, getBranches, getAppSettings, handleCustomerAccess } from '@/app/actions';
 import { useToast } from '@/hooks/use-toast';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogClose, DialogTrigger, DialogFooter } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
@@ -17,6 +17,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { format, parseISO, addMinutes, startOfHour, setHours, setMinutes } from 'date-fns';
 import { vi } from 'date-fns/locale';
 import { useAppSettingsContext } from '@/contexts/AppSettingsContext';
+import { validatePhoneNumber } from '@/lib/validator';
 
 const generateTimeSlots = (workingHours?: string[], serviceDuration?: number, defaultDuration = 60): string[] => {
   const slots: string[] = [];
@@ -56,11 +57,12 @@ export default function AdminViewAppointmentsPage() {
   const [appointments, setAppointments] = useState<AppointmentDetails[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [adminSession, setAdminSession] = useState<UserSession | null>(null);
-
+  console.log('appointments', appointments)
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [currentAppointment, setCurrentAppointment] = useState<AppointmentDetails | null>(null);
 
   const [formCustomerId, setFormCustomerId] = useState('');
+  const [formPhoneNumber, setFormPhoneNumber] = useState('');
   const [formProductId, setFormProductId] = useState('');
   const [formDate, setFormDate] = useState(formatDateToYYYYMMDD(new Date()));
   const [formTime, setFormTime] = useState('09:00');
@@ -82,6 +84,8 @@ export default function AdminViewAppointmentsPage() {
 
   const [filterCustomerSearch, setFilterCustomerSearch] = useState('');
   const [filterStaffId, setFilterStaffId] = useState(ALL_STAFF_FILTER_VALUE);
+
+  const [isCreatingCustomer, setIsCreatingCustomer] = useState(false);
 
   useEffect(() => {
     const sessionString = sessionStorage.getItem('aetherChatUserSession');
@@ -201,6 +205,7 @@ export default function AdminViewAppointmentsPage() {
   const resetForm = () => {
     setCurrentAppointment(null);
     setFormCustomerId('');
+    setFormPhoneNumber('');
     setFormProductId('');
     setFormDate(formatDateToYYYYMMDD(selectedDate || new Date()));
     setFormTime('09:00');
@@ -216,6 +221,7 @@ export default function AdminViewAppointmentsPage() {
     if (appointment) {
       setCurrentAppointment(appointment);
       setFormCustomerId(appointment.userId);
+      setFormPhoneNumber(appointment.customerPhoneNumber || '');
       setFormProductId(appointment.service);
       setFormDate(appointment.date);
       setFormTime(appointment.time.replace(/ AM| PM/i, ''));
@@ -242,46 +248,72 @@ export default function AdminViewAppointmentsPage() {
       branchIsRequiredAndMissing = true;
     }
 
-    if (!formCustomerId || !formProductId || !formDate || !formTime || branchIsRequiredAndMissing) {
+    if (!formPhoneNumber || !formProductId || !formDate || !formTime || branchIsRequiredAndMissing) {
       toast({
         title: "Thiếu thông tin",
-        description: "Vui lòng điền đầy đủ các trường bắt buộc: Khách hàng, Dịch vụ, Ngày, Giờ và Chi nhánh (nếu có nhiều hơn 1).",
+        description: "Vui lòng điền đầy đủ các trường bắt buộc: Số điện thoại khách hàng, Dịch vụ, Ngày, Giờ và Chi nhánh (nếu có nhiều hơn 1).",
         variant: "destructive"
       });
       setIsSubmitting(false);
       return;
     }
 
-    const appointmentData = {
-      customerId: formCustomerId,
-      service: selectedProduct!.name,
-      productId: selectedProduct!.id,
-      date: formDate,
-      time: formTime,
-      branch: selectedBranch?.name,
-      branchId: formBranchId || (branches.length === 1 ? branches[0].id : undefined),
-      status: formStatus,
-      notes: formNotes.trim() || undefined,
-      staffId: formStaffId === NO_STAFF_ASSIGNED_VALUE ? undefined : formStaffId,
-      recurrenceType: formRecurrenceType === 'none' ? undefined : formRecurrenceType,
-      recurrenceCount: formRecurrenceType !== 'none' && formRecurrenceCount > 1 ? formRecurrenceCount : undefined,
-    };
+    if (!validatePhoneNumber(formPhoneNumber)) {
+      toast({
+        title: "Số điện thoại không hợp lệ",
+        description: "Vui lòng nhập số điện thoại hợp lệ.",
+        variant: "destructive"
+      });
+      setIsSubmitting(false);
+      return;
+    }
 
     try {
+      // First create/get customer session
+      setIsCreatingCustomer(true);
+      const result = await handleCustomerAccess(formPhoneNumber.trim());
+
+      if (!result.userSession) {
+        throw new Error("Không thể tạo phiên cho khách hàng.");
+      }
+
+      const appointmentData = {
+        customerId: result.userSession.id,
+        service: selectedProduct!.name,
+        productId: selectedProduct!.id,
+        date: formDate,
+        time: formTime,
+        branch: selectedBranch?.name,
+        branchId: formBranchId || (branches.length === 1 ? branches[0].id : undefined),
+        status: formStatus,
+        notes: formNotes.trim() || undefined,
+        staffId: formStaffId === NO_STAFF_ASSIGNED_VALUE ? undefined : formStaffId,
+        recurrenceType: formRecurrenceType === 'none' ? undefined : formRecurrenceType,
+        recurrenceCount: formRecurrenceType !== 'none' && formRecurrenceCount > 1 ? formRecurrenceCount : undefined,
+      };
+
       if (currentAppointment) {
         await updateExistingAppointment(currentAppointment.appointmentId, appointmentData);
         toast({ title: "Thành công", description: "Đã cập nhật lịch hẹn." });
       } else {
         await createNewAppointment(appointmentData);
-        toast({ title: "Thành công", description: "Đã tạo lịch hẹn mới." });
+        toast({
+          title: "Thành công",
+          description: `Đã tạo lịch hẹn mới cho khách hàng ${result.userSession.name || formPhoneNumber}.`
+        });
       }
       resetForm();
       setIsModalOpen(false);
       fetchAppointments();
     } catch (error: any) {
-      toast({ title: "Lỗi", description: error.message || "Thao tác thất bại.", variant: "destructive" });
+      toast({
+        title: "Lỗi",
+        description: error.message || "Thao tác thất bại.",
+        variant: "destructive"
+      });
     } finally {
       setIsSubmitting(false);
+      setIsCreatingCustomer(false);
     }
   };
 
@@ -399,7 +431,15 @@ export default function AdminViewAppointmentsPage() {
                       <div className="flex-grow">
                         <h3 className="font-semibold text-base">{appt.service} - {appt.time}</h3>
                         <p className="text-sm text-muted-foreground">
-                          <Users className="inline-block mr-1 h-3 w-3" />KH: {appt.customerName || `Người dùng ${appt.userId}`} {appt.customerPhoneNumber && `(${appt.customerPhoneNumber})`}
+                          <Users className="inline-block mr-1 h-3 w-3" />
+                          {appt.customerName ? (
+                            <>
+                              {appt.customerName}
+                              {appt.customerPhoneNumber && <span className="ml-1">({appt.customerPhoneNumber})</span>}
+                            </>
+                          ) : (
+                            appt.customerPhoneNumber || `Khách hàng ${appt.userId}`
+                          )}
                         </p>
                         {appt.branch && <p className="text-sm text-muted-foreground">Chi nhánh: {appt.branch}</p>}
                         {appt.staffName && <p className="text-sm text-muted-foreground">NV: {appt.staffName}</p>}
@@ -444,13 +484,18 @@ export default function AdminViewAppointmentsPage() {
           </DialogHeader>
           <form onSubmit={handleSubmit} className="space-y-4 max-h-[70vh] overflow-y-auto p-1">
             <div>
-              <Label htmlFor="formCustomerId">Khách hàng</Label>
-              <Select value={formCustomerId} onValueChange={setFormCustomerId} disabled={isSubmitting}>
-                <SelectTrigger><SelectValue placeholder="Chọn khách hàng" /></SelectTrigger>
-                <SelectContent>
-                  {customerList.map(c => <SelectItem key={c.id} value={c.id}>{c.name} ({c.phoneNumber})</SelectItem>)}
-                </SelectContent>
-              </Select>
+              <Label htmlFor="formPhoneNumber">Số điện thoại khách hàng <span className="text-destructive">*</span></Label>
+              <Input
+                id="formPhoneNumber"
+                type="tel"
+                value={formPhoneNumber}
+                onChange={e => setFormPhoneNumber(e.target.value)}
+                placeholder="Nhập số điện thoại khách hàng"
+                disabled={isSubmitting || isCreatingCustomer}
+                className="w-full"
+                required
+              />
+              {isCreatingCustomer && <p className="text-sm text-muted-foreground mt-1">Đang tạo phiên cho khách hàng...</p>}
             </div>
             <div>
               <Label htmlFor="formProductId">Dịch vụ</Label>

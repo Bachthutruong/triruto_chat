@@ -1,6 +1,8 @@
 // src/server.ts
 import { config } from 'dotenv';
 import { resolve } from 'path';
+import { processReminders } from './lib/cron/processReminders';
+import mongoose from 'mongoose';
 
 // Load environment variables from all possible .env files
 config({ path: resolve(process.cwd(), '.env.local') });
@@ -13,7 +15,7 @@ import { createServer } from 'http';
 import { parse } from 'url';
 import next from 'next';
 import { Server as SocketIOServer, Socket } from 'socket.io';
-import { pinMessageToConversation, unpinMessageFromConversation } from './app/actions'; 
+import { pinMessageToConversation, unpinMessageFromConversation } from './app/actions';
 import type { UserSession } from './lib/types';
 
 console.log("Socket.IO Server: dotenv configured.");
@@ -21,6 +23,37 @@ console.log("Socket.IO Server: dotenv configured.");
 const dev = process.env.NODE_ENV !== 'production';
 const hostname = process.env.HOSTNAME || 'localhost';
 const port = parseInt(process.env.PORT || '9002', 10);
+
+// MongoDB connection options
+const mongooseOptions = {
+  useNewUrlParser: true,
+  useUnifiedTopology: true,
+  serverSelectionTimeoutMS: 5000, // Timeout after 5s instead of 30s
+  socketTimeoutMS: 45000, // Close sockets after 45s of inactivity
+};
+
+// Connect to MongoDB
+mongoose.connect(process.env.MONGODB_URI || '', mongooseOptions)
+  .then(() => {
+    console.log('MongoDB connected successfully');
+  })
+  .catch((err) => {
+    console.error('MongoDB connection error:', err);
+    process.exit(1);
+  });
+
+// Handle MongoDB connection events
+mongoose.connection.on('error', (err) => {
+  console.error('MongoDB connection error:', err);
+});
+
+mongoose.connection.on('disconnected', () => {
+  console.log('MongoDB disconnected');
+});
+
+mongoose.connection.on('reconnected', () => {
+  console.log('MongoDB reconnected');
+});
 
 console.log(`Socket.IO Server: Starting in ${dev ? 'development' : 'production'} mode on ${hostname}:${port}.`);
 
@@ -31,6 +64,20 @@ const handle = app.getRequestHandler();
 console.log("Socket.IO Server: Attempting to prepare Next.js app...");
 app.prepare().then(() => {
   console.log("Socket.IO Server: > Next.js app prepared successfully.");
+
+  // Run reminder processing job every minute
+  setInterval(async () => {
+    try {
+      // Check MongoDB connection before processing
+      if (mongoose.connection.readyState !== 1) {
+        console.log('MongoDB not connected, skipping reminder processing');
+        return;
+      }
+      await processReminders();
+    } catch (error) {
+      console.error('Error in reminder processing:', error);
+    }
+  }, 60000);
 
   const httpServer = createServer((req, res) => {
     try {
@@ -46,7 +93,7 @@ app.prepare().then(() => {
 
   console.log("Socket.IO Server: Attempting to initialize Socket.IO server with explicit path '/socket.io/'...");
   const io = new SocketIOServer(httpServer, {
-    path: '/socket.io/', 
+    path: '/socket.io/',
     cors: {
       origin: "*", // Allow all origins for development
       methods: ["GET", "POST"],
@@ -78,13 +125,13 @@ app.prepare().then(() => {
     socket.on('sendMessage', ({ message, conversationId }) => {
       if (conversationId && message) {
         // Broadcast to other clients in the room
-        socket.to(conversationId).emit('newMessage', message); 
+        socket.to(conversationId).emit('newMessage', message);
         console.log(`Socket.IO Server: > Message from ${socket.id} in room '${conversationId}' broadcasted: ${message?.content?.substring(0, 30)}...`);
       } else {
         console.warn(`Socket.IO Server: > Received sendMessage event with missing message or conversationId from ${socket.id}`);
       }
     });
-    
+
     socket.on('typing', ({ conversationId, userName, userId }) => {
       if (conversationId) {
         socket.to(conversationId).emit('userTyping', { userId, userName, conversationId });
@@ -96,15 +143,15 @@ app.prepare().then(() => {
         socket.to(conversationId).emit('userStopTyping', { userId, conversationId });
       }
     });
-    
+
     socket.on('pinMessageRequested', async ({ conversationId, messageId, userSessionJsonString }) => {
       console.log(`Socket.IO Server: Received pinMessageRequested for convId: ${conversationId}, msgId: ${messageId}`);
       try {
         const userSession: UserSession = JSON.parse(userSessionJsonString);
         const updatedConversation = await pinMessageToConversation(conversationId, messageId, userSession);
         if (updatedConversation) {
-          io.to(conversationId).emit('pinnedMessagesUpdated', { 
-            conversationId, 
+          io.to(conversationId).emit('pinnedMessagesUpdated', {
+            conversationId,
             pinnedMessageIds: updatedConversation.pinnedMessageIds || []
           });
           console.log(`Socket.IO Server: Emitted pinnedMessagesUpdated for convId: ${conversationId} with IDs:`, updatedConversation.pinnedMessageIds);
@@ -121,18 +168,18 @@ app.prepare().then(() => {
         const userSession: UserSession = JSON.parse(userSessionJsonString);
         const updatedConversation = await unpinMessageFromConversation(conversationId, messageId, userSession);
         if (updatedConversation) {
-          io.to(conversationId).emit('pinnedMessagesUpdated', { 
-            conversationId, 
-            pinnedMessageIds: updatedConversation.pinnedMessageIds || [] 
+          io.to(conversationId).emit('pinnedMessagesUpdated', {
+            conversationId,
+            pinnedMessageIds: updatedConversation.pinnedMessageIds || []
           });
-           console.log(`Socket.IO Server: Emitted pinnedMessagesUpdated for convId: ${conversationId} after unpin`);
+          console.log(`Socket.IO Server: Emitted pinnedMessagesUpdated for convId: ${conversationId} after unpin`);
         }
       } catch (error: any) {
         console.error(`Socket.IO Server: Error processing unpinMessageRequested for convId ${conversationId}:`, error.message);
         socket.emit('unpinActionError', { messageId, error: error.message || 'Failed to unpin message' });
       }
     });
-    
+
     socket.on('editMessage', ({ message, conversationId }) => {
       if (conversationId && message) {
         socket.to(conversationId).emit('messageEdited', { message, conversationId });
@@ -156,9 +203,9 @@ app.prepare().then(() => {
     });
 
   });
-  
+
   io.engine.on("connection_error", (err) => {
-      console.error("Socket.IO Server: Engine connection error. Code:", err.code, "Message:", err.message, "Context:", err.context);
+    console.error("Socket.IO Server: Engine connection error. Code:", err.code, "Message:", err.message, "Context:", err.context);
   });
 
   console.log(`Socket.IO Server: Attempting to start HTTP server on http://${hostname}:${port}...`);
@@ -172,6 +219,6 @@ app.prepare().then(() => {
       console.log(`Socket.IO Server: > Socket.IO listening on port ${port} at path /socket.io/`);
     });
 }).catch(err => {
-    console.error("Socket.IO Server: CRITICAL Error during Next.js app preparation:", err);
-    process.exit(1);
+  console.error("Socket.IO Server: CRITICAL Error during Next.js app preparation:", err);
+  process.exit(1);
 });

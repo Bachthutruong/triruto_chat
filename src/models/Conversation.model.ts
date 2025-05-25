@@ -1,43 +1,48 @@
-
 // src/models/Conversation.model.ts
-import mongoose, { Schema, Document, models, Model, Types } from 'mongoose';
-import type { Conversation, UserRole } from '@/lib/types';
+import mongoose, { Schema, Document, Model } from 'mongoose';
+import type { Types } from 'mongoose';
 
-interface IParticipant extends Document {
-    userId: Types.ObjectId;
-    role: UserRole;
-    name?: string;
-    phoneNumber?: string;
-}
-
-const ParticipantSchema: Schema<IParticipant> = new Schema({
-    userId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
-    role: { type: String, enum: ['customer', 'staff', 'admin'], required: true },
-    name: { type: String },
-    phoneNumber: { type: String },
-}, { _id: false });
-
-//@ts-ignore
-export interface IConversation extends Document, Omit<Conversation, 'id' | 'participants' | 'messageIds' | 'pinnedMessageIds'> {
+export interface IConversation extends Document {
   customerId: Types.ObjectId;
-  staffId?: Types.ObjectId;
-  participants: Types.DocumentArray<IParticipant>;
   messageIds: Types.ObjectId[];
-  pinnedMessageIds: Types.ObjectId[]; 
+  pinnedMessageIds: Types.ObjectId[];
+  lastMessageTimestamp: Date;
+  lastMessagePreview: string;
+  status: 'active' | 'archived';
+  createdAt: Date;
+  updatedAt: Date;
 }
 
-const ConversationSchema: Schema<IConversation> = new Schema({
-  customerId: { type: Schema.Types.ObjectId, ref: 'Customer', required: true, index: true },
-  staffId: { type: Schema.Types.ObjectId, ref: 'User', index: true }, // Optional: if a specific staff is primary
-  title: { type: String },
-  participants: [ParticipantSchema], 
-  messageIds: [{ type: Schema.Types.ObjectId, ref: 'Message', default: [] }],
-  pinnedMessageIds: [{ type: Schema.Types.ObjectId, ref: 'Message', default: [] }], 
-  isPinned: { type: Boolean, default: false }, 
-  lastMessageTimestamp: { type: Date, default: Date.now, index: true },
-  lastMessagePreview: { type: String, maxlength: 100 },
-}, { timestamps: true });
+const ConversationSchema = new Schema<IConversation>(
+  {
+    customerId: { type: Schema.Types.ObjectId, ref: 'Customer', required: true },
+    messageIds: [{ type: Schema.Types.ObjectId, ref: 'Message' }],
+    pinnedMessageIds: [{ type: Schema.Types.ObjectId, ref: 'Message' }],
+    lastMessageTimestamp: { type: Date, default: Date.now },
+    lastMessagePreview: { type: String, default: '' },
+    status: {
+      type: String,
+      enum: ['active', 'archived'],
+      default: 'active'
+    }
+  },
+  { timestamps: true }
+);
 
-const ConversationModel = models.Conversation as Model<IConversation> || mongoose.model<IConversation>('Conversation', ConversationSchema);
+// Create indexes for better query performance
+ConversationSchema.index({ customerId: 1 });
+ConversationSchema.index({ lastMessageTimestamp: -1 });
+ConversationSchema.index({ status: 1 });
+
+// Fix for mongoose models initialization
+let ConversationModel: mongoose.Model<IConversation>;
+
+try {
+  // Try to get existing model
+  ConversationModel = mongoose.model<IConversation>('Conversation');
+} catch {
+  // If model doesn't exist, create it
+  ConversationModel = mongoose.model<IConversation>('Conversation', ConversationSchema);
+}
 
 export default ConversationModel;

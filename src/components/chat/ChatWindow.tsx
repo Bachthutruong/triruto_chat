@@ -1,7 +1,7 @@
 // src/components/chat/ChatWindow.tsx
 'use client';
 
-import type { Message, UserSession, MessageViewerRole, QuickReplyType } from '@/lib/types';
+import type { Message, UserSession, MessageViewerRole, QuickReplyType, AppointmentDetails } from '@/lib/types';
 import { MessageBubble } from './MessageBubble';
 import { MessageInputForm } from './MessageInputForm';
 import { SuggestedReplies } from './SuggestedReplies';
@@ -32,6 +32,9 @@ type ChatWindowProps = {
   onScrollToMessage?: (messageId: string) => void;
   activeConversationPinnedMessageIds?: string[];
   activeConversationId?: string | null;
+  appointments?: AppointmentDetails[];
+  onCancelAppointment?: (appointmentId: string) => Promise<void>;
+  onAppointmentBooked?: () => Promise<void>;
 };
 
 const TypingIndicator = ({ users }: { users: Record<string, string> }) => {
@@ -67,7 +70,10 @@ export function ChatWindow({
   onTyping,
   onScrollToMessage,
   activeConversationPinnedMessageIds = [],
-  activeConversationId, 
+  activeConversationId,
+  appointments = [],
+  onCancelAppointment,
+  onAppointmentBooked,
 }: ChatWindowProps) {
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   // Manage local pinned messages for immediate UI update on unpin
@@ -169,6 +175,9 @@ export function ChatWindow({
         onBookAppointmentClick={onBookAppointmentClick}
         quickReplies={quickReplies}
         onTyping={onTyping}
+        appointments={appointments}
+        onCancelAppointment={onCancelAppointment}
+        onAppointmentBooked={onAppointmentBooked}
       />
     </div>
   );

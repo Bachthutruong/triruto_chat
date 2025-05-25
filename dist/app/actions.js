@@ -15,8 +15,9 @@ import { answerUserQuestion } from '@/ai/flows/answer-user-question';
 import { scheduleAppointment as scheduleAppointmentAIFlow, checkRealAvailability as checkRealAvailabilityAIFlow } from '@/ai/flows/schedule-appointment';
 import mongoose, { Types } from 'mongoose';
 import dotenv from 'dotenv';
-import { startOfDay, endOfDay, subDays, formatISO, parse, isValid as isValidDateFns, parseISO as dateFnsParseISO, format as dateFnsFormat, getHours, getMinutes, addDays as dateFnsAddDays, addWeeks as dateFnsAddWeeks, addMonths as dateFnsAddMonths } from 'date-fns';
+import { startOfDay, endOfDay, subDays, formatISO, isValid as isValidDateFns, parseISO as dateFnsParseISO, format as dateFnsFormat, getHours, getMinutes, addDays as dateFnsAddDays, addWeeks as dateFnsAddWeeks, addMonths as dateFnsAddMonths } from 'date-fns';
 import { validatePhoneNumber } from '@/lib/validator';
+import { AppointmentReminderService } from '@/lib/services/appointmentReminder.service';
 // Ensure dotenv is configured correctly
 if (process.env.NODE_ENV !== 'production') {
     dotenv.config({ path: process.cwd() + '/.env' });
@@ -57,8 +58,11 @@ function transformConversationDoc(doc) {
     return {
         id: doc._id.toString(),
         customerId: doc.customerId.toString(),
+        //@ts-ignore
         staffId: doc.staffId ? doc.staffId.toString() : undefined,
+        //@ts-ignore
         title: doc.title,
+        //@ts-ignore
         participants: (doc.participants || []).map((p) => {
             var _a;
             return ({
@@ -67,7 +71,7 @@ function transformConversationDoc(doc) {
                 name: p.name,
                 phoneNumber: p.phoneNumber,
             });
-        }).filter(p => p.userId), // Filter out participants without userId (shouldn't happen if schema is correct)
+        }).filter((p) => p.userId), // Filter out participants without userId (shouldn't happen if schema is correct)
         messageIds: (doc.messageIds || []).map(id => id.toString()),
         pinnedMessageIds: (doc.pinnedMessageIds || []).map((p) => {
             // p may be an ObjectId, a string, or a populated document
@@ -77,6 +81,7 @@ function transformConversationDoc(doc) {
                 return p._id.toString();
             return p.toString();
         }),
+        //@ts-ignore
         isPinned: doc.isPinned,
         createdAt: new Date(doc.createdAt),
         updatedAt: new Date(doc.updatedAt),
@@ -137,6 +142,7 @@ function transformMessageDocToMessage(msgDoc) {
         sender: msgDoc.sender,
         content: msgDoc.content,
         timestamp: new Date(msgDoc.timestamp),
+        //@ts-ignore
         name: msgDoc.name,
         userId: (_a = msgDoc.userId) === null || _a === void 0 ? void 0 : _a.toString(),
         updatedAt: msgDoc.updatedAt ? new Date(msgDoc.updatedAt) : undefined,
@@ -220,6 +226,7 @@ function transformAppSettingsDoc(doc) {
     if (!doc)
         return null;
     const defaultBrandName = 'AetherChat';
+    //@ts-ignore
     const initialDefaultSettings = {
         id: '',
         brandName: defaultBrandName,
@@ -227,7 +234,7 @@ function transformAppSettingsDoc(doc) {
         greetingMessageNewCustomer: 'Chào mừng bạn lần đầu đến với chúng tôi! Bạn cần hỗ trợ gì ạ?',
         greetingMessageReturningCustomer: 'Chào mừng bạn quay trở lại! Rất vui được gặp lại bạn.',
         suggestedQuestions: ['Các dịch vụ của bạn?', 'Đặt lịch hẹn', 'Địa chỉ của bạn ở đâu?'],
-        successfulBookingMessageTemplate: "Lịch hẹn của bạn cho {{service}} vào lúc {{time}} ngày {{date}}{{#if branch}} tại {{branch}}{{/if}} đã được đặt thành công! Chúng tôi sẽ gửi tin nhắn xác nhận chi tiết cho bạn.",
+        successfulBookingMessageTemplate: "Lịch hẹn của bạn cho {{service}} vào lúc {{time}} ngày {{date}}{{#if branch}} tại {{branch}}{{/if}} đã được đặt thành công!",
         footerText: `© ${new Date().getFullYear()} ${defaultBrandName}. Đã đăng ký Bản quyền.`,
         metaTitle: `${defaultBrandName} - Live Chat Thông Minh`,
         metaDescription: 'Live chat tích hợp AI cho giao tiếp khách hàng liền mạch.',
@@ -255,6 +262,7 @@ function transformAppSettingsDoc(doc) {
         };
         return plainRule;
     });
+    //@ts-ignore
     return {
         id: doc._id.toString(),
         greetingMessage: doc.greetingMessage || initialDefaultSettings.greetingMessage,
@@ -625,6 +633,7 @@ export async function processUserMessage(userMessageContent, currentUserSession,
         sender: 'user',
         content: userMessageContent,
         timestamp: new Date(),
+        //@ts-ignore
         name: currentUserSession.name || `Người dùng ${currentUserSession.phoneNumber}`,
         //@ts-ignore
         customerId: new mongoose.Types.ObjectId(customerId),
@@ -818,6 +827,7 @@ export async function processUserMessage(userMessageContent, currentUserSession,
     }
     const brandNameForAI = (appSettings === null || appSettings === void 0 ? void 0 : appSettings.brandName) || 'AI Assistant';
     const aiMessageData = {
+        //@ts-ignore
         sender: 'ai', content: aiResponseContent, timestamp: new Date(), name: `${brandNameForAI}`,
         //@ts-ignore
         customerId: new mongoose.Types.ObjectId(customerId), conversationId: new mongoose.Types.ObjectId(currentConversationId),
@@ -913,6 +923,18 @@ export async function handleBookAppointmentFromForm(formData) {
             const savedAppointments = await AppointmentModel.insertMany(appointmentDataList);
             const savedAppointmentIds = savedAppointments.map(appt => appt._id);
             await CustomerModel.findByIdAndUpdate(formData.customerId, { $push: { appointmentIds: { $each: savedAppointmentIds } } });
+            // Schedule reminders for each appointment
+            for (const appointmentId of savedAppointmentIds) {
+                try {
+                    // Ensure appointmentId is string or ObjectId
+                    const id = typeof appointmentId === 'object' && appointmentId !== null && 'toString' in appointmentId ? appointmentId.toString() : appointmentId;
+                    //@ts-ignore
+                    await AppointmentReminderService.scheduleReminder(id);
+                }
+                catch (error) {
+                    console.error(`Failed to schedule reminder for appointment ${appointmentId}:`, error);
+                }
+            }
             const firstAppointmentDetails = transformAppointmentDocToDetails(await AppointmentModel.findById(savedAppointmentIds[0])
                 .populate('customerId', 'name phoneNumber')
                 .populate('staffId', 'name'));
@@ -1269,6 +1291,7 @@ export async function sendStaffMessage(staffSession, customerId, conversationId,
         sender: 'ai',
         content: messageContent,
         timestamp: new Date(),
+        //@ts-ignore
         name: staffSession.name || (staffSession.role === 'admin' ? 'Quản trị viên' : 'Nhân viên'),
         //@ts-ignore
         customerId: customer._id,
@@ -1321,7 +1344,9 @@ export async function editStaffMessage(messageId, newContent, staffSession) {
             }
         }
     }
+    //@ts-ignore
     if (message.customerId) {
+        //@ts-ignore
         const customer = await CustomerModel.findById(message.customerId);
         if (customer && customer.lastMessageTimestamp && message.updatedAt && customer.lastMessageTimestamp.getTime() <= message.timestamp.getTime()) {
             const lastMessageForCustomer = await MessageModel.findOne({ customerId: customer._id, conversationId: conversationIdString ? new Types.ObjectId(conversationIdString) : undefined }).sort({ timestamp: -1 });
@@ -1345,6 +1370,7 @@ export async function deleteStaffMessage(messageId, staffSession) {
     if (message.sender !== 'ai' || ((_a = message.userId) === null || _a === void 0 ? void 0 : _a.toString()) !== staffSession.id) {
         throw new Error("Bạn không có quyền xóa tin nhắn này.");
     }
+    //@ts-ignore
     const customerIdString = (_b = message.customerId) === null || _b === void 0 ? void 0 : _b.toString();
     let conversationIdString = (_c = message.conversationId) === null || _c === void 0 ? void 0 : _c.toString();
     if (conversationIdString) {
@@ -1483,48 +1509,71 @@ export async function updateCustomerInternalName(customerId, internalName) {
 }
 // --- Appointment Management Actions ---
 const NO_STAFF_MODAL_VALUE = "__NO_STAFF_ASSIGNED__";
-export async function getAppointments(filters) {
+export async function getAppointments(filters = {}) {
     await dbConnect();
-    const query = {};
-    if (filters.date) {
-        const parsedDate = parse(filters.date, 'yyyy-MM-dd', new Date());
-        if (isValidDateFns(parsedDate)) {
+    try {
+        const query = {
+            status: { $in: ['booked', 'pending_confirmation', 'rescheduled'] }
+        };
+        if (filters.customerId) {
+            query.customerId = new mongoose.Types.ObjectId(filters.customerId);
+        }
+        if (filters.date) {
             query.date = filters.date;
         }
-        else {
-            console.warn(`[ACTIONS] Invalid date format received in getAppointments: ${filters.date}`);
+        else if (filters.dates && filters.dates.length > 0) {
+            query.date = { $in: filters.dates };
         }
-    }
-    else if (filters.dates && Array.isArray(filters.dates) && filters.dates.length > 0) {
-        const validDates = filters.dates.filter(d => {
-            const pd = parse(d, 'yyyy-MM-dd', new Date());
-            return isValidDateFns(pd);
+        if (filters.staffId) {
+            query.staffId = new mongoose.Types.ObjectId(filters.staffId);
+        }
+        const appointments = await AppointmentModel.find(query)
+            .populate('customerId', 'name phoneNumber')
+            .populate('staffId', 'name')
+            .sort({ date: 1, time: 1 })
+            .lean();
+        return appointments.map(appointment => {
+            var _a, _b, _c, _d;
+            return ({
+                appointmentId: appointment._id.toString(),
+                userId: appointment.customerId.toString(),
+                service: appointment.service,
+                date: appointment.date,
+                time: appointment.time,
+                branch: appointment.branch || '',
+                status: appointment.status,
+                notes: appointment.notes || '',
+                staffId: (_a = appointment.staffId) === null || _a === void 0 ? void 0 : _a.toString(),
+                customerName: (_b = appointment.customerId) === null || _b === void 0 ? void 0 : _b.name,
+                customerPhoneNumber: (_c = appointment.customerId) === null || _c === void 0 ? void 0 : _c.phoneNumber,
+                staffName: (_d = appointment.staffId) === null || _d === void 0 ? void 0 : _d.name,
+                createdAt: new Date(appointment.createdAt),
+                updatedAt: new Date(appointment.updatedAt)
+            });
         });
-        if (validDates.length > 0) {
-            query.date = { $in: validDates };
+    }
+    catch (error) {
+        console.error('Error fetching appointments:', error);
+        return [];
+    }
+}
+export async function deleteExistingAppointment(appointmentId) {
+    await dbConnect();
+    try {
+        const appointment = await AppointmentModel.findById(appointmentId);
+        if (!appointment) {
+            throw new Error('Appointment not found');
         }
-        else {
-            console.warn(`[ACTIONS] No valid dates found in dates array: ${filters.dates}`);
-        }
+        // Update appointment status to cancelled
+        appointment.status = 'cancelled';
+        await appointment.save();
+        // Remove appointment ID from customer's appointmentIds array
+        await CustomerModel.findByIdAndUpdate(appointment.customerId, { $pull: { appointmentIds: appointment._id } });
     }
-    if (filters.customerId) {
-        query.customerId = new mongoose.Types.ObjectId(filters.customerId);
+    catch (error) {
+        console.error('Error cancelling appointment:', error);
+        throw error;
     }
-    if (filters.staffId && filters.staffId !== NO_STAFF_MODAL_VALUE) {
-        query.staffId = new mongoose.Types.ObjectId(filters.staffId);
-    }
-    if (filters.status && filters.status.length > 0) {
-        query.status = { $in: filters.status };
-    }
-    if (filters.serviceName) {
-        query.service = filters.serviceName;
-    }
-    console.log("[ACTIONS] getAppointments query:", JSON.stringify(query));
-    const appointmentDocs = await AppointmentModel.find(query)
-        .populate('customerId', 'name phoneNumber')
-        .populate('staffId', 'name');
-    console.log(`[ACTIONS] Found ${appointmentDocs.length} appointments with query.`);
-    return appointmentDocs.map(transformAppointmentDocToDetails);
 }
 export async function createNewAppointment(data) {
     await dbConnect();
@@ -1565,6 +1614,14 @@ export async function createNewAppointment(data) {
     await CustomerModel.findByIdAndUpdate(data.customerId, {
         $addToSet: { appointmentIds: newAppointmentDoc._id }
     });
+    // Schedule reminder for the new appointment
+    try {
+        //@ts-ignore
+        await AppointmentReminderService.scheduleReminder(newAppointmentDoc._id);
+    }
+    catch (error) {
+        console.error(`Failed to schedule reminder for appointment ${newAppointmentDoc._id}:`, error);
+    }
     const populatedAppointment = await AppointmentModel.findById(newAppointmentDoc._id)
         .populate('customerId', 'name phoneNumber')
         .populate('staffId', 'name');
@@ -1598,22 +1655,6 @@ export async function updateExistingAppointment(appointmentId, data) {
         .populate('staffId', 'name');
     console.log("[ACTIONS] Manually updated appointment:", appointmentId, "with data:", JSON.stringify(updateData), "Result:", JSON.stringify(updatedAppointmentDoc));
     return updatedAppointmentDoc ? transformAppointmentDocToDetails(updatedAppointmentDoc) : null;
-}
-export async function deleteExistingAppointment(appointmentId) {
-    await dbConnect();
-    const appointment = await AppointmentModel.findById(appointmentId);
-    if (!appointment) {
-        console.warn(`[ACTIONS] Attempted to delete non-existent appointment with ID: ${appointmentId}`);
-        return { success: false };
-    }
-    await AppointmentModel.findByIdAndDelete(appointmentId);
-    console.log(`[ACTIONS] Deleted appointment with ID: ${appointmentId}`);
-    if (appointment.customerId) {
-        await CustomerModel.findByIdAndUpdate(appointment.customerId, {
-            $pull: { appointmentIds: appointment._id }
-        });
-    }
-    return { success: true };
 }
 export async function getCustomerListForSelect() {
     await dbConnect();
@@ -2024,7 +2065,7 @@ export async function getAllCustomerTags() {
     }
 }
 export async function pinMessageToConversation(conversationId, messageId, userSession) {
-    var _a;
+    var _a, _b;
     await dbConnect();
     if (!mongoose.Types.ObjectId.isValid(conversationId) || !mongoose.Types.ObjectId.isValid(messageId)) {
         throw new Error("Mã cuộc trò chuyện hoặc tin nhắn không hợp lệ.");
@@ -2032,9 +2073,23 @@ export async function pinMessageToConversation(conversationId, messageId, userSe
     const conversation = await ConversationModel.findById(conversationId);
     if (!conversation)
         throw new Error("Không tìm thấy cuộc trò chuyện.");
-    const isParticipant = conversation.participants.some(p => { var _a; return ((_a = p.userId) === null || _a === void 0 ? void 0 : _a.toString()) === userSession.id; }) ||
-        (userSession.role === 'customer' && conversation.customerId.toString() === userSession.id);
-    if (!isParticipant && userSession.role !== 'admin') {
+    // Kiểm tra quyền ghim tin nhắn
+    let hasPermission = false;
+    // Admin luôn có quyền
+    if (userSession.role === 'admin') {
+        hasPermission = true;
+    }
+    // Staff có quyền nếu là người tham gia cuộc trò chuyện
+    //@ts-ignore
+    else if (userSession.role === 'staff') {
+        //@ts-ignore
+        hasPermission = ((_a = conversation.participants) === null || _a === void 0 ? void 0 : _a.some(p => { var _a; return ((_a = p.userId) === null || _a === void 0 ? void 0 : _a.toString()) === userSession.id; })) || false;
+    }
+    // Customer có quyền nếu là chủ cuộc trò chuyện
+    else if (userSession.role === 'customer') {
+        hasPermission = conversation.customerId.toString() === userSession.id;
+    }
+    if (!hasPermission) {
         throw new Error("Bạn không có quyền ghim tin nhắn trong cuộc trò chuyện này.");
     }
     const messageObjectId = new mongoose.Types.ObjectId(messageId);
@@ -2051,12 +2106,17 @@ export async function pinMessageToConversation(conversationId, messageId, userSe
     // Return only the message IDs as strings instead of the full populated messages
     return Object.assign(Object.assign({}, conversation.toObject()), { 
         //@ts-ignore
-        id: conversation._id.toString(), customerId: conversation.customerId.toString(), staffId: (_a = conversation.staffId) === null || _a === void 0 ? void 0 : _a.toString(), messageIds: conversation.messageIds.map(id => id.toString()), pinnedMessageIds: conversation.pinnedMessageIds.map(id => id.toString()), participants: conversation.participants.map(p => {
+        id: conversation._id.toString(), customerId: conversation.customerId.toString(), 
+        //@ts-ignore
+        staffId: (_b = conversation.staffId) === null || _b === void 0 ? void 0 : _b.toString(), messageIds: conversation.messageIds.map(id => id.toString()), pinnedMessageIds: conversation.pinnedMessageIds.map(id => id.toString()), 
+        //@ts-ignore
+        participants: (conversation.participants || []).map(p => {
             var _a;
             return (Object.assign(Object.assign({}, p), { userId: ((_a = p.userId) === null || _a === void 0 ? void 0 : _a.toString()) || '' }));
         }), createdAt: new Date(conversation.createdAt), updatedAt: new Date(conversation.updatedAt), lastMessageTimestamp: conversation.lastMessageTimestamp ? new Date(conversation.lastMessageTimestamp) : undefined });
 }
 export async function unpinMessageFromConversation(conversationId, messageId, userSession) {
+    var _a;
     await dbConnect();
     if (!mongoose.Types.ObjectId.isValid(conversationId) || !mongoose.Types.ObjectId.isValid(messageId)) {
         throw new Error("Mã cuộc trò chuyện hoặc tin nhắn không hợp lệ.");
@@ -2064,15 +2124,38 @@ export async function unpinMessageFromConversation(conversationId, messageId, us
     const conversation = await ConversationModel.findById(conversationId);
     if (!conversation)
         throw new Error("Không tìm thấy cuộc trò chuyện.");
-    const isParticipant = conversation.participants.some(p => { var _a; return ((_a = p.userId) === null || _a === void 0 ? void 0 : _a.toString()) === userSession.id; }) ||
-        (userSession.role === 'customer' && conversation.customerId.toString() === userSession.id);
-    if (!isParticipant && userSession.role !== 'admin') {
+    // Kiểm tra quyền bỏ ghim tin nhắn
+    let hasPermission = false;
+    // Admin luôn có quyền
+    if (userSession.role === 'admin') {
+        hasPermission = true;
+    }
+    // Staff có quyền nếu là người tham gia cuộc trò chuyện
+    else if (userSession.role === 'staff') {
+        //@ts-ignore
+        hasPermission = ((_a = conversation.participants) === null || _a === void 0 ? void 0 : _a.some(p => { var _a; return ((_a = p.userId) === null || _a === void 0 ? void 0 : _a.toString()) === userSession.id; })) || false;
+    }
+    // Customer có quyền nếu là chủ cuộc trò chuyện
+    else if (userSession.role === 'customer') {
+        hasPermission = conversation.customerId.toString() === userSession.id;
+    }
+    if (!hasPermission) {
         throw new Error("Bạn không có quyền bỏ ghim tin nhắn trong cuộc trò chuyện này.");
     }
     const messageObjectId = new mongoose.Types.ObjectId(messageId);
     conversation.pinnedMessageIds = (conversation.pinnedMessageIds || []).filter(id => !id.equals(messageObjectId));
     await conversation.save();
-    const updatedConversation = await ConversationModel.findById(conversationId).populate({ path: 'messageIds', model: MessageModel, options: { sort: { timestamp: 1 } } }).populate('pinnedMessageIds');
+    // Return the updated conversation with populated messages
+    const updatedConversation = await ConversationModel.findById(conversationId)
+        .populate({
+        path: 'messageIds',
+        model: MessageModel,
+        options: { sort: { timestamp: 1 } }
+    })
+        .populate({
+        path: 'pinnedMessageIds',
+        model: MessageModel
+    });
     return transformConversationDoc(updatedConversation);
 }
 export async function getMessagesByIds(messageIds) {
@@ -2110,6 +2193,7 @@ export async function updateConversationTitle(conversationId, newTitle, userId) 
     if (!conversation) {
         throw new Error("Không tìm thấy cuộc trò chuyện.");
     }
+    //@ts-ignore
     const isParticipant = conversation.participants.some(p => { var _a; return ((_a = p.userId) === null || _a === void 0 ? void 0 : _a.toString()) === userId; });
     let userIsAdmin = false;
     if (!isParticipant) {
@@ -2121,6 +2205,7 @@ export async function updateConversationTitle(conversationId, newTitle, userId) 
     if (!isParticipant && !userIsAdmin) {
         throw new Error("Bạn không có quyền chỉnh sửa tiêu đề cuộc trò chuyện này.");
     }
+    //@ts-ignore
     conversation.title = newTitle;
     await conversation.save();
     return transformConversationDoc(conversation);
@@ -2292,4 +2377,60 @@ export async function deleteQuickReply(id) {
     await dbConnect();
     const result = await QuickReplyModel.findByIdAndDelete(id);
     return { success: !!result };
+}
+export async function createSystemMessage({ conversationId, content }) {
+    await dbConnect();
+    const message = await MessageModel.create({
+        conversationId,
+        content,
+        type: 'system',
+        sender: 'system',
+        timestamp: new Date(),
+        isRead: false
+    });
+    // Update conversation with new message
+    await ConversationModel.findByIdAndUpdate(conversationId, {
+        $push: { messageIds: message._id },
+        lastMessageTimestamp: message.timestamp,
+        lastMessagePreview: message.content.substring(0, 100)
+    });
+    return {
+        //@ts-ignore
+        //@ts-ignore
+        id: message._id.toString(),
+        sender: message.sender,
+        content: message.content,
+        timestamp: message.timestamp,
+        type: message.type,
+        isRead: message.isRead,
+        conversationId: message.conversationId.toString()
+    };
+}
+export async function cancelAppointment(appointmentId, userSession) {
+    await dbConnect();
+    const appointment = await AppointmentModel.findById(appointmentId);
+    if (!appointment) {
+        throw new Error("Không tìm thấy lịch hẹn.");
+    }
+    // Cancel any pending reminders
+    await AppointmentReminderService.cancelReminder(appointmentId);
+    appointment.status = 'cancelled';
+    await appointment.save();
+    return true;
+}
+export async function getPinnedMessagesForConversation(conversationId) {
+    await dbConnect();
+    if (!mongoose.Types.ObjectId.isValid(conversationId)) {
+        throw new Error("Mã cuộc trò chuyện không hợp lệ.");
+    }
+    const conversation = await ConversationModel.findById(conversationId)
+        .populate({
+        path: 'pinnedMessageIds',
+        model: MessageModel,
+        options: { sort: { timestamp: -1 } }
+    });
+    if (!conversation) {
+        throw new Error("Không tìm thấy cuộc trò chuyện.");
+    }
+    return conversation.pinnedMessageIds.map(transformMessageDocToMessage);
 }

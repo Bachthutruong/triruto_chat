@@ -115,7 +115,7 @@ export default function ProductsManagementPage() {
   };
 
   // const basePath = isAdminRoute ? '/admin' : '/staff'; // basePath will default to /admin for links as this page is also used by admin
-  const basePath = '/admin'; // Assuming admin owns the primary product CRUD routes
+  const basePath = '/staff'; // Assuming admin owns the primary product CRUD routes
 
   return (
     <div className="space-y-6">

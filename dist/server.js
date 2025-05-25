@@ -1,6 +1,8 @@
 // src/server.ts
 import { config } from 'dotenv';
 import { resolve } from 'path';
+import { processReminders } from './lib/cron/processReminders';
+import mongoose from 'mongoose';
 // Load environment variables from all possible .env files
 config({ path: resolve(process.cwd(), '.env.local') });
 config({ path: resolve(process.cwd(), '.env') });
@@ -15,6 +17,32 @@ console.log("Socket.IO Server: dotenv configured.");
 const dev = process.env.NODE_ENV !== 'production';
 const hostname = process.env.HOSTNAME || 'localhost';
 const port = parseInt(process.env.PORT || '9002', 10);
+// MongoDB connection options
+const mongooseOptions = {
+    useNewUrlParser: true,
+    useUnifiedTopology: true,
+    serverSelectionTimeoutMS: 5000, // Timeout after 5s instead of 30s
+    socketTimeoutMS: 45000, // Close sockets after 45s of inactivity
+};
+// Connect to MongoDB
+mongoose.connect(process.env.MONGODB_URI || '', mongooseOptions)
+    .then(() => {
+    console.log('MongoDB connected successfully');
+})
+    .catch((err) => {
+    console.error('MongoDB connection error:', err);
+    process.exit(1);
+});
+// Handle MongoDB connection events
+mongoose.connection.on('error', (err) => {
+    console.error('MongoDB connection error:', err);
+});
+mongoose.connection.on('disconnected', () => {
+    console.log('MongoDB disconnected');
+});
+mongoose.connection.on('reconnected', () => {
+    console.log('MongoDB reconnected');
+});
 console.log(`Socket.IO Server: Starting in ${dev ? 'development' : 'production'} mode on ${hostname}:${port}.`);
 console.log("Socket.IO Server: Initializing Next.js app...");
 const app = next({ dev, hostname, port });
@@ -22,6 +50,20 @@ const handle = app.getRequestHandler();
 console.log("Socket.IO Server: Attempting to prepare Next.js app...");
 app.prepare().then(() => {
     console.log("Socket.IO Server: > Next.js app prepared successfully.");
+    // Run reminder processing job every minute
+    setInterval(async () => {
+        try {
+            // Check MongoDB connection before processing
+            if (mongoose.connection.readyState !== 1) {
+                console.log('MongoDB not connected, skipping reminder processing');
+                return;
+            }
+            await processReminders();
+        }
+        catch (error) {
+            console.error('Error in reminder processing:', error);
+        }
+    }, 60000);
     const httpServer = createServer((req, res) => {
         try {
             const parsedUrl = parse(req.url, true);

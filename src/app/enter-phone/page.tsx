@@ -42,7 +42,7 @@ export default function EnterPhonePage() {
 
       if (result.userSession) {
         sessionStorage.setItem('aetherChatUserSession', JSON.stringify(result.userSession));
-        
+
         // Store all pre-fetched data for the main chat page
         sessionStorage.setItem('aetherChatPrefetchedData', JSON.stringify({
           userSession: result.userSession, // Include session here for verification on next page
@@ -77,12 +77,12 @@ export default function EnterPhonePage() {
 
   const renderLogo = () => {
     if (logoDataUri) {
-      return <Image src={logoDataUri} alt={`${brandName} Logo`} width={32} height={32} className="rounded-md h-8 w-8 md:h-10 md:w-10 object-contain" data-ai-hint="logo brand" />;
+      return <Image src={logoDataUri} alt={`${brandName} Logo`} width={100} height={100} className="h-16 w-16 md:h-40 md:w-40 object-contain" data-ai-hint="logo brand" />;
     }
     if (logoUrl) {
-      return <Image src={logoUrl} alt={`${brandName} Logo`} width={32} height={32} className="rounded-md h-8 w-8 md:h-10 md:w-10 object-contain" data-ai-hint="logo brand" />;
+      return <Image src={logoUrl} alt={`${brandName} Logo`} width={100} height={100} className="h-16 w-16 md:h-40 md:w-40 object-contain" data-ai-hint="logo brand" />;
     }
-    return <Logo className="h-8 w-8 md:h-10 md:w-10" />;
+    return <Logo className="h-16 w-16 md:h-20 md:w-20" />;
   };
 
   return (
@@ -91,7 +91,7 @@ export default function EnterPhonePage() {
       <main className="flex-grow container mx-auto py-12 px-4 flex flex-col items-center justify-center">
         <Card className="w-full max-w-md shadow-none border-none rounded-none">
           <CardHeader className="text-center">
-             <div className="mx-auto border shadow-sm p-3 rounded-full w-fit mb-3 bg-card">
+            <div className="mx-auto mb-3">
               {renderLogo()}
             </div>
             <CardTitle className="text-2xl">Chào mừng đến {brandName}!</CardTitle>
@@ -111,7 +111,7 @@ export default function EnterPhonePage() {
                   placeholder="Nhập số điện thoại của bạn"
                   required
                   disabled={isLoading}
-                  className="text-center text-lg h-12 w-full" 
+                  className="text-center text-lg h-12 w-full"
                   autoComplete="tel"
                 />
               </div>
