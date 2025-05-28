@@ -34,6 +34,10 @@ export type AppointmentDetails = {
   customerPhoneNumber?: string;
   recurrenceType?: 'none' | 'daily' | 'weekly' | 'monthly';
   recurrenceCount?: number;
+  customerProductId?: string;
+  isSessionUsed?: boolean;
+  sessionUsedAt?: Date;
+  isStandaloneSession?: boolean;
 };
 
 export type Product = {
@@ -44,6 +48,53 @@ export type Product = {
   usedSessions?: number;
   expiryDate?: Date;
   assignedDate: Date;
+};
+
+export type CustomerProduct = {
+  id: string;
+  customerId: string;
+  productId: string;
+  productName: string;
+  totalSessions: number;
+  usedSessions: number;
+  remainingSessions: number;
+  assignedDate: Date;
+  expiryDate?: Date;
+  expiryDays?: number;
+  isActive: boolean;
+  lastUsedDate?: Date;
+  staffId: string;
+  staffName?: string;
+  notes?: string;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+export type CreateInvoiceData = {
+  customerId: string;
+  productId: string;
+  totalSessions: number;
+  expiryDays?: number;
+  notes?: string;
+  staffId: string;
+};
+
+export type CustomerServiceUsage = {
+  customerId: string;
+  customerName?: string;
+  products: Array<{
+    customerProductId: string;
+    productName: string;
+    totalSessions: number;
+    usedSessions: number;
+    remainingSessions: number;
+    expiryDate?: Date;
+    daysSinceLastUse?: number;
+    isExpired: boolean;
+    standaloneSessionsUsed: number;
+  }>;
+  lastAppointmentDate?: Date;
+  daysSinceLastAppointment?: number;
 };
 
 export type Note = {
@@ -80,6 +131,8 @@ export type CustomerProfile = {
   lastMessageTimestamp?: Date;
   timezone?: string;
   pinnedConversationIds?: string[];
+  customerProducts?: CustomerProduct[];
+  serviceUsage?: CustomerServiceUsage;
 };
 
 export type UserSession = {
@@ -196,7 +249,6 @@ export type Branch = {
   updatedAt?: Date;
 };
 
-
 export type GetAppointmentsFilters = {
   date?: string;
   dates?: string[];
@@ -240,6 +292,11 @@ export type ProductItem = {
   isActive: boolean;
   isSchedulable?: boolean;
   schedulingRules?: ProductSchedulingRules;
+  defaultSessions?: number;
+  expiryDays?: number;
+  expiryReminderTemplate?: string;
+  expiryReminderDaysBefore?: number;
+  type?: 'session-based' | 'time-based' | 'unlimited';
   createdAt: Date;
   updatedAt: Date;
 };

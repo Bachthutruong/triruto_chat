@@ -2,6 +2,7 @@
 import { config } from 'dotenv';
 import { resolve } from 'path';
 import { processReminders } from './lib/cron/processReminders';
+import { processEndOfDaySessionUsage, sendExpiryReminders } from './services/sessionUsageService';
 import mongoose from 'mongoose';
 
 // Load environment variables from all possible .env files
@@ -78,6 +79,42 @@ app.prepare().then(() => {
       console.error('Error in reminder processing:', error);
     }
   }, 60000);
+
+  // Run end-of-day session usage processing every hour
+  setInterval(async () => {
+    try {
+      if (mongoose.connection.readyState !== 1) {
+        console.log('MongoDB not connected, skipping session usage processing');
+        return;
+      }
+
+      const now = new Date();
+      // Chỉ chạy vào cuối ngày (23:00-23:59)
+      if (now.getHours() === 23) {
+        await processEndOfDaySessionUsage();
+      }
+    } catch (error) {
+      console.error('Error in session usage processing:', error);
+    }
+  }, 3600000); // Chạy mỗi giờ
+
+  // Run expiry reminders twice a day (9 AM and 6 PM)
+  setInterval(async () => {
+    try {
+      if (mongoose.connection.readyState !== 1) {
+        console.log('MongoDB not connected, skipping expiry reminders');
+        return;
+      }
+
+      const now = new Date();
+      // Chạy vào 9h sáng và 6h chiều
+      if (now.getHours() === 9 || now.getHours() === 18) {
+        await sendExpiryReminders();
+      }
+    } catch (error) {
+      console.error('Error in expiry reminders:', error);
+    }
+  }, 3600000); // Chạy mỗi giờ
 
   const httpServer = createServer((req, res) => {
     try {

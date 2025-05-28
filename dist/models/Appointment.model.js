@@ -14,6 +14,12 @@ const AppointmentSchema = new Schema({
     staffId: { type: Schema.Types.ObjectId, ref: 'User' },
     recurrenceType: { type: String, enum: ['none', 'daily', 'weekly', 'monthly'], default: 'none' },
     recurrenceCount: { type: Number, default: 1, min: 1 },
+    customerProductId: { type: Schema.Types.ObjectId, ref: 'CustomerProduct', index: true },
+    isSessionUsed: { type: Boolean, default: false, index: true },
+    sessionUsedAt: { type: Date, index: true },
+    isStandaloneSession: { type: Boolean, default: false },
 }, { timestamps: true });
+AppointmentSchema.index({ customerId: 1, date: 1 });
+AppointmentSchema.index({ customerProductId: 1, isSessionUsed: 1 });
 const AppointmentModel = models.Appointment || mongoose.model('Appointment', AppointmentSchema);
 export default AppointmentModel;

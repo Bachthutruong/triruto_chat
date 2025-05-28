@@ -20,12 +20,23 @@ export interface ICustomer extends Document, Omit<CustomerProfile, 'id' | 'assig
   lastMessageTimestamp?: Date;
   messagePinningAllowedConversationIds: mongoose.Types.ObjectId[];
   pinnedConversationIds: mongoose.Types.ObjectId[];
+  // Thêm các trường còn thiếu
+  email?: string;
+  address?: string;
+  dateOfBirth?: Date;
+  gender?: 'male' | 'female' | 'other';
+  notes?: string;
 }
 
 const CustomerSchema: Schema<ICustomer> = new Schema({
   phoneNumber: { type: String, required: true, unique: true, index: true },
   name: { type: String },
   internalName: { type: String },
+  email: { type: String },
+  address: { type: String },
+  dateOfBirth: { type: Date },
+  gender: { type: String, enum: ['male', 'female', 'other'] },
+  notes: { type: String },
   conversationIds: [{ type: Schema.Types.ObjectId, ref: 'Conversation', default: [] }],
   appointmentIds: [{ type: Schema.Types.ObjectId, ref: 'Appointment', default: [] }],
   productIds: [{ type: String, default: [] }],
