@@ -294,7 +294,7 @@ export function MessageInputForm({
               className="flex items-center gap-2"
             >
               <CalendarPlus className="h-5 w-5" />
-              <span>{appointments.length > 0 ? "Xem lịch hẹn" : "Đặt lịch hẹn"}</span>
+              <span className='hidden md:flex'>{appointments.length > 0 ? "Xem lịch hẹn" : "Đặt lịch hẹn"}</span>
             </Button>
           )}
           {quickReplies.length > 0 && (

@@ -54,6 +54,7 @@ import { cn } from '@/lib/utils';
 import { ReminderService } from '@/lib/services/reminder.service';
 import mongoose from 'mongoose';
 import { IReminder } from '@/models/Reminder.model';
+import { Badge } from '@/components/ui/badge';
 
 const MAX_FILE_SIZE_MB = 5;
 const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
@@ -132,6 +133,8 @@ export default function StaffIndividualChatPage() {
 
   const [reminders, setReminders] = useState<any[]>([]);
   const [editingReminder, setEditingReminder] = useState<any | null>(null);
+
+  const [isCustomerInfoOpen, setIsCustomerInfoOpen] = useState(false);
 
   const fetchPinnedMessagesForConversation = useCallback(async (conversation: Conversation | null) => {
     if (!conversation || !conversation.pinnedMessageIds || conversation.pinnedMessageIds.length === 0) {
@@ -1007,6 +1010,7 @@ export default function StaffIndividualChatPage() {
                 </div>
               </div>
             )}
+            {/* Reminder Section */}
             <div className="flex flex-col gap-2 p-2 border-b">
               <Button
                 variant="outline"
@@ -1067,32 +1071,105 @@ export default function StaffIndividualChatPage() {
                 )}
                 <Button variant="ghost" size="icon" className="h-5 w-5 ml-1 shrink-0" onClick={() => setEditingInternalName(!editingInternalName)}><Edit2 className="h-3 w-3" /></Button>
               </div>
-              <div>
-                <h5 className="font-semibold text-xs mt-2 mb-1 flex items-center"><Tag className="mr-2 h-3 w-3 text-primary" />Nhãn</h5>
-                <div className="flex flex-wrap gap-1 mb-2">
-                  {(customer?.tags || []).map(tag => (
-                    <span key={tag} className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full flex items-center">
-                      {tag}
-                      <Button variant="ghost" size="icon" className="h-4 w-4 ml-1 p-0 hover:bg-blue-200" onClick={() => handleRemoveTag(tag)}>
-                        <X className="h-3 w-3" />
-                      </Button>
-                    </span>
-                  ))}
-                  {customer?.tags?.includes(`Admin:${staffSession?.name}`) && staffSession?.role === 'admin' && (
-                    <span className="text-xs bg-yellow-100 text-yellow-700 px-2 py-0.5 rounded-full">Đã mời Admin</span>
-                  )}
-                </div>
-                <div className="flex gap-1">
-                  <Input
-                    value={newTagName}
-                    onChange={(e) => setNewTagName(e.target.value)}
-                    placeholder="Thêm nhãn mới (vd: Admin:TênAdmin)"
-                    className="h-7 text-xs"
-                    onKeyPress={(e) => { if (e.key === 'Enter') handleAddTag(); }}
-                  />
-                  <Button size="sm" onClick={handleAddTag} className="h-7 text-xs px-2 shrink-0">Thêm</Button>
-                </div>
+            </div>
+
+            {/* Tags Section */}
+            <div>
+              <h4 className="font-semibold text-sm flex items-center mb-1">
+                <Tag className="mr-2 h-4 w-4 text-primary" />Nhãn
+              </h4>
+              <div className="flex flex-wrap gap-1 mb-2">
+                {customer?.tags?.map((tag) => (
+                  <Badge key={tag} variant="secondary" className="text-xs">
+                    {tag}
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-3 w-3 ml-1 hover:bg-transparent"
+                      onClick={() => handleRemoveTag(tag)}
+                    >
+                      <X className="h-3 w-3" />
+                    </Button>
+                  </Badge>
+                ))}
               </div>
+              <div className="flex gap-2">
+                <Input
+                  placeholder="Thêm nhãn mới (vd: Admin:TênAdmin)"
+                  value={newTagName}
+                  onChange={(e) => setNewTagName(e.target.value)}
+                  className="h-8 text-xs"
+                />
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleAddTag}
+                  disabled={!newTagName.trim()}
+                  className="h-8"
+                >
+                  Thêm
+                </Button>
+              </div>
+            </div>
+
+            {/* Media Section */}
+            <div>
+              <h4 className="font-semibold text-sm flex items-center mb-1">
+                <ImageIconLucide className="mr-2 h-4 w-4 text-primary" />Ảnh/Video ({allMediaMessages.length})
+              </h4>
+              {allMediaMessages.length > 0 ? (
+                <div className="grid grid-cols-3 gap-2">
+                  {allMediaMessages.map((message) => (
+                    <div key={message.id} className="aspect-square relative rounded-md overflow-hidden">
+                      {isImageDataURI(message.content) ? (
+                        <NextImage
+                          src={message.content}
+                          alt="Media"
+                          fill
+                          className="object-cover"
+                        />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center bg-muted">
+                          <FileText className="h-6 w-6 text-muted-foreground" />
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-xs text-muted-foreground">Chưa có ảnh/video nào.</p>
+              )}
+            </div>
+
+            {/* Files Section */}
+            <div>
+              <h4 className="font-semibold text-sm flex items-center mb-1">
+                <FileText className="mr-2 h-4 w-4 text-primary" />File ({allMediaMessages.filter(m => /#filename=/.test(m.content)).length})
+              </h4>
+              {allMediaMessages.filter(m => /#filename=/.test(m.content)).length > 0 ? (
+                <div className="space-y-2">
+                  {allMediaMessages
+                    .filter(m => /#filename=/.test(m.content))
+                    .map((message) => {
+                      const match = message.content.match(/#filename=([^#\s]+)/);
+                      const fileName = match ? decodeURIComponent(match[1]) : "File";
+                      const fileUrl = message.content.split('#filename=')[0];
+                      return (
+                        <div key={message.id} className="flex items-center gap-2 p-2 rounded-md bg-muted/50">
+                          <FileText className="h-4 w-4 text-muted-foreground" />
+                          <span className="text-xs truncate flex-1">{fileName}</span>
+                          <Button variant="ghost" size="icon" className="h-6 w-6" asChild>
+                            <a href={fileUrl} target="_blank" rel="noopener noreferrer">
+                              <Download className="h-3 w-3" />
+                            </a>
+                          </Button>
+                        </div>
+                      );
+                    })}
+                </div>
+              ) : (
+                <p className="text-xs text-muted-foreground">Chưa có file nào.</p>
+              )}
             </div>
 
             <Accordion type="multiple" className="w-full">
@@ -1447,6 +1524,346 @@ export default function StaffIndividualChatPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Mobile Customer Info Button and Drawer */}
+      <div className="md:hidden fixed bottom-4 right-4 z-50">
+        <Button
+          variant="default"
+          size="icon"
+          className="h-12 w-12 rounded-full shadow-lg"
+          onClick={() => setIsCustomerInfoOpen(!isCustomerInfoOpen)}
+        >
+          <Info className="h-6 w-6" />
+        </Button>
+      </div>
+
+      {/* Mobile Customer Info Drawer */}
+      <div className={cn(
+        "fixed inset-0 bg-black/50 z-40 md:hidden transition-opacity duration-300",
+        isCustomerInfoOpen ? "opacity-100" : "opacity-0 pointer-events-none"
+      )} onClick={() => setIsCustomerInfoOpen(false)} />
+
+      <div className={cn(
+        "fixed inset-y-0 right-0 w-full max-w-sm bg-background z-50 transform transition-transform duration-300 ease-in-out md:hidden",
+        isCustomerInfoOpen ? "translate-x-0" : "translate-x-full"
+      )}>
+        <div className="h-full flex flex-col">
+          <div className="flex items-center justify-between p-4 border-b">
+            <h2 className="text-lg font-semibold flex items-center">
+              <Info className="mr-2 h-5 w-5" /> Thông tin Khách hàng
+            </h2>
+            <Button variant="ghost" size="icon" onClick={() => setIsCustomerInfoOpen(false)}>
+              <X className="h-5 w-5" />
+            </Button>
+          </div>
+          <ScrollArea className="flex-grow">
+            <div className="p-4 space-y-4">
+              {staffSession?.role === 'admin' && (
+                <div className="border-b pb-3 mb-3">
+                  <h4 className="font-semibold text-sm flex items-center mb-1">
+                    <Users className="mr-2 h-4 w-4 text-primary" />Phân công
+                  </h4>
+                  {customer?.assignedStaffId ? (
+                    <div className="flex items-center justify-between text-xs">
+                      <span>Đang xử lý: {customer.assignedStaffName || customer.assignedStaffId}</span>
+                      <Button variant="outline" size="sm" onClick={handleUnassign} disabled={isAssigning}>
+                        {isAssigning ? "Đang hủy..." : "Hủy giao"}
+                      </Button>
+                    </div>
+                  ) : <p className="text-xs text-muted-foreground mb-1">Khách chưa được giao.</p>}
+                </div>
+              )}
+
+              {/* Reminder Section */}
+              <div className="flex flex-col gap-2 p-2 border-b">
+                <Button
+                  variant="outline"
+                  onClick={() => { setIsReminderModalOpen(true); setEditingReminder(null); }}
+                  title="Tạo nhắc nhở chăm sóc"
+                  className="flex items-center gap-2 px-3 py-2 w-full"
+                >
+                  <Bell className="h-4 w-4 mr-2" />
+                  <span className="whitespace-nowrap">Tạo nhắc nhở chăm sóc</span>
+                </Button>
+                {reminders.length > 0 && (
+                  <div className="mt-2">
+                    <h4 className="font-semibold text-sm mb-2 flex items-center">
+                      <Bell className="mr-2 h-4 w-4 text-primary" />
+                      Danh sách nhắc nhở
+                    </h4>
+                    <ul className="space-y-2">
+                      {reminders.map(reminder => (
+                        <li key={reminder.id} className="p-2 border rounded flex flex-col md:flex-row md:items-center md:justify-between gap-2 bg-muted/50">
+                          <div>
+                            <div className="font-medium">{reminder.title}</div>
+                            <div className="text-xs text-muted-foreground">{reminder.description}</div>
+                            <div className="text-xs">
+                              Ngày: {reminder.dueDate ? new Date(reminder.dueDate).toLocaleString() : ''} | Ưu tiên: {reminder.priority}
+                            </div>
+                          </div>
+                          <div className="flex gap-2">
+                            <Button size="sm" variant="outline" onClick={() => handleEditReminder(reminder)}>
+                              <Edit2 className="h-4 w-4 mr-1" />
+                            </Button>
+                            <Button size="sm" variant="destructive" onClick={() => handleDeleteReminder(reminder.id)}>
+                              <Trash2 className="h-4 w-4 mr-1" />
+                            </Button>
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+
+              {/* Chi tiết khách hàng */}
+              <div>
+                <h4 className="font-semibold text-sm flex items-center mb-1">
+                  <UserCircle className="mr-2 h-4 w-4 text-primary" />Chi tiết
+                </h4>
+                <p className="text-xs">
+                  <span className="text-muted-foreground">Điện thoại:</span> {customer?.phoneNumber}
+                </p>
+                <div className="text-xs flex items-center">
+                  <span className="text-muted-foreground mr-1">Tên nội bộ:</span>
+                  {editingInternalName ? (
+                    <Input
+                      value={internalNameInput}
+                      onChange={(e) => setInternalNameInput(e.target.value)}
+                      onBlur={handleSaveInternalName}
+                      onKeyPress={(e) => { if (e.key === 'Enter') handleSaveInternalName(); }}
+                      className="h-6 text-xs p-1"
+                      autoFocus
+                    />
+                  ) : (
+                    <span className="truncate max-w-[150px]">{customer?.internalName || 'Chưa có'}</span>
+                  )}
+                  <Button variant="ghost" size="icon" className="h-5 w-5 ml-1 shrink-0" onClick={() => setEditingInternalName(!editingInternalName)}>
+                    <Edit2 className="h-3 w-3" />
+                  </Button>
+                </div>
+              </div>
+
+              {/* Nhãn Section */}
+              <div>
+                <h4 className="font-semibold text-sm flex items-center mb-1">
+                  <Tag className="mr-2 h-4 w-4 text-primary" />Nhãn
+                </h4>
+                <div className="flex flex-wrap gap-1 mb-2">
+                  {customer?.tags?.map((tag) => (
+                    <Badge key={tag} variant="secondary" className="text-xs">
+                      {tag}
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-3 w-3 ml-1 hover:bg-transparent"
+                        onClick={() => handleRemoveTag(tag)}
+                      >
+                        <X className="h-3 w-3" />
+                      </Button>
+                    </Badge>
+                  ))}
+                </div>
+                <div className="flex gap-2">
+                  <Input
+                    placeholder="Thêm nhãn mới (vd: Admin:TênAdmin)"
+                    value={newTagName}
+                    onChange={(e) => setNewTagName(e.target.value)}
+                    className="h-8 text-xs"
+                  />
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleAddTag}
+                    disabled={!newTagName.trim()}
+                    className="h-8"
+                  >
+                    Thêm
+                  </Button>
+                </div>
+              </div>
+
+              {/* Media & File Section (Accordion) */}
+              <Accordion type="multiple" className="w-full">
+                <AccordionItem value="media-history">
+                  <AccordionTrigger className="text-sm font-semibold py-2 hover:no-underline">
+                    <div className="flex items-center"><ImageIconLucide className="mr-2 h-4 w-4 text-primary" />Ảnh/Video ({imageMedia.length})</div>
+                  </AccordionTrigger>
+                  <AccordionContent className="pt-1 pb-2">
+                    {imageMedia.length > 0 ? (
+                      <>
+                        <div className="grid grid-cols-3 gap-1.5 mb-2">
+                          {imageMedia.slice(0, 6).map(msg => {
+                            const match = msg.content.match(/^(data:image\/[^;]+;base64,[^#]+)/);
+                            if (!match) return null;
+                            const dataUri = match[1];
+                            return (
+                              <div key={msg.id} className="aspect-square relative rounded overflow-hidden bg-muted">
+                                <NextImage src={dataUri} alt="media thumbnail" layout="fill" objectFit="cover" data-ai-hint="thumbnail image" />
+                              </div>
+                            );
+                          })}
+                        </div>
+                        {imageMedia.length > 6 && (
+                          <Button variant="link" size="sm" className="p-0 h-auto text-xs w-full justify-center" asChild>
+                            <Link href={mediaViewPath}>Xem tất cả {imageMedia.length} ảnh/video</Link>
+                          </Button>
+                        )}
+                        {imageMedia.length > 0 && imageMedia.length <= 6 && (
+                          <Button variant="link" size="sm" className="p-0 h-auto text-xs w-full justify-center" asChild>
+                            <Link href={mediaViewPath}>Xem chi tiết</Link>
+                          </Button>
+                        )}
+                      </>
+                    ) : (
+                      <p className="text-xs text-muted-foreground text-center py-2">Chưa có ảnh/video nào.</p>
+                    )}
+                  </AccordionContent>
+                </AccordionItem>
+                <AccordionItem value="file-history">
+                  <AccordionTrigger className="text-sm font-semibold py-2 hover:no-underline">
+                    <div className="flex items-center"><FileText className="mr-2 h-4 w-4 text-primary" />File ({fileMedia.length})</div>
+                  </AccordionTrigger>
+                  <AccordionContent className="pt-1 pb-2">
+                    {fileMedia.length > 0 ? (
+                      <>
+                        <div className="space-y-1 mb-2 max-h-32 overflow-y-auto">
+                          {fileMedia.map(msg => {
+                            const match = msg.content.match(/#filename=([^#\s]+)/);
+                            const fileName = match ? decodeURIComponent(match[1]) : "Tệp đính kèm";
+                            return (
+                              <a
+                                key={msg.id}
+                                href={msg.content.split('#filename=')[0]}
+                                download={fileName}
+                                className="flex items-center gap-1.5 p-1.5 hover:bg-accent rounded text-xs"
+                              >
+                                <FileText className="h-3.5 w-3.5 shrink-0" />
+                                <span className="truncate" title={fileName}>{fileName}</span>
+                              </a>
+                            );
+                          })}
+                        </div>
+                        {fileMedia.length > 0 && (
+                          <Button variant="link" size="sm" className="p-0 h-auto text-xs w-full justify-center" asChild>
+                            <Link href={mediaViewPath}>Xem tất cả file</Link>
+                          </Button>
+                        )}
+                      </>
+                    ) : (
+                      <p className="text-xs text-muted-foreground text-center py-2">Chưa có file nào.</p>
+                    )}
+                  </AccordionContent>
+                </AccordionItem>
+              </Accordion>
+
+              {/* Lịch hẹn Section */}
+              <div className="border-t pt-3">
+                <h4 className="font-semibold text-sm flex items-center mb-1"><Clock className="mr-2 h-4 w-4 text-primary" />Lịch hẹn ({appointments.length})</h4>
+                {appointments.slice(0, 2).map(appt => (
+                  <div key={appt.appointmentId} className="text-xs p-1.5 bg-muted/50 rounded mb-1">
+                    <p>{appt.service} - {format(new Date(appt.date), 'dd/MM/yy', { locale: vi })} lúc {appt.time} ({getStatusLabel(appt.status)})</p>
+                  </div>
+                ))}
+                {appointments.length > 2 && staffSession &&
+                  <Button variant="link" size="sm" className="p-0 h-auto text-primary" asChild>
+                    <Link href={staffSession.role === 'admin' ? '/admin/appointments/view' : '/staff/appointments'}>
+                      Xem tất cả
+                    </Link>
+                  </Button>
+                }
+              </div>
+
+              {/* Ghi chú nội bộ Section */}
+              <div className="border-t pt-3">
+                <h4 className="font-semibold text-sm flex items-center mb-1"><StickyNote className="mr-2 h-4 w-4 text-primary" />Ghi chú nội bộ ({notes.length})</h4>
+                <div className="space-y-2 mb-2 max-h-40 overflow-y-auto">
+                  {notes.map(note => (
+                    <div key={note.id} className="text-xs p-1.5 bg-muted/50 rounded">
+                      {editingNote?.id === note.id ? (
+                        <div className="space-y-1">
+                          {editingNoteImageDataUri && (
+                            <div className="relative w-20 h-20 border rounded overflow-hidden">
+                              <NextImage src={editingNoteImageDataUri} alt={editingNoteImageFileName || "Note image"} layout="fill" objectFit="cover" data-ai-hint="note image" />
+                              <Button variant="ghost" size="icon" className="absolute top-0 right-0 h-5 w-5 bg-black/30 hover:bg-black/50 text-white" onClick={handleRemoveEditingNoteImage}><X className="h-3 w-3" /></Button>
+                            </div>
+                          )}
+                          <Input
+                            type="file"
+                            accept="image/*"
+                            ref={editNoteImageInputRef}
+                            onChange={handleEditNoteImageChange}
+                            className="h-8 text-xs"
+                          />
+                          <Textarea value={editingNoteContent} onChange={e => setEditingNoteContent(e.target.value)} rows={2} className="text-xs" />
+                          <div className="flex gap-1 justify-end">
+                            <Button size="sm" variant="ghost" onClick={() => setEditingNote(null)}>Hủy</Button>
+                            <Button size="sm" onClick={handleSaveEditedNote}>Lưu</Button>
+                          </div>
+                        </div>
+                      ) : (
+                        <>
+                          {note.imageDataUri && (
+                            <div className="relative w-full aspect-video border rounded overflow-hidden my-1">
+                              <NextImage src={note.imageDataUri} alt={note.imageFileName || "Note image"} layout="fill" objectFit="contain" data-ai-hint="note image" />
+                            </div>
+                          )}
+                          <p className="whitespace-pre-wrap">{note.content}</p>
+                          <div className="flex justify-between items-center mt-1">
+                            <p className="text-muted-foreground">{note.staffName || 'Nhân viên'} - {format(new Date(note.createdAt), 'dd/MM HH:mm', { locale: vi })}</p>
+                            {note.staffId === staffSession?.id && (
+                              <div className="flex gap-1">
+                                <Button variant="ghost" size="icon" className="h-5 w-5" onClick={() => handleEditNote(note)}><Edit2 className="h-3 w-3" /></Button>
+                                <AlertDialog>
+                                  <AlertDialogTrigger asChild>
+                                    <Button variant="ghost" size="icon" className="h-5 w-5 text-destructive hover:text-destructive"><Trash2 className="h-3 w-3" /></Button>
+                                  </AlertDialogTrigger>
+                                  <AlertDialogContent>
+                                    <AlertDialogHeader><AlertDialogTitle>Xác nhận xóa ghi chú</AlertDialogTitle><AlertDialogDescription>Bạn có chắc muốn xóa ghi chú này?</AlertDialogDescription></AlertDialogHeader>
+                                    <AlertDialogFooter>
+                                      <AlertDialogCancel>Hủy</AlertDialogCancel>
+                                      <AlertDialogAction onClick={() => handleDeleteNote(note.id)} className="bg-destructive hover:bg-destructive/90">Xóa</AlertDialogAction>
+                                    </AlertDialogFooter>
+                                  </AlertDialogContent>
+                                </AlertDialog>
+                              </div>
+                            )}
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  ))}
+                </div>
+                <div className="space-y-1">
+                  {newNoteImageDataUri && (
+                    <div className="relative w-20 h-20 border rounded overflow-hidden">
+                      <NextImage src={newNoteImageDataUri} alt={newNoteImageFileName || "New note image"} layout="fill" objectFit="cover" data-ai-hint="note image" />
+                      <Button variant="ghost" size="icon" className="absolute top-0 right-0 h-5 w-5 bg-black/30 hover:bg-black/50 text-white" onClick={() => { setNewNoteImageDataUri(undefined); setNewNoteImageFileName(undefined); if (newNoteImageInputRef.current) newNoteImageInputRef.current.value = ""; }}><X className="h-3 w-3" /></Button>
+                    </div>
+                  )}
+                  <Input
+                    type="file"
+                    accept="image/*"
+                    ref={newNoteImageInputRef}
+                    onChange={handleNewNoteImageChange}
+                    className="h-8 text-xs"
+                  />
+                  <Textarea
+                    placeholder="Thêm ghi chú nội bộ mới..."
+                    rows={2}
+                    className="text-xs"
+                    value={newNoteContent}
+                    onChange={e => setNewNoteContent(e.target.value)}
+                  />
+                </div>
+                <Button size="sm" className="mt-1 w-full" onClick={handleAddNote} disabled={!newNoteContent.trim() && !newNoteImageDataUri}>
+                  <PlusCircle className="mr-1 h-3 w-3" />Thêm Ghi chú
+                </Button>
+              </div>
+            </div>
+          </ScrollArea>
+        </div>
+      </div>
     </div>
   );
 }
