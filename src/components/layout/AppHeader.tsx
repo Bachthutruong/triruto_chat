@@ -19,7 +19,7 @@ type AppHeaderProps = {
 export function AppHeader({ userSession, onLogout, sidebarTrigger }: AppHeaderProps) {
   const appSettings = useAppSettingsContext();
 
-  const brandName = appSettings?.brandName || 'AetherChat';
+  const brandName = appSettings?.brandName || 'Live Chat';
   const logoDataUri = appSettings?.logoDataUri;
   const logoUrl = appSettings?.logoUrl;
 

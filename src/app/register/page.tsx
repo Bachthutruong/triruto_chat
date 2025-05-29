@@ -27,7 +27,7 @@ export default function RegisterPage() {
   const router = useRouter();
   const { toast } = useToast();
   const appSettings = useAppSettingsContext();
-  const brandName = appSettings?.brandName || 'AetherChat';
+  const brandName = appSettings?.brandName || 'Live Chat';
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -73,12 +73,12 @@ export default function RegisterPage() {
 
   return (
     <div className="flex flex-col min-h-screen bg-muted/40">
-      <AppHeader userSession={null} onLogout={() => {}} />
+      <AppHeader userSession={null} onLogout={() => { }} />
       <main className="flex-grow container mx-auto py-12 px-4 flex flex-col items-center justify-center">
         <Card className="w-full max-w-md shadow-xl">
           <CardHeader className="text-center">
             <CardTitle className="text-2xl flex items-center justify-center">
-                <UserPlus className="mr-2 h-6 w-6 text-primary" /> Đăng ký Người dùng Mới
+              <UserPlus className="mr-2 h-6 w-6 text-primary" /> Đăng ký Người dùng Mới
             </CardTitle>
             <CardDescription>Tạo tài khoản cho {brandName} (Nhân viên/Admin).</CardDescription>
           </CardHeader>
@@ -149,7 +149,7 @@ export default function RegisterPage() {
               <Button type="submit" className="w-full" disabled={isLoading}>
                 {isLoading ? 'Đang đăng ký...' : 'Đăng ký'}
               </Button>
-               <p className="text-sm text-muted-foreground">
+              <p className="text-sm text-muted-foreground">
                 Đã có tài khoản? <Link href="/login" className="text-primary hover:underline">Đăng nhập tại đây</Link>
               </p>
             </CardFooter>

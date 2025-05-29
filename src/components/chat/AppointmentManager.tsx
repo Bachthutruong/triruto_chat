@@ -19,6 +19,31 @@ type AppointmentManagerProps = {
 };
 
 export function AppointmentManager({ isOpen, onClose, appointments, onCancelAppointment, onBookNewAppointmentClick }: AppointmentManagerProps) {
+    const filteredAppointments = appointments
+        .filter(appointment => {
+            const appointmentDate = parseISO(appointment.date);
+            const [hours, minutes] = appointment.time.split(':').map(Number);
+            const appointmentDateTime = new Date(
+                appointmentDate.getFullYear(),
+                appointmentDate.getMonth(),
+                appointmentDate.getDate(),
+                hours,
+                minutes
+            );
+            return appointmentDateTime > new Date();
+        })
+        .sort((a, b) => {
+            const dateA = parseISO(a.date);
+            const dateB = parseISO(b.date);
+            const [hoursA, minutesA] = a.time.split(':').map(Number);
+            const [hoursB, minutesB] = b.time.split(':').map(Number);
+
+            const dateTimeA = new Date(dateA.getFullYear(), dateA.getMonth(), dateA.getDate(), hoursA, minutesA);
+            const dateTimeB = new Date(dateB.getFullYear(), dateB.getMonth(), dateB.getDate(), hoursB, minutesB);
+
+            return dateTimeB.getTime() - dateTimeA.getTime();
+        });
+
     return (
         <Dialog open={isOpen} onOpenChange={onClose}>
             <DialogContent className="sm:max-w-[425px]">
@@ -38,13 +63,13 @@ export function AppointmentManager({ isOpen, onClose, appointments, onCancelAppo
                     )}
                 </DialogHeader>
                 <ScrollArea className="max-h-[400px] pr-4">
-                    {appointments.length === 0 ? (
+                    {filteredAppointments.length === 0 ? (
                         <div className="text-center py-4 text-muted-foreground">
                             Bạn chưa có lịch hẹn nào
                         </div>
                     ) : (
                         <div className="space-y-4">
-                            {appointments.map((appointment) => (
+                            {filteredAppointments.map((appointment) => (
                                 <div key={appointment.appointmentId} className="border rounded-lg p-4 space-y-2">
                                     <div className="flex justify-between items-start">
                                         <div>

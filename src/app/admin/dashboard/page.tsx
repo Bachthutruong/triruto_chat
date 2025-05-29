@@ -15,7 +15,7 @@ import { vi } from 'date-fns/locale';
 
 export default function AdminDashboardPage() {
   const appSettings = useAppSettingsContext();
-  const brandName = appSettings?.brandName || 'AetherChat';
+  const brandName = appSettings?.brandName || 'Live Chat';
   const [stats, setStats] = useState<AdminDashboardStats | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -49,14 +49,14 @@ export default function AdminDashboardPage() {
   if (error) {
     return (
       <div className="space-y-6 text-center">
-         <AlertTriangle className="h-12 w-12 text-destructive mx-auto" />
+        <AlertTriangle className="h-12 w-12 text-destructive mx-auto" />
         <h1 className="text-2xl font-bold text-destructive">Đã xảy ra lỗi</h1>
         <p className="text-muted-foreground">{error}</p>
         <Button onClick={() => window.location.reload()}>Thử lại</Button>
       </div>
     );
   }
-  
+
   if (!stats) {
     return <p className="text-center text-muted-foreground">Không có dữ liệu để hiển thị.</p>;
   }
@@ -66,7 +66,7 @@ export default function AdminDashboardPage() {
     <div className="space-y-6">
       <h1 className="text-3xl font-bold">Bảng điều khiển Admin</h1>
       <p className="text-muted-foreground">Tổng quan về ứng dụng {brandName} của bạn.</p>
-      
+
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -105,10 +105,10 @@ export default function AdminDashboardPage() {
           </CardHeader>
           <CardContent>
             <div className={`text-2xl font-bold ${stats.systemStatus === 'Optimal' ? 'text-green-600' : 'text-destructive'}`}>
-                {stats.systemStatus === 'Optimal' ? 'Tối ưu' : 'Có vấn đề'}
+              {stats.systemStatus === 'Optimal' ? 'Tối ưu' : 'Có vấn đề'}
             </div>
             <p className="text-xs text-muted-foreground">
-                {stats.systemStatus === 'Optimal' ? 'Tất cả hệ thống đang chạy' : 'Kiểm tra nhật ký hệ thống'}
+              {stats.systemStatus === 'Optimal' ? 'Tất cả hệ thống đang chạy' : 'Kiểm tra nhật ký hệ thống'}
             </p>
           </CardContent>
         </Card>
@@ -146,7 +146,7 @@ export default function AdminDashboardPage() {
               <p className="text-muted-foreground">Không có lịch hẹn gần đây.</p>
             )}
             <div className="mt-4 text-right">
-                <Button asChild variant="link"><Link href="/admin/appointments/view">Xem tất cả lịch hẹn</Link></Button>
+              <Button asChild variant="link"><Link href="/admin/appointments/view">Xem tất cả lịch hẹn</Link></Button>
             </div>
           </CardContent>
         </Card>
@@ -158,22 +158,22 @@ export default function AdminDashboardPage() {
           </CardHeader>
           <CardContent>
             {stats.recentCustomers.length > 0 ? (
-                <Table>
-                    <TableHeader><TableRow><TableHead>Tên</TableHead><TableHead>SĐT</TableHead><TableHead>Ngày tạo</TableHead></TableRow></TableHeader>
-                    <TableBody>
-                        {stats.recentCustomers.map((cust) => (
-                            <TableRow key={cust.id}>
-                                <TableCell>{cust.name || `Người dùng ${cust.phoneNumber}`}</TableCell>
-                                <TableCell>{cust.phoneNumber}</TableCell>
-                                <TableCell>{format(new Date(cust.createdAt), 'dd/MM/yyyy HH:mm', { locale: vi })}</TableCell>
-                            </TableRow>
-                        ))}
-                    </TableBody>
-                </Table>
+              <Table>
+                <TableHeader><TableRow><TableHead>Tên</TableHead><TableHead>SĐT</TableHead><TableHead>Ngày tạo</TableHead></TableRow></TableHeader>
+                <TableBody>
+                  {stats.recentCustomers.map((cust) => (
+                    <TableRow key={cust.id}>
+                      <TableCell>{cust.name || `Người dùng ${cust.phoneNumber}`}</TableCell>
+                      <TableCell>{cust.phoneNumber}</TableCell>
+                      <TableCell>{format(new Date(cust.createdAt), 'dd/MM/yyyy HH:mm', { locale: vi })}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
             ) : (
-                <p className="text-muted-foreground">Không có khách hàng mới.</p>
+              <p className="text-muted-foreground">Không có khách hàng mới.</p>
             )}
-             {/* Placeholder for a link to full customer list if/when available in admin */}
+            {/* Placeholder for a link to full customer list if/when available in admin */}
           </CardContent>
         </Card>
       </div>

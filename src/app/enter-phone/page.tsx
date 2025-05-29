@@ -25,7 +25,7 @@ export default function EnterPhonePage() {
   const router = useRouter();
   const { toast } = useToast();
   const appSettings = useAppSettingsContext();
-  const brandName = appSettings?.brandName || 'AetherChat';
+  const brandName = appSettings?.brandName || 'Live Chat';
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -77,12 +77,12 @@ export default function EnterPhonePage() {
 
   const renderLogo = () => {
     if (logoDataUri) {
-      return <Image src={logoDataUri} alt={`${brandName} Logo`} width={100} height={100} className="h-16 w-16 md:h-40 md:w-40 object-contain" data-ai-hint="logo brand" />;
+      return <Image src={logoDataUri} alt={`${brandName} Logo`} width={100} height={100} className="h-30 w-30 md:h-40 md:w-40 object-contain" data-ai-hint="logo brand" />;
     }
     if (logoUrl) {
-      return <Image src={logoUrl} alt={`${brandName} Logo`} width={100} height={100} className="h-16 w-16 md:h-40 md:w-40 object-contain" data-ai-hint="logo brand" />;
+      return <Image src={logoUrl} alt={`${brandName} Logo`} width={100} height={100} className="h-30 w-30 md:h-40 md:w-40 object-contain" data-ai-hint="logo brand" />;
     }
-    return <Logo className="h-16 w-16 md:h-20 md:w-20" />;
+    return <Logo className="h-30 w-30 md:h-40 md:w-40" />;
   };
 
   return (

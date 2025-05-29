@@ -1,4 +1,4 @@
-# **App Name**: AetherChat
+# **App Name**: Live Chat
 
 ## Core Features:
 

@@ -36,6 +36,38 @@ function isImageDataURI(uri: string): boolean {
   return !!mimeMatch;
 }
 
+const LinkifiedText = ({ text }: { text: string | undefined | null }) => {
+  if (!text) return null;
+
+  const urlRegex = /(\b(?:https?:\/\/|www\.)[-a-zA-Z0-9@:%._+~#=]{1,256}\.[a-zA-Z0-9()]{1,6}\b(?:[-a-zA-Z0-9()@:%_+.~#?&//=]*))/g;
+  const parts = text.split(urlRegex);
+
+  return (
+    <>
+      {parts.map((part, index) => {
+        if (part && part.match(urlRegex)) {
+          let href = part;
+          if (part.startsWith('www.') && !part.startsWith('http://') && !part.startsWith('https://')) {
+            href = `http://${part}`;
+          }
+          return (
+            <a
+              key={index}
+              href={href}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-blue-600 dark:text-blue-500 underline hover:text-blue-700 dark:hover:text-blue-400 break-all transition-colors duration-150"
+            >
+              {part}
+            </a>
+          );
+        }
+        return <React.Fragment key={index}>{part}</React.Fragment>;
+      })}
+    </>
+  );
+};
+
 export function MessageBubble({
   message,
   viewerRole,
@@ -49,7 +81,7 @@ export function MessageBubble({
   canPinMore,
 }: MessageBubbleProps) {
   const appSettings = useAppSettingsContext();
-  const brandName = appSettings?.brandName || 'AetherChat';
+  const brandName = appSettings?.brandName || 'Live Chat';
   const [formattedTime, setFormattedTime] = useState('...');
 
   if (!message || !message.id) {
@@ -177,11 +209,19 @@ export function MessageBubble({
       return (
         <>
           {fileElement}
-          {textContent && <p className="text-sm whitespace-pre-wrap mt-1">{textContent}</p>}
+          {textContent && textContent.length > 0 && (
+            <p className="text-sm whitespace-pre-wrap mt-1">
+              <LinkifiedText text={textContent} />
+            </p>
+          )}
         </>
       );
     }
-    return <p className="text-sm whitespace-pre-wrap">{message.content}</p>;
+    return (
+      <p className="text-sm whitespace-pre-wrap">
+        <LinkifiedText text={message.content} />
+      </p>
+    );
   };
 
   const isPinnableMessage = message.id !== 'msg_system_greeting' && !message.id.startsWith('msg_local_user_');

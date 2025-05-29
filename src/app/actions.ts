@@ -254,7 +254,7 @@ function transformNoteDocToNote(noteDoc: any): Note {
 
 function transformAppSettingsDoc(doc: IAppSettings | null): AppSettings | null {
   if (!doc) return null;
-  const defaultBrandName = 'AetherChat';
+  const defaultBrandName = 'LiveChat';
   //@ts-ignore
   const initialDefaultSettings: AppSettings = {
     id: '',
@@ -2193,7 +2193,7 @@ export async function updateProduct(
     }
     // Explicitly set expiryDate if it exists in data (can be null)
     if (data.expiryDate !== undefined) {
-       updatePayload.expiryDate = data.expiryDate;
+      updatePayload.expiryDate = data.expiryDate;
     }
 
     const updatedProduct = await ProductModel.findByIdAndUpdate(

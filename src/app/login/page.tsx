@@ -23,7 +23,7 @@ export default function LoginPage() {
   const router = useRouter();
   const { toast } = useToast();
   const appSettings = useAppSettingsContext();
-  const brandName = appSettings?.brandName || 'AetherChat';
+  const brandName = appSettings?.brandName || 'Live Chat';
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -37,9 +37,9 @@ export default function LoginPage() {
           description: `Chào mừng quay trở lại, ${session.name || session.phoneNumber}!`,
         });
         if (session.role === 'admin') {
-          router.push('/admin/dashboard');
+          router.push('/admin/chat');
         } else if (session.role === 'staff') {
-          router.push('/staff/dashboard');
+          router.push('/staff/chat');
         } else {
           router.push('/');
         }
@@ -59,12 +59,12 @@ export default function LoginPage() {
 
   return (
     <div className="flex flex-col min-h-screen bg-muted/40">
-      <AppHeader userSession={null} onLogout={() => {}} />
+      <AppHeader userSession={null} onLogout={() => { }} />
       <main className="flex-grow container mx-auto py-12 px-4 flex flex-col items-center justify-center">
         <Card className="w-full max-w-md shadow-xl">
           <CardHeader className="text-center">
             <CardTitle className="text-2xl flex items-center justify-center">
-                <LogIn className="mr-2 h-6 w-6 text-primary" /> Đăng nhập Nhân viên & Admin
+              <LogIn className="mr-2 h-6 w-6 text-primary" /> Đăng nhập Nhân viên & Admin
             </CardTitle>
             <CardDescription>Truy cập bảng điều khiển {brandName} của bạn.</CardDescription>
           </CardHeader>
@@ -99,9 +99,9 @@ export default function LoginPage() {
               <Button type="submit" className="w-full" disabled={isLoading}>
                 {isLoading ? 'Đang đăng nhập...' : 'Đăng nhập'}
               </Button>
-              <p className="text-sm text-muted-foreground">
+              {/* <p className="text-sm text-muted-foreground">
                 Chưa có tài khoản? <Link href="/register" className="text-primary hover:underline">Đăng ký tại đây</Link>
-              </p>
+              </p> */}
               <p className="text-sm text-muted-foreground">
                 Bạn là khách hàng? <Link href="/enter-phone" className="text-primary hover:underline">Đến trang Chat</Link>
               </p>

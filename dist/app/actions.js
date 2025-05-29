@@ -225,7 +225,7 @@ function transformAppSettingsDoc(doc) {
     var _a, _b, _c;
     if (!doc)
         return null;
-    const defaultBrandName = 'AetherChat';
+    const defaultBrandName = 'Live Chat';
     //@ts-ignore
     const initialDefaultSettings = {
         id: '',
@@ -337,11 +337,11 @@ export async function createNewConversationForUser(userId, title) {
         customerId: user._id,
         title: title || `Trò chuyện với ${user.name || user.phoneNumber} lúc ${new Date().toLocaleString('vi-VN')}`,
         participants: [{
-                userId: user._id,
-                role: 'customer',
-                name: user.name || `Người dùng ${user.phoneNumber}`,
-                phoneNumber: user.phoneNumber,
-            }],
+            userId: user._id,
+            role: 'customer',
+            name: user.name || `Người dùng ${user.phoneNumber}`,
+            phoneNumber: user.phoneNumber,
+        }],
         messageIds: [],
         pinnedMessageIds: [],
         lastMessageTimestamp: new Date(),
@@ -420,10 +420,10 @@ export async function handleCustomerAccess(phoneNumber) {
     if (customer.conversationIds && customer.conversationIds.length > 0) {
         activeConversation = await ConversationModel.findById(customer.conversationIds[0])
             .populate({
-            path: 'messageIds',
-            model: MessageModel,
-            options: { sort: { timestamp: 1 }, limit: 50 }
-        });
+                path: 'messageIds',
+                model: MessageModel,
+                options: { sort: { timestamp: 1 }, limit: 50 }
+            });
         if (activeConversation)
             console.log("Found existing active conversation:", activeConversation.id);
     }
@@ -1040,15 +1040,15 @@ export async function getCustomerDetails(customerId) {
     const customerDoc = await CustomerModel.findById(customerId)
         .populate('assignedStaffId', 'name')
         .populate({
-        path: 'conversationIds',
-        model: ConversationModel,
-        options: { sort: { lastMessageTimestamp: -1 } },
-        populate: {
-            path: 'messageIds',
-            model: MessageModel,
-            options: { sort: { timestamp: 1 }, limit: 50 }
-        }
-    });
+            path: 'conversationIds',
+            model: ConversationModel,
+            options: { sort: { lastMessageTimestamp: -1 } },
+            populate: {
+                path: 'messageIds',
+                model: MessageModel,
+                options: { sort: { timestamp: 1 }, limit: 50 }
+            }
+        });
     if (!customerDoc) {
         return { customer: null, messages: [], appointments: [], notes: [], conversations: [] };
     }
@@ -1890,10 +1890,12 @@ export async function createProduct(data) {
         isSchedulable: data.isSchedulable,
     };
     if (data.isSchedulable && data.schedulingRules) {
-        productData.schedulingRules = Object.assign(Object.assign({}, data.schedulingRules), { specificDayRules: ((_a = data.schedulingRules.specificDayRules) === null || _a === void 0 ? void 0 : _a.map(r => {
+        productData.schedulingRules = Object.assign(Object.assign({}, data.schedulingRules), {
+            specificDayRules: ((_a = data.schedulingRules.specificDayRules) === null || _a === void 0 ? void 0 : _a.map(r => {
                 const { id } = r, rest = __rest(r, ["id"]);
                 return rest;
-            })) || [] });
+            })) || []
+        });
     }
     else {
         productData.schedulingRules = undefined;
@@ -1915,10 +1917,12 @@ export async function updateProduct(productId, data) {
         isSchedulable: data.isSchedulable,
     };
     if (data.isSchedulable && data.schedulingRules) {
-        updateData.schedulingRules = Object.assign(Object.assign({}, data.schedulingRules), { specificDayRules: ((_a = data.schedulingRules.specificDayRules) === null || _a === void 0 ? void 0 : _a.map(r => {
+        updateData.schedulingRules = Object.assign(Object.assign({}, data.schedulingRules), {
+            specificDayRules: ((_a = data.schedulingRules.specificDayRules) === null || _a === void 0 ? void 0 : _a.map(r => {
                 const { id } = r, rest = __rest(r, ["id"]);
                 return rest;
-            })) || [] });
+            })) || []
+        });
     }
     else {
         updateData.schedulingRules = undefined;
@@ -2104,16 +2108,17 @@ export async function pinMessageToConversation(conversationId, messageId, userSe
     conversation.pinnedMessageIds = newPinnedMessageIds;
     await conversation.save();
     // Return only the message IDs as strings instead of the full populated messages
-    return Object.assign(Object.assign({}, conversation.toObject()), { 
+    return Object.assign(Object.assign({}, conversation.toObject()), {
         //@ts-ignore
-        id: conversation._id.toString(), customerId: conversation.customerId.toString(), 
+        id: conversation._id.toString(), customerId: conversation.customerId.toString(),
         //@ts-ignore
-        staffId: (_b = conversation.staffId) === null || _b === void 0 ? void 0 : _b.toString(), messageIds: conversation.messageIds.map(id => id.toString()), pinnedMessageIds: conversation.pinnedMessageIds.map(id => id.toString()), 
+        staffId: (_b = conversation.staffId) === null || _b === void 0 ? void 0 : _b.toString(), messageIds: conversation.messageIds.map(id => id.toString()), pinnedMessageIds: conversation.pinnedMessageIds.map(id => id.toString()),
         //@ts-ignore
         participants: (conversation.participants || []).map(p => {
             var _a;
             return (Object.assign(Object.assign({}, p), { userId: ((_a = p.userId) === null || _a === void 0 ? void 0 : _a.toString()) || '' }));
-        }), createdAt: new Date(conversation.createdAt), updatedAt: new Date(conversation.updatedAt), lastMessageTimestamp: conversation.lastMessageTimestamp ? new Date(conversation.lastMessageTimestamp) : undefined });
+        }), createdAt: new Date(conversation.createdAt), updatedAt: new Date(conversation.updatedAt), lastMessageTimestamp: conversation.lastMessageTimestamp ? new Date(conversation.lastMessageTimestamp) : undefined
+    });
 }
 export async function unpinMessageFromConversation(conversationId, messageId, userSession) {
     var _a;
@@ -2148,14 +2153,14 @@ export async function unpinMessageFromConversation(conversationId, messageId, us
     // Return the updated conversation with populated messages
     const updatedConversation = await ConversationModel.findById(conversationId)
         .populate({
-        path: 'messageIds',
-        model: MessageModel,
-        options: { sort: { timestamp: 1 } }
-    })
+            path: 'messageIds',
+            model: MessageModel,
+            options: { sort: { timestamp: 1 } }
+        })
         .populate({
-        path: 'pinnedMessageIds',
-        model: MessageModel
-    });
+            path: 'pinnedMessageIds',
+            model: MessageModel
+        });
     return transformConversationDoc(updatedConversation);
 }
 export async function getMessagesByIds(messageIds) {
@@ -2425,10 +2430,10 @@ export async function getPinnedMessagesForConversation(conversationId) {
     }
     const conversation = await ConversationModel.findById(conversationId)
         .populate({
-        path: 'pinnedMessageIds',
-        model: MessageModel,
-        options: { sort: { timestamp: -1 } }
-    });
+            path: 'pinnedMessageIds',
+            model: MessageModel,
+            options: { sort: { timestamp: -1 } }
+        });
     if (!conversation) {
         throw new Error("Không tìm thấy cuộc trò chuyện.");
     }

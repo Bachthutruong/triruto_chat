@@ -49,7 +49,7 @@ export default function HomePage() {
   const router = useRouter();
   const pathname = usePathname();
   const appSettingsContext = useAppSettingsContext();
-  const [brandName, setBrandName] = useState('AetherChat');
+  const [brandName, setBrandName] = useState('Live Chat');
 
   const usersTypingMapRef = useRef<Record<string, string>>({});
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -67,7 +67,7 @@ export default function HomePage() {
         setBrandName(appSettingsContext.brandName);
       } else {
         const settings = await getAppSettings();
-        setBrandName(settings?.brandName || 'AetherChat');
+        setBrandName(settings?.brandName || 'Live Chat');
       }
     };
     updateBrandName();
@@ -608,7 +608,10 @@ export default function HomePage() {
       let systemMessageContent = result.message;
       if (!result.success && result.suggestedSlots && result.suggestedSlots.length > 0) {
         systemMessageContent += "\nCác khung giờ gợi ý khác:\n" +
-          result.suggestedSlots.map(s => `- ${s.date} lúc ${s.time}`).join("\n");
+          result.suggestedSlots.map(s => {
+            const [year, month, day] = s.date.split('-');
+            return `- ${day}/${month}/${year} lúc ${s.time}`;
+          }).join("\n");
       }
 
       if (activeConversation.id) {

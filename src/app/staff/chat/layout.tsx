@@ -263,7 +263,7 @@ export default function StaffChatLayout({ children }: { children: ReactNode }) {
                         <span className="text-xs text-muted-foreground truncate max-w-full">({customer.name || customer.phoneNumber})</span>
                       }
                       {customer.lastMessagePreview && (
-                        <p className="text-xs text-muted-foreground truncate max-w-full mt-0.5">
+                        <p className="text-xs text-muted-foreground truncate max-w-[100px] mt-0.5">
                           {customer.lastMessagePreview}
                         </p>
                       )}

@@ -820,7 +820,10 @@ export default function StaffIndividualChatPage() {
       let systemMessageContent = result.message;
       if (!result.success && result.suggestedSlots && result.suggestedSlots.length > 0) {
         systemMessageContent += "\nCác khung giờ gợi ý khác:\n" +
-          result.suggestedSlots.map(s => `- ${s.date} lúc ${s.time}`).join("\n");
+          result.suggestedSlots.map(s => {
+            const [year, month, day] = s.date.split('-');
+            return `- ${day}/${month}/${year} lúc ${s.time}`;
+          }).join("\n");
       }
 
       if (activeConversation?.id) {
@@ -889,12 +892,25 @@ export default function StaffIndividualChatPage() {
         priority: reminderPriority || 'medium',
         reminderType: reminderType || 'one_time',
       };
+
       if (reminderType === 'recurring') {
+        const intervalValueInput = reminderIntervalValue || 1;
+        let calculatedIntervalValue: number;
+
+        if (reminderIntervalType === 'days') {
+          calculatedIntervalValue = intervalValueInput * 24 * 60 * 60 * 1000; // Convert days to milliseconds
+        } else if (reminderIntervalType === 'weeks') {
+          calculatedIntervalValue = intervalValueInput * 7 * 24 * 60 * 60 * 1000; // Convert weeks to milliseconds
+        } else { // For 'months', assume backend expects number of months
+          calculatedIntervalValue = intervalValueInput;
+        }
+
         reminderData.interval = {
           type: reminderIntervalType || 'days',
-          value: reminderIntervalValue || 1
+          value: calculatedIntervalValue
         };
       }
+
       //@ts-ignore
       let newOrUpdatedReminder;
       if (editingReminder) {
@@ -1019,19 +1035,19 @@ export default function StaffIndividualChatPage() {
     const failedAssignments = results.filter(r => !r.success).length;
 
     if (successfulAssignments > 0) {
-        toast({
-          title: "Thành công",
-          description: `Đã gán thành công ${successfulAssignments} sản phẩm.`,
-        });
+      toast({
+        title: "Thành công",
+        description: `Đã gán thành công ${successfulAssignments} sản phẩm.`,
+      });
     }
 
     if (failedAssignments > 0) {
-       const errorMessages = results.filter(r => !r.success).map(r => r.message).join(', ');
-       toast({
-          title: "Lỗi",
-          description: `Không thể gán ${failedAssignments} sản phẩm. Chi tiết: ${errorMessages}`,
-          variant: "destructive",
-        });
+      const errorMessages = results.filter(r => !r.success).map(r => r.message).join(', ');
+      toast({
+        title: "Lỗi",
+        description: `Không thể gán ${failedAssignments} sản phẩm. Chi tiết: ${errorMessages}`,
+        variant: "destructive",
+      });
     }
 
 
@@ -1166,6 +1182,10 @@ export default function StaffIndividualChatPage() {
   const imageMedia = allMediaMessages.filter(msg => isImageDataURI(msg.content));
   const fileMedia = allMediaMessages.filter(msg => !isImageDataURI(msg.content));
   const mediaViewPath = staffSession?.role === 'admin' ? `/admin/media/${customerId}` : `/staff/media/${customerId}`;
+
+  const upcomingAppointments = appointments
+    .filter(appt => new Date(appt.date) >= new Date())
+    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
 
   return (
@@ -1443,13 +1463,13 @@ export default function StaffIndividualChatPage() {
             </Accordion>
 
             <div className="border-t pt-3">
-              <h4 className="font-semibold text-sm flex items-center mb-1"><Clock className="mr-2 h-4 w-4 text-primary" />Lịch hẹn ({appointments.length})</h4>
-              {appointments.slice(0, 2).map(appt => (
+              <h4 className="font-semibold text-sm flex items-center mb-1"><Clock className="mr-2 h-4 w-4 text-primary" />Lịch hẹn ({upcomingAppointments.length})</h4>
+              {upcomingAppointments.slice(0, 2).map(appt => (
                 <div key={appt.appointmentId} className="text-xs p-1.5 bg-muted/50 rounded mb-1">
                   <p>{appt.service} - {format(new Date(appt.date), 'dd/MM/yy', { locale: vi })} lúc {appt.time} ({getStatusLabel(appt.status)})</p>
                 </div>
               ))}
-              {appointments.length > 2 && staffSession &&
+              {upcomingAppointments.length > 2 && staffSession &&
                 <Button variant="link" size="sm" className="p-0 h-auto text-primary" asChild>
                   <Link href={staffSession.role === 'admin' ? '/admin/appointments/view' : '/staff/appointments'}>
                     Xem tất cả
@@ -1576,7 +1596,7 @@ export default function StaffIndividualChatPage() {
                       </div>
                       {cp.notes && <p className="text-muted-foreground italic text-[11px]">Ghi chú: {cp.notes}</p>}
                       <div className="flex justify-end">
-                         <Button variant="ghost" size="icon" className="h-5 w-5" onClick={() => openEditProductDialog(cp)}><Edit2 className="h-3 w-3" /></Button>
+                        <Button variant="ghost" size="icon" className="h-5 w-5" onClick={() => openEditProductDialog(cp)}><Edit2 className="h-3 w-3" /></Button>
                       </div>
                     </div>
                   ))}
@@ -1842,7 +1862,23 @@ export default function StaffIndividualChatPage() {
                         {isAssigning ? "Đang hủy..." : "Hủy giao"}
                       </Button>
                     </div>
-                  ) : <p className="text-xs text-muted-foreground mb-1">Khách chưa được giao.</p>}
+                  ) : <p className="text-xs text-muted-foreground mb-1">Khách chưa được giao.</p>
+                  }
+                  <div className="flex gap-1 mt-1">
+                    <Select value={selectedStaffToAssign} onValueChange={setSelectedStaffToAssign} >
+                      <SelectTrigger className="h-7 text-xs flex-grow" disabled={isAssigning}>
+                        <SelectValue placeholder="Chọn nhân viên để giao" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {allStaff.map(staff => (
+                          <SelectItem key={staff.id} value={staff.id} className="text-xs">{staff.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Button size="sm" onClick={handleAssignToSelectedStaff} className="h-7 text-xs px-2 shrink-0" disabled={!selectedStaffToAssign || isAssigning}>
+                      {isAssigning ? "Đang giao..." : "Giao"}
+                    </Button>
+                  </div>
                 </div>
               )}
 
@@ -2041,13 +2077,13 @@ export default function StaffIndividualChatPage() {
 
               {/* Lịch hẹn Section */}
               <div className="border-t pt-3">
-                <h4 className="font-semibold text-sm flex items-center mb-1"><Clock className="mr-2 h-4 w-4 text-primary" />Lịch hẹn ({appointments.length})</h4>
-                {appointments.slice(0, 2).map(appt => (
+                <h4 className="font-semibold text-sm flex items-center mb-1"><Clock className="mr-2 h-4 w-4 text-primary" />Lịch hẹn ({upcomingAppointments.length})</h4>
+                {upcomingAppointments.slice(0, 2).map(appt => (
                   <div key={appt.appointmentId} className="text-xs p-1.5 bg-muted/50 rounded mb-1">
                     <p>{appt.service} - {format(new Date(appt.date), 'dd/MM/yy', { locale: vi })} lúc {appt.time} ({getStatusLabel(appt.status)})</p>
                   </div>
                 ))}
-                {appointments.length > 2 && staffSession &&
+                {upcomingAppointments.length > 2 && staffSession &&
                   <Button variant="link" size="sm" className="p-0 h-auto text-primary" asChild>
                     <Link href={staffSession.role === 'admin' ? '/admin/appointments/view' : '/staff/appointments'}>
                       Xem tất cả
@@ -2176,7 +2212,7 @@ export default function StaffIndividualChatPage() {
                         </div>
                         {cp.notes && <p className="text-muted-foreground italic text-[11px]">Ghi chú: {cp.notes}</p>}
                         <div className="flex justify-end">
-                           <Button variant="ghost" size="icon" className="h-5 w-5" onClick={() => openEditProductDialog(cp)}><Edit2 className="h-3 w-3" /></Button>
+                          <Button variant="ghost" size="icon" className="h-5 w-5" onClick={() => openEditProductDialog(cp)}><Edit2 className="h-3 w-3" /></Button>
                         </div>
                       </div>
                     ))}
@@ -2201,94 +2237,94 @@ export default function StaffIndividualChatPage() {
             <DialogDescription>Chọn sản phẩm/dịch vụ để gán cho khách hàng này</DialogDescription>
           </DialogHeader>
           <ScrollArea className="grid gap-4 py-4 flex-grow">
-             {createProductForm.map((item, index) => (
-               <div key={index} className="border rounded-md mt-4 p-4 space-y-3 relative">
-                 {createProductForm.length > 1 && (
-                    <Button
-                       variant="ghost"
-                       size="icon"
-                       className="absolute top-2 right-2 h-6 w-6 text-destructive"
-                       onClick={() => setCreateProductForm(prev => prev.filter((_, i) => i !== index))}
-                       title="Xóa sản phẩm này"
-                    >
-                       <X className="h-4 w-4" />
-                    </Button>
-                 )}
-                 <div>
-                   <Label htmlFor={`product-${index}`}>Sản phẩm/Dịch vụ</Label>
-                   <Select
-                     value={item.productId}
-                     onValueChange={(value) => {
-                       const product = products.find(p => p.id === value);
-                       setCreateProductForm(prev => prev.map((p, i) => i === index ? {
-                         ...p,
-                         productId: value,
-                         totalSessions: product?.defaultSessions || 1,
-                         expiryDays: product?.expiryDays
-                       } : p));
-                     }}
-                   >
-                     <SelectTrigger id={`product-${index}`} className="w-full">
-                       <SelectValue placeholder="Chọn sản phẩm..." />
-                     </SelectTrigger>
-                     <SelectContent>
-                       {products.filter(p => p.isActive).map((product) => (
-                         <SelectItem key={product.id} value={product.id}>
-                           <div className="flex flex-col">
-                             <span>{product.name}</span>
-                             <span className="text-xs text-muted-foreground">
-                               {product.category} - {product.price.toLocaleString('vi-VN')}đ
-                             </span>
-                           </div>
-                         </SelectItem>
-                       ))}
-                     </SelectContent>
-                   </Select>
-                 </div>
-                 <div className="grid grid-cols-2 gap-4">
-                   <div>
-                     <Label htmlFor={`sessions-${index}`}>Số buổi</Label>
-                     <Input
-                       id={`sessions-${index}`}
-                       type="number"
-                       min="1"
-                       value={item.totalSessions}
-                       onChange={(e) => setCreateProductForm(prev => prev.map((p, i) => i === index ? {
-                         ...p,
-                         totalSessions: parseInt(e.target.value) || 1
-                       } : p))}
-                     />
-                   </div>
-                   <div>
-                     <Label htmlFor={`expiry-${index}`}>Thời hạn (ngày)</Label>
-                     <Input
-                       id={`expiry-${index}`}
-                       type="number"
-                       min="1"
-                       value={item.expiryDays || ''}
-                       onChange={(e) => setCreateProductForm(prev => prev.map((p, i) => i === index ? {
-                         ...p,
-                         expiryDays: e.target.value ? parseInt(e.target.value) : undefined
-                       } : p))}
-                       placeholder="Không giới hạn"
-                     />
-                   </div>
-                 </div>
-                 <div>
-                   <Label htmlFor={`notes-${index}`}>Ghi chú</Label>
-                   <Textarea
-                     id={`notes-${index}`}
-                     value={item.notes}
-                     onChange={(e) => setCreateProductForm(prev => prev.map((p, i) => i === index ? { ...p, notes: e.target.value } : p))}
-                     placeholder="Ghi chú thêm..."
-                     rows={2}
-                   />
-                 </div>
-               </div>
-             ))}
-             <Button variant="outline" className="w-full mt-4" onClick={() => setCreateProductForm(prev => [...prev, { customerId: '', productId: '', totalSessions: 1, expiryDays: undefined, notes: '', staffId: '' }])}>
-               <PlusCircle className="mr-1 h-4 w-4" /> Thêm sản phẩm khác
-             </Button>
+            {createProductForm.map((item, index) => (
+              <div key={index} className="border rounded-md mt-4 p-4 space-y-3 relative">
+                {createProductForm.length > 1 && (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="absolute top-2 right-2 h-6 w-6 text-destructive"
+                    onClick={() => setCreateProductForm(prev => prev.filter((_, i) => i !== index))}
+                    title="Xóa sản phẩm này"
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
+                )}
+                <div>
+                  <Label htmlFor={`product-${index}`}>Sản phẩm/Dịch vụ</Label>
+                  <Select
+                    value={item.productId}
+                    onValueChange={(value) => {
+                      const product = products.find(p => p.id === value);
+                      setCreateProductForm(prev => prev.map((p, i) => i === index ? {
+                        ...p,
+                        productId: value,
+                        totalSessions: product?.defaultSessions || 1,
+                        expiryDays: product?.expiryDays
+                      } : p));
+                    }}
+                  >
+                    <SelectTrigger id={`product-${index}`} className="w-full">
+                      <SelectValue placeholder="Chọn sản phẩm..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {products.filter(p => p.isActive).map((product) => (
+                        <SelectItem key={product.id} value={product.id}>
+                          <div className="flex flex-col">
+                            <span>{product.name}</span>
+                            <span className="text-xs text-muted-foreground">
+                              {product.category} - {product.price.toLocaleString('vi-VN')}đ
+                            </span>
+                          </div>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label htmlFor={`sessions-${index}`}>Số buổi</Label>
+                    <Input
+                      id={`sessions-${index}`}
+                      type="number"
+                      min="1"
+                      value={item.totalSessions}
+                      onChange={(e) => setCreateProductForm(prev => prev.map((p, i) => i === index ? {
+                        ...p,
+                        totalSessions: parseInt(e.target.value) || 1
+                      } : p))}
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor={`expiry-${index}`}>Thời hạn (ngày)</Label>
+                    <Input
+                      id={`expiry-${index}`}
+                      type="number"
+                      min="1"
+                      value={item.expiryDays || ''}
+                      onChange={(e) => setCreateProductForm(prev => prev.map((p, i) => i === index ? {
+                        ...p,
+                        expiryDays: e.target.value ? parseInt(e.target.value) : undefined
+                      } : p))}
+                      placeholder="Không giới hạn"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <Label htmlFor={`notes-${index}`}>Ghi chú</Label>
+                  <Textarea
+                    id={`notes-${index}`}
+                    value={item.notes}
+                    onChange={(e) => setCreateProductForm(prev => prev.map((p, i) => i === index ? { ...p, notes: e.target.value } : p))}
+                    placeholder="Ghi chú thêm..."
+                    rows={2}
+                  />
+                </div>
+              </div>
+            ))}
+            <Button variant="outline" className="w-full mt-4" onClick={() => setCreateProductForm(prev => [...prev, { customerId: '', productId: '', totalSessions: 1, expiryDays: undefined, notes: '', staffId: '' }])}>
+              <PlusCircle className="mr-1 h-4 w-4" /> Thêm sản phẩm khác
+            </Button>
           </ScrollArea>
           <DialogFooter>
             <Button variant="outline" onClick={() => { setIsCreateProductDialogOpen(false); resetCreateProductForm(); }}>Hủy</Button>

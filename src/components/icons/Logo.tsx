@@ -8,7 +8,7 @@ export function Logo({ className, ...props }: SVGProps<SVGSVGElement>) {
       viewBox="0 0 100 100"
       width="40"
       height="40"
-      aria-label="AetherChat Logo"
+      aria-label="Live Chat Logo"
       className={cn(className)}
       {...props}
     >

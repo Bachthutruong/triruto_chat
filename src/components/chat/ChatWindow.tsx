@@ -128,7 +128,7 @@ export function ChatWindow({
                 onClick={() => onScrollToMessage && onScrollToMessage(msg.id)}
                 title="Nhấn để cuộn đến tin nhắn gốc"
               >
-                <p className="text-xs text-amber-800 truncate leading-snug">
+                <p className="text-xs text-amber-800 truncate leading-snug max-w-[300px]">
                   <span className="font-medium">{msg.name || (msg.sender === 'user' ? 'Khách' : 'Hệ thống')}:</span> {msg.content.split('\n')[0]} {/* Show first line */}
                 </p>
               </Button>

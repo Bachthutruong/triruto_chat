@@ -42,6 +42,7 @@ export default function AdminChatLayout({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(true); // For initial load
   const [error, setError] = useState<string | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [mainContentWidth, setMainContentWidth] = useState('350px'); // Default for mobile, updated by useEffect
 
   const [allAvailableTags, setAllAvailableTags] = useState<string[]>([]);
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
@@ -51,6 +52,28 @@ export default function AdminChatLayout({ children }: { children: ReactNode }) {
   const currentCustomerId = params.customerId as string | undefined;
 
   const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Effect to handle responsive width for main content
+  useEffect(() => {
+    const getResponsiveWidth = () => {
+      // md breakpoint is 768px.
+      // Use 350px for mobile (less than 768px), 700px for desktop (768px and above)
+      return typeof window !== 'undefined' && window.innerWidth < 768 ? '350px' : '700px';
+    };
+
+    setMainContentWidth(getResponsiveWidth()); // Set initial width
+
+    const handleResize = () => {
+      setMainContentWidth(getResponsiveWidth());
+    };
+
+    if (typeof window !== 'undefined') {
+      window.addEventListener('resize', handleResize);
+      return () => {
+        window.removeEventListener('resize', handleResize);
+      };
+    }
+  }, []); // Empty dependency array ensures this runs only on mount and unmount
 
   // Close sidebar when route changes on mobile
   useEffect(() => {
@@ -168,7 +191,7 @@ export default function AdminChatLayout({ children }: { children: ReactNode }) {
   }
 
   const sidebarContent = (
-    <Card className="h-full flex flex-col rounded-none border-r border-border overflow-hidden">
+    <Card className="h-full flex flex-col rounded-lg border-r border-border overflow-hidden">
       <CardHeader className="border-b border-border shrink-0 p-3 sm:p-6">
         <div className="flex items-center justify-between">
           <CardTitle className="flex items-center text-sm sm:text-base">
@@ -263,7 +286,7 @@ export default function AdminChatLayout({ children }: { children: ReactNode }) {
                         <span className="text-xs text-muted-foreground truncate max-w-full">({customer.name || customer.phoneNumber})</span>
                       }
                       {customer.lastMessagePreview && (
-                        <p className="text-xs text-muted-foreground truncate max-w-full mt-0.5">
+                        <p className="text-xs text-muted-foreground truncate max-w-[100px] mt-0.5">
                           {customer.lastMessagePreview}
                         </p>
                       )}
@@ -296,7 +319,7 @@ export default function AdminChatLayout({ children }: { children: ReactNode }) {
   );
 
   return (
-    <div className="flex h-[calc(100vh-var(--header-height,4rem))] relative">
+    <div className="flex w-full h-[calc(100vh-var(--header-height,4rem))] relative">
       {/* Mobile Sidebar Overlay */}
       {isSidebarOpen && (
         <div
@@ -307,39 +330,34 @@ export default function AdminChatLayout({ children }: { children: ReactNode }) {
 
       {/* Sidebar */}
       <div className={cn(
-        "fixed inset-y-0 left-0 z-50 w-80 transform transition-transform duration-300 ease-in-out md:relative md:translate-x-0 md:w-1/3 lg:w-1/4",
+        "fixed inset-y-0 left-0 z-50 transform transition-transform duration-300 ease-in-out md:relative md:translate-x-0 md:w-1/3 lg:w-1/4",
         isSidebarOpen ? "translate-x-0" : "-translate-x-full"
-      )}>
+      )} style={{ width: '300px' }}>
         {sidebarContent}
       </div>
 
       {/* Main Content */}
-      <div className="flex-1 h-full overflow-hidden flex flex-col">
-        {/* Mobile Header */}
+      <div className="h-full overflow-hidden flex flex-col">
+        {/* Mobile Header - UNCOMMENTED */}
         <div className="md:hidden flex items-center justify-between p-3 border-b border-border bg-background">
           <div className="flex items-center gap-2">
             {currentCustomerId ? (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={handleBackToList}
-                className="p-1"
-              >
-                <ArrowLeft className="h-4 w-4" />
-              </Button>
+              <>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setIsSidebarOpen(true)}
+                  className="p-1"
+                >
+                  <Menu className="h-4 w-4" />
+                </Button>
+                <h1 className="font-semibold text-sm">
+                  {'Danh sách khách hàng'}
+                </h1>
+              </>
             ) : (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setIsSidebarOpen(true)}
-                className="p-1"
-              >
-                <Menu className="h-4 w-4" />
-              </Button>
+              <></>
             )}
-            <h1 className="font-semibold text-sm">
-              {currentCustomerId ? 'Chat' : 'Danh sách khách hàng'}
-            </h1>
           </div>
         </div>
 
