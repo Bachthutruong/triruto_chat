@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
@@ -26,6 +25,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { getAllProducts, deleteProduct } from '@/app/actions';
 import type { ProductItem } from '@/lib/types';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 export default function ProductsManagementPage() {
   const [products, setProducts] = useState<ProductItem[]>([]);
@@ -35,6 +35,9 @@ export default function ProductsManagementPage() {
   const { toast } = useToast();
   // const pathname = usePathname(); // Removed
   // const [isAdminRoute, setIsAdminRoute] = useState(false); // Removed
+
+  // New state for type filter
+  const [typeFilter, setTypeFilter] = useState<'all' | 'product' | 'service'>('all');
 
   // useEffect(() => { // Removed useEffect for isAdminRoute
   //   if (pathname) {
@@ -65,19 +68,27 @@ export default function ProductsManagementPage() {
   }, [fetchProducts]);
 
   useEffect(() => {
-    if (searchQuery.trim() === '') {
-      setFilteredProducts(products);
-      return;
-    }
+    console.log('Filtering products...', { searchQuery, typeFilter, productCount: products.length });
     const lowerQuery = searchQuery.toLowerCase();
     const filtered = products.filter(
-      (product) =>
-        product.name.toLowerCase().includes(lowerQuery) ||
-        (product.description && product.description.toLowerCase().includes(lowerQuery)) ||
-        (product.category && product.category.toLowerCase().includes(lowerQuery))
+      (product) => {
+        const matchesSearch = 
+          product.name.toLowerCase().includes(lowerQuery) ||
+          (product.description && product.description.toLowerCase().includes(lowerQuery)) ||
+          (product.category && product.category.toLowerCase().includes(lowerQuery));
+          
+        const matchesType = 
+          typeFilter === 'all' || 
+          product.type === typeFilter;
+          
+        // console.log(`Product: ${product.name}, Type: ${product.type}, Expiry: ${product.expiryDate}, Matches Search: ${matchesSearch}, Matches Type: ${matchesType}`); // Detailed logging per product (can be noisy)
+
+        return matchesSearch && matchesType;
+      }
     );
+    console.log('Filtering complete. Filtered count:', filtered.length);
     setFilteredProducts(filtered);
-  }, [products, searchQuery]);
+  }, [products, searchQuery, typeFilter]);
 
   const handleDeleteProduct = async (productId: string) => {
     try {
@@ -98,7 +109,7 @@ export default function ProductsManagementPage() {
     }
   };
 
-  const formatDateDisplay = (date: Date | string | undefined) => {
+  const formatDateDisplay = (date: Date | string | undefined | null) => {
     if (!date) return 'N/A';
     try {
       return format(new Date(date), 'dd/MM/yyyy');
@@ -142,6 +153,19 @@ export default function ProductsManagementPage() {
             onChange={(e) => setSearchQuery(e.target.value)}
           />
         </div>
+        {/* New Type Filter */}
+        <div className="w-full sm:w-auto">
+          <Select value={typeFilter} onValueChange={(value: 'all' | 'product' | 'service') => setTypeFilter(value)}>
+            <SelectTrigger className="w-full sm:w-[180px]">
+              <SelectValue placeholder="Lọc theo loại" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Tất cả</SelectItem>
+              <SelectItem value="product">Sản phẩm</SelectItem>
+              <SelectItem value="service">Dịch vụ</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
       </div>
 
       <Card>
@@ -168,7 +192,9 @@ export default function ProductsManagementPage() {
               <Table>
                 <TableHeader>
                   <TableRow>
+                    <TableHead>Loại</TableHead>
                     <TableHead>Tên sản phẩm</TableHead>
+                    <TableHead className="hidden md:table-cell">Hạn sử dụng</TableHead>
                     <TableHead className="hidden md:table-cell">Danh mục</TableHead>
                     <TableHead>Giá</TableHead>
                     <TableHead className="hidden md:table-cell">Ngày tạo</TableHead>
@@ -181,7 +207,11 @@ export default function ProductsManagementPage() {
                 <TableBody>
                   {filteredProducts.map((product) => (
                     <TableRow key={product.id}>
+                      {/* Assuming product.type exists and is either 'product' or 'service' */}
+                      <TableCell>{product.type === 'service' ? 'Dịch vụ' : 'Sản phẩm'}</TableCell>
                       <TableCell className="font-medium">{product.name}</TableCell>
+                      {/* Assuming product.expiryDate exists and is a Date or null */}
+                      <TableCell className="hidden md:table-cell">{formatDateDisplay(product.expiryDate)}</TableCell>
                       <TableCell className="hidden md:table-cell">{product.category}</TableCell>
                       <TableCell>{formatPrice(product.price)}</TableCell>
                       <TableCell className="hidden md:table-cell">{formatDateDisplay(product.createdAt)}</TableCell>

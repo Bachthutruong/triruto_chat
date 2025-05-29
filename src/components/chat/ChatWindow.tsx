@@ -178,6 +178,7 @@ export function ChatWindow({
         appointments={appointments}
         onCancelAppointment={onCancelAppointment}
         onAppointmentBooked={onAppointmentBooked}
+        viewerRole={viewerRole}
       />
     </div>
   );

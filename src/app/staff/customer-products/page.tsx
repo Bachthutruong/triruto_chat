@@ -335,7 +335,7 @@ export default function StaffCustomerProductsPage() {
                                                             <div className="font-medium">{cp.productName}</div>
                                                             <div className="text-sm text-muted-foreground">
                                                                 <Package className="w-3 h-3 inline mr-1" />
-                                                                {typeof cp.productId === 'object'
+                                                                {typeof cp.productId === 'object' && cp.productId !== null
                                                                     ? ((cp.productId as any).name || (cp.productId as any)._id)
                                                                     : cp.productId}
                                                             </div>

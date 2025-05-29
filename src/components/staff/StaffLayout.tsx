@@ -29,7 +29,7 @@ export function StaffLayout({ children, currentSession }: StaffLayoutProps) {
           sidebarTrigger={<SidebarTrigger className="sm:hidden" />}
         />
         <div className="flex flex-1 mt-16"> {/* mt-16 for fixed AppHeader */}
-          <Sidebar className="hidden sm:block fixed h-[calc(100vh-4rem)]" collapsible="icon" side="left" variant="sidebar"> {/* Ensure sidebar doesn't overlap content */}
+          <Sidebar className="hidden sm:block fixed h-[calc(100vh-4rem)]" collapsible="icon" side="left" variant="sidebar" style={{ '--sidebar-width-icon': '2rem' } as React.CSSProperties}> {/* Ensure sidebar doesn't overlap content */}
             <StaffSidebarContent />
           </Sidebar>
           <SidebarInset> {/* Manages margin based on desktop sidebar state */}

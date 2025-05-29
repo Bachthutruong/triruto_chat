@@ -124,12 +124,12 @@ export default function EnterPhonePage() {
                   </>
                 )}
               </Button>
-              <p className="text-sm text-center text-muted-foreground">
+              {/* <p className="text-sm text-center text-muted-foreground">
                 Bạn là Nhân viên hoặc Admin?{' '}
                 <Link href="/login" className="text-primary hover:underline">
                   Đăng nhập tại đây <LogIn className="inline ml-1 h-4 w-4" />
                 </Link>
-              </p>
+              </p> */}
             </CardFooter>
           </form>
         </Card>

@@ -74,11 +74,8 @@ export function AppHeader({ userSession, onLogout, sidebarTrigger }: AppHeaderPr
               </Button>
             </>
           ) : (
-            <Button variant="outline" size="sm" asChild>
-              <Link href="/login">
-                <LogIn className="mr-2 h-4 w-4" /> Đăng nhập
-              </Link>
-            </Button>
+            // 
+            <p></p>
           )}
         </nav>
       </div>

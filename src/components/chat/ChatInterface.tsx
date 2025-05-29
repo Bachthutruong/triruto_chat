@@ -108,7 +108,7 @@ export function ChatInterface({
     return <div className="flex-grow flex items-center justify-center p-4"><p>Không tìm thấy phiên làm việc.</p></div>;
   }
 
-  const shouldShowConversationSidebar = viewerRole !== 'customer_view';
+  const shouldShowConversationSidebar = viewerRole !== 'customer';
   const activeConversationId = activeConversation?.id || null;
 
   return (
@@ -193,7 +193,7 @@ export function ChatInterface({
           </div>
         )}
         <div className="flex-grow h-full rounded-none">
-          {(activeConversationId || viewerRole === 'customer_view') ? (
+          {(activeConversationId || viewerRole === 'customer') ? (
             <ChatWindow
               userSession={userSession}
               messages={messages}

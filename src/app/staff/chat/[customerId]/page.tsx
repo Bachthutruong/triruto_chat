@@ -56,6 +56,11 @@ import mongoose from 'mongoose';
 import { IReminder } from '@/models/Reminder.model';
 import { Badge } from '@/components/ui/badge';
 
+// New imports for product assignment
+import { getAllProducts } from '@/app/actions';
+import type { ProductItem, CustomerProduct, CreateInvoiceData } from '@/lib/types';
+import { Package, Calendar } from 'lucide-react';
+
 const MAX_FILE_SIZE_MB = 5;
 const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
 const MAX_NOTE_IMAGE_SIZE_MB = 2;
@@ -91,6 +96,10 @@ export default function StaffIndividualChatPage() {
   const [newTagName, setNewTagName] = useState('');
   const [editingInternalName, setEditingInternalName] = useState(false);
   const [internalNameInput, setInternalNameInput] = useState('');
+
+  // State for sidebar image preview
+  const [selectedSidebarImagePreview, setSelectedSidebarImagePreview] = useState<string | null>(null);
+  const [selectedSidebarImageName, setSelectedSidebarImageName] = useState<string>('');
 
   // Note states
   const [newNoteContent, setNewNoteContent] = useState('');
@@ -136,6 +145,29 @@ export default function StaffIndividualChatPage() {
 
   const [isCustomerInfoOpen, setIsCustomerInfoOpen] = useState(false);
 
+  // New state for product assignment
+  const [products, setProducts] = useState<ProductItem[]>([]);
+  const [customerProducts, setCustomerProducts] = useState<CustomerProduct[]>([]);
+  const [isCreateProductDialogOpen, setIsCreateProductDialogOpen] = useState(false);
+  const [isEditProductDialogOpen, setIsEditProductDialogOpen] = useState(false);
+  const [editingCustomerProduct, setEditingCustomerProduct] = useState<CustomerProduct | null>(null);
+  const [createProductForm, setCreateProductForm] = useState<CreateInvoiceData[]>([{
+    customerId: '',
+    productId: '',
+    totalSessions: 1,
+    expiryDays: undefined,
+    notes: '',
+    staffId: ''
+  }]);
+  const [editProductForm, setEditProductForm] = useState({
+    productName: '',
+    totalSessions: 1,
+    usedSessions: 0,
+    expiryDays: undefined as number | undefined,
+    notes: '',
+    isActive: true
+  });
+
   const fetchPinnedMessagesForConversation = useCallback(async (conversation: Conversation | null) => {
     if (!conversation || !conversation.pinnedMessageIds || conversation.pinnedMessageIds.length === 0) {
       setPinnedMessages([]);
@@ -150,6 +182,12 @@ export default function StaffIndividualChatPage() {
       setPinnedMessages([]);
     }
   }, []);
+
+  // Handler for opening image preview from the sidebar/drawer
+  const handleSidebarImageClick = (dataUri: string, fileName: string) => {
+    setSelectedSidebarImagePreview(dataUri);
+    setSelectedSidebarImageName(fileName);
+  };
 
 
   const fetchChatData = useCallback(async () => {
@@ -218,6 +256,39 @@ export default function StaffIndividualChatPage() {
     }
   }, [customerId, toast, staffSession, fetchPinnedMessagesForConversation]);
 
+  // New data fetching function for products and customer products
+  const fetchProductData = useCallback(async () => {
+    if (!staffSession || !customer?.id) return;
+    try {
+      const [productsData, customerProductsData] = await Promise.all([
+        getAllProducts(),
+        fetchCustomerProductsForCustomer(customer.id)
+      ]);
+      setProducts(productsData);
+      setCustomerProducts(customerProductsData);
+    } catch (error) {
+      console.error('Error fetching product data:', error);
+      toast({ title: "Lỗi", description: "Không thể tải dữ liệu sản phẩm/dịch vụ của khách hàng.", variant: "destructive" });
+    }
+  }, [staffSession, customer?.id, toast]);
+
+  // New function to fetch customer products for a specific customer
+  const fetchCustomerProductsForCustomer = async (custId: string) => {
+    try {
+      const response = await fetch(`/api/customer-products?customerId=${custId}`);
+      const data = await response.json();
+      if (data.success) {
+        return data.data;
+      } else {
+        console.error('Error fetching customer products for customer:', data.error);
+        return [];
+      }
+    } catch (error) {
+      console.error('Error fetching customer products for customer:', error);
+      throw error;
+    }
+  };
+
   useEffect(() => {
     const sessionString = sessionStorage.getItem('aetherChatUserSession');
     if (sessionString) {
@@ -246,6 +317,13 @@ export default function StaffIndividualChatPage() {
       fetchChatData();
     }
   }, [fetchChatData, staffSession]);
+
+  // Fetch product data when customer and staffSession are available
+  useEffect(() => {
+    if (customer && staffSession) {
+      fetchProductData();
+    }
+  }, [customer, staffSession, fetchProductData]);
 
   const handlePinnedMessagesUpdated = useCallback(({ conversationId: updatedConvId, pinnedMessageIds: newPinnedIds }: { conversationId: string, pinnedMessageIds: string[] }) => {
     console.log(`[Staff] Received pinnedMessagesUpdated for conv ${updatedConvId}. New IDs:`, newPinnedIds, "Current active conv ID:", activeConversation?.id);
@@ -853,13 +931,181 @@ export default function StaffIndividualChatPage() {
       if (!customer) return;
       try {
         const res = await getAllReminders({ customerId: customer.id });
-        setReminders(res || []);
+        // Ensure data is plain JSON object
+        setReminders(res ? JSON.parse(JSON.stringify(res)) : []);
       } catch (error) {
         setReminders([]);
       }
     }
     fetchReminders();
   }, [customer]);
+
+  // New functions for product assignment
+  const formatDate = (date: Date | string | undefined) => {
+    if (!date) return 'Không có';
+    try {
+      return new Date(date).toLocaleDateString('vi-VN');
+    } catch {
+      return 'Invalid Date';
+    }
+  };
+
+  const getStatusBadge = (customerProduct: CustomerProduct) => {
+    const now = new Date();
+    const isExpired = customerProduct.expiryDate && new Date(customerProduct.expiryDate) < now;
+    const isFinished = customerProduct.remainingSessions <= 0;
+
+    if (!customerProduct.isActive) {
+      return <Badge variant="secondary">Không hoạt động</Badge>;
+    }
+    if (isExpired) {
+      return <Badge variant="destructive">Hết hạn</Badge>;
+    }
+    if (isFinished) {
+      return <Badge variant="outline">Hết buổi</Badge>;
+    }
+    return <Badge variant="default">Đang hoạt động</Badge>;
+  };
+
+  const handleCreateInvoice = async () => {
+    if (!customer?.id || !staffSession?.id) {
+      toast({
+        title: "Thiếu thông tin",
+        description: "Đảm bảo thông tin khách hàng/nhân viên đầy đủ.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Validate each item in the form
+    const isValid = createProductForm.every(item => item.productId && item.totalSessions > 0);
+    if (!isValid) {
+      toast({
+        title: "Thiếu thông tin",
+        description: "Vui lòng chọn sản phẩm và nhập số buổi lớn hơn 0 cho tất cả các mục.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsLoading(true); // Use general loading state
+    const results = [];
+    for (const item of createProductForm) {
+      try {
+        const response = await fetch('/api/customer-products', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            customerId: customer.id,
+            productId: item.productId,
+            totalSessions: item.totalSessions,
+            expiryDays: item.expiryDays,
+            notes: item.notes,
+            staffId: staffSession.id
+          })
+        });
+
+        const data = await response.json();
+        results.push({ success: data.success, message: data.message || data.error, product: item.productId });
+
+      } catch (error: any) {
+        console.error("Error creating invoice for product:", item.productId, error);
+        results.push({ success: false, message: `Lỗi gán sản phẩm ${item.productId}: ${error.message}`, product: item.productId });
+      }
+    }
+
+    // Summarize results
+    const successfulAssignments = results.filter(r => r.success).length;
+    const failedAssignments = results.filter(r => !r.success).length;
+
+    if (successfulAssignments > 0) {
+        toast({
+          title: "Thành công",
+          description: `Đã gán thành công ${successfulAssignments} sản phẩm.`,
+        });
+    }
+
+    if (failedAssignments > 0) {
+       const errorMessages = results.filter(r => !r.success).map(r => r.message).join(', ');
+       toast({
+          title: "Lỗi",
+          description: `Không thể gán ${failedAssignments} sản phẩm. Chi tiết: ${errorMessages}`,
+          variant: "destructive",
+        });
+    }
+
+
+    if (successfulAssignments > 0 && failedAssignments === 0) {
+      setIsCreateProductDialogOpen(false);
+    }
+    resetCreateProductForm(); // Always reset form after attempting submission
+    fetchProductData(); // Always refresh product list after attempting submission
+
+    setIsLoading(false);
+  };
+
+  const resetCreateProductForm = () => {
+    setCreateProductForm([{
+      customerId: '', // Will be filled by customer.id
+      productId: '',
+      totalSessions: 1,
+      expiryDays: undefined,
+      notes: '',
+      staffId: '' // Will be filled by staffSession.id
+    }]);
+  };
+
+  const handleEditProduct = async () => {
+    if (!editingCustomerProduct || !staffSession?.id) return;
+
+    setIsLoading(true); // Use general loading state
+    try {
+      const id = editingCustomerProduct.id || (editingCustomerProduct as any)._id;
+      const response = await fetch(`/api/customer-products/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(editProductForm)
+      });
+
+      const data = await response.json();
+      if (data.success) {
+        toast({
+          title: "Thành công",
+          description: "Đã cập nhật thông tin sản phẩm",
+        });
+        setIsEditProductDialogOpen(false);
+        setEditingCustomerProduct(null);
+        fetchProductData(); // Refresh product list
+      } else {
+        toast({
+          title: "Lỗi",
+          description: data.error || 'Có lỗi xảy ra',
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
+      toast({
+        title: "Lỗi",
+        description: "Có lỗi xảy ra khi cập nhật",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const openEditProductDialog = (customerProduct: CustomerProduct) => {
+    setEditingCustomerProduct(customerProduct);
+    setEditProductForm({
+      productName: customerProduct.productName,
+      totalSessions: customerProduct.totalSessions,
+      usedSessions: customerProduct.usedSessions,
+      expiryDays: customerProduct.expiryDays,
+      notes: customerProduct.notes || '',
+      isActive: customerProduct.isActive
+    });
+    setIsEditProductDialogOpen(true);
+  };
 
   if (isLoading && !customer && !staffSession) {
     return (
@@ -1112,66 +1358,6 @@ export default function StaffIndividualChatPage() {
               </div>
             </div>
 
-            {/* Media Section */}
-            <div>
-              <h4 className="font-semibold text-sm flex items-center mb-1">
-                <ImageIconLucide className="mr-2 h-4 w-4 text-primary" />Ảnh/Video ({allMediaMessages.length})
-              </h4>
-              {allMediaMessages.length > 0 ? (
-                <div className="grid grid-cols-3 gap-2">
-                  {allMediaMessages.map((message) => (
-                    <div key={message.id} className="aspect-square relative rounded-md overflow-hidden">
-                      {isImageDataURI(message.content) ? (
-                        <NextImage
-                          src={message.content}
-                          alt="Media"
-                          fill
-                          className="object-cover"
-                        />
-                      ) : (
-                        <div className="w-full h-full flex items-center justify-center bg-muted">
-                          <FileText className="h-6 w-6 text-muted-foreground" />
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-xs text-muted-foreground">Chưa có ảnh/video nào.</p>
-              )}
-            </div>
-
-            {/* Files Section */}
-            <div>
-              <h4 className="font-semibold text-sm flex items-center mb-1">
-                <FileText className="mr-2 h-4 w-4 text-primary" />File ({allMediaMessages.filter(m => /#filename=/.test(m.content)).length})
-              </h4>
-              {allMediaMessages.filter(m => /#filename=/.test(m.content)).length > 0 ? (
-                <div className="space-y-2">
-                  {allMediaMessages
-                    .filter(m => /#filename=/.test(m.content))
-                    .map((message) => {
-                      const match = message.content.match(/#filename=([^#\s]+)/);
-                      const fileName = match ? decodeURIComponent(match[1]) : "File";
-                      const fileUrl = message.content.split('#filename=')[0];
-                      return (
-                        <div key={message.id} className="flex items-center gap-2 p-2 rounded-md bg-muted/50">
-                          <FileText className="h-4 w-4 text-muted-foreground" />
-                          <span className="text-xs truncate flex-1">{fileName}</span>
-                          <Button variant="ghost" size="icon" className="h-6 w-6" asChild>
-                            <a href={fileUrl} target="_blank" rel="noopener noreferrer">
-                              <Download className="h-3 w-3" />
-                            </a>
-                          </Button>
-                        </div>
-                      );
-                    })}
-                </div>
-              ) : (
-                <p className="text-xs text-muted-foreground">Chưa có file nào.</p>
-              )}
-            </div>
-
             <Accordion type="multiple" className="w-full">
               <AccordionItem value="media-history">
                 <AccordionTrigger className="text-sm font-semibold py-2 hover:no-underline">
@@ -1185,10 +1371,18 @@ export default function StaffIndividualChatPage() {
                           const match = msg.content.match(/^(data:image\/[^;]+;base64,[^#]+)/);
                           if (!match) return null;
                           const dataUri = match[1];
+                          const nameMatch = msg.content.match(/#filename=([^#\s]+)/);
+                          let fileName = nameMatch ? decodeURIComponent(nameMatch[1]) : "Ảnh";
                           return (
-                            <div key={msg.id} className="aspect-square relative rounded overflow-hidden bg-muted">
+                            <button
+                              key={msg.id}
+                              type="button"
+                              className="aspect-square relative rounded overflow-hidden bg-muted hover:opacity-80 transition-opacity cursor-pointer"
+                              onClick={() => handleSidebarImageClick(dataUri, fileName)}
+                              title={`Xem trước ${fileName}`}
+                            >
                               <NextImage src={dataUri} alt="media thumbnail" layout="fill" objectFit="cover" data-ai-hint="thumbnail image" />
-                            </div>
+                            </button>
                           );
                         })}
                       </div>
@@ -1226,6 +1420,8 @@ export default function StaffIndividualChatPage() {
                               href={msg.content.split('#filename=')[0]}
                               download={fileName}
                               className="flex items-center gap-1.5 p-1.5 hover:bg-accent rounded text-xs"
+                              target="_blank"
+                              rel="noopener noreferrer"
                             >
                               <FileText className="h-3.5 w-3.5 shrink-0" />
                               <span className="truncate" title={fileName}>{fileName}</span>
@@ -1290,9 +1486,14 @@ export default function StaffIndividualChatPage() {
                     ) : (
                       <>
                         {note.imageDataUri && (
-                          <div className="relative w-full aspect-video border rounded overflow-hidden my-1">
+                          <button
+                            type="button"
+                            onClick={() => handleSidebarImageClick(note.imageDataUri!, note.imageFileName || 'Note_Image')}
+                            className="relative w-full aspect-video border rounded overflow-hidden my-1 cursor-pointer hover:opacity-90 transition-opacity"
+                            title="Click để xem ảnh lớn"
+                          >
                             <NextImage src={note.imageDataUri} alt={note.imageFileName || "Note image"} layout="fill" objectFit="contain" data-ai-hint="note image" />
-                          </div>
+                          </button>
                         )}
                         <p className="whitespace-pre-wrap">{note.content}</p>
                         <div className="flex justify-between items-center mt-1">
@@ -1344,6 +1545,47 @@ export default function StaffIndividualChatPage() {
               </div>
               <Button size="sm" className="mt-1 w-full" onClick={handleAddNote} disabled={!newNoteContent.trim() && !newNoteImageDataUri}>
                 <PlusCircle className="mr-1 h-3 w-3" />Thêm Ghi chú
+              </Button>
+            </div>
+
+            {/* New Products/Services Section */}
+            <div className="border-b pb-3 mb-3">
+              <h4 className="font-semibold text-sm flex items-center mb-1">
+                <Package className="mr-2 h-4 w-4 text-primary" /> Sản phẩm/Dịch vụ đã gán ({customerProducts.length})
+              </h4>
+              {customerProducts.length > 0 ? (
+                <div className="space-y-2 text-xs">
+                  {customerProducts.map(cp => (
+                    <div key={cp.id || (cp as any)._id} className="p-2 border rounded bg-muted/50 flex flex-col gap-1">
+                      <div className="flex justify-between items-center">
+                        <span className="font-medium truncate mr-2">{cp.productName}</span>
+                        {getStatusBadge(cp)}
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <span className="text-muted-foreground">Số buổi:</span> {cp.remainingSessions}/{cp.totalSessions}
+                        </div>
+                        <div>
+                          <span className="text-muted-foreground">Đã dùng:</span> {cp.usedSessions}
+                        </div>
+                        {cp.expiryDate && (
+                          <div>
+                            <span className="text-muted-foreground">Hết hạn:</span> {formatDate(cp.expiryDate)}
+                          </div>
+                        )}
+                      </div>
+                      {cp.notes && <p className="text-muted-foreground italic text-[11px]">Ghi chú: {cp.notes}</p>}
+                      <div className="flex justify-end">
+                         <Button variant="ghost" size="icon" className="h-5 w-5" onClick={() => openEditProductDialog(cp)}><Edit2 className="h-3 w-3" /></Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-xs text-muted-foreground">Chưa có sản phẩm/dịch vụ nào được gán.</p>
+              )}
+              <Button size="sm" className="mt-2 w-full" onClick={() => setIsCreateProductDialogOpen(true)}>
+                <PlusCircle className="mr-1 h-3 w-3" /> Gán sản phẩm/dịch vụ
               </Button>
             </div>
           </CardContent>
@@ -1525,8 +1767,38 @@ export default function StaffIndividualChatPage() {
         </DialogContent>
       </Dialog>
 
+      {/* Sidebar Image Preview Dialog */}
+      <Dialog open={!!selectedSidebarImagePreview} onOpenChange={(open) => { if (!open) setSelectedSidebarImagePreview(null) }}>
+        <DialogContent className="max-w-3xl max-h-[80vh] flex flex-col p-2">
+          <DialogHeader className="p-2 border-b">
+            <DialogTitle className="text-sm truncate">{selectedSidebarImageName || "Xem trước ảnh"}</DialogTitle>
+          </DialogHeader>
+          <div className="flex-grow overflow-auto p-2 flex items-center justify-center">
+            {selectedSidebarImagePreview && (
+              <NextImage
+                src={selectedSidebarImagePreview}
+                alt={selectedSidebarImageName || 'Xem trước ảnh'}
+                width={1200}
+                height={800}
+                className="max-w-full max-h-full object-contain"
+                data-ai-hint="full image preview"
+              />
+            )}
+          </div>
+          <div className="p-2 border-t flex justify-end">
+            {selectedSidebarImagePreview && (
+              <Button variant="outline" asChild>
+                <a href={selectedSidebarImagePreview} download={selectedSidebarImageName || 'image.png'}>
+                  <Download className="mr-2 h-4 w-4" />Tải về
+                </a>
+              </Button>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
       {/* Mobile Customer Info Button and Drawer */}
-      <div className="md:hidden fixed bottom-4 right-4 z-50">
+      <div className="md:hidden fixed bottom-40 right-4 z-50">
         <Button
           variant="default"
           size="icon"
@@ -1697,10 +1969,18 @@ export default function StaffIndividualChatPage() {
                             const match = msg.content.match(/^(data:image\/[^;]+;base64,[^#]+)/);
                             if (!match) return null;
                             const dataUri = match[1];
+                            const nameMatch = msg.content.match(/#filename=([^#\s]+)/);
+                            let fileName = nameMatch ? decodeURIComponent(nameMatch[1]) : "Ảnh";
                             return (
-                              <div key={msg.id} className="aspect-square relative rounded overflow-hidden bg-muted">
+                              <button
+                                key={msg.id}
+                                type="button"
+                                className="aspect-square relative rounded overflow-hidden bg-muted hover:opacity-80 transition-opacity cursor-pointer"
+                                onClick={() => handleSidebarImageClick(dataUri, fileName)}
+                                title={`Xem trước ${fileName}`}
+                              >
                                 <NextImage src={dataUri} alt="media thumbnail" layout="fill" objectFit="cover" data-ai-hint="thumbnail image" />
-                              </div>
+                              </button>
                             );
                           })}
                         </div>
@@ -1737,6 +2017,8 @@ export default function StaffIndividualChatPage() {
                                 href={msg.content.split('#filename=')[0]}
                                 download={fileName}
                                 className="flex items-center gap-1.5 p-1.5 hover:bg-accent rounded text-xs"
+                                target="_blank"
+                                rel="noopener noreferrer"
                               >
                                 <FileText className="h-3.5 w-3.5 shrink-0" />
                                 <span className="truncate" title={fileName}>{fileName}</span>
@@ -1804,9 +2086,14 @@ export default function StaffIndividualChatPage() {
                       ) : (
                         <>
                           {note.imageDataUri && (
-                            <div className="relative w-full aspect-video border rounded overflow-hidden my-1">
+                            <button
+                              type="button"
+                              onClick={() => handleSidebarImageClick(note.imageDataUri!, note.imageFileName || 'Note_Image')}
+                              className="relative w-full aspect-video border rounded overflow-hidden my-1 cursor-pointer hover:opacity-90 transition-opacity"
+                              title="Click để xem ảnh lớn"
+                            >
                               <NextImage src={note.imageDataUri} alt={note.imageFileName || "Note image"} layout="fill" objectFit="contain" data-ai-hint="note image" />
-                            </div>
+                            </button>
                           )}
                           <p className="whitespace-pre-wrap">{note.content}</p>
                           <div className="flex justify-between items-center mt-1">
@@ -1860,10 +2147,237 @@ export default function StaffIndividualChatPage() {
                   <PlusCircle className="mr-1 h-3 w-3" />Thêm Ghi chú
                 </Button>
               </div>
+
+              {/* New Products/Services Section */}
+              <div className="border-b pb-3 mb-3">
+                <h4 className="font-semibold text-sm flex items-center mb-1">
+                  <Package className="mr-2 h-4 w-4 text-primary" /> Sản phẩm/Dịch vụ đã gán ({customerProducts.length})
+                </h4>
+                {customerProducts.length > 0 ? (
+                  <div className="space-y-2 text-xs">
+                    {customerProducts.map(cp => (
+                      <div key={cp.id || (cp as any)._id} className="p-2 border rounded bg-muted/50 flex flex-col gap-1">
+                        <div className="flex justify-between items-center">
+                          <span className="font-medium truncate mr-2">{cp.productName}</span>
+                          {getStatusBadge(cp)}
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <span className="text-muted-foreground">Số buổi:</span> {cp.remainingSessions}/{cp.totalSessions}
+                          </div>
+                          <div>
+                            <span className="text-muted-foreground">Đã dùng:</span> {cp.usedSessions}
+                          </div>
+                          {cp.expiryDate && (
+                            <div>
+                              <span className="text-muted-foreground">Hết hạn:</span> {formatDate(cp.expiryDate)}
+                            </div>
+                          )}
+                        </div>
+                        {cp.notes && <p className="text-muted-foreground italic text-[11px]">Ghi chú: {cp.notes}</p>}
+                        <div className="flex justify-end">
+                           <Button variant="ghost" size="icon" className="h-5 w-5" onClick={() => openEditProductDialog(cp)}><Edit2 className="h-3 w-3" /></Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-xs text-muted-foreground">Chưa có sản phẩm/dịch vụ nào được gán.</p>
+                )}
+                <Button size="sm" className="mt-2 w-full" onClick={() => setIsCreateProductDialogOpen(true)}>
+                  <PlusCircle className="mr-1 h-3 w-3" /> Gán sản phẩm/dịch vụ
+                </Button>
+              </div>
             </div>
           </ScrollArea>
         </div>
       </div>
+
+      {/* New Create Product Dialog */}
+      <Dialog open={isCreateProductDialogOpen} onOpenChange={setIsCreateProductDialogOpen}>
+        <DialogContent className="sm:max-w-md max-h-[90vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle>Gán sản phẩm/dịch vụ cho khách hàng</DialogTitle>
+            <DialogDescription>Chọn sản phẩm/dịch vụ để gán cho khách hàng này</DialogDescription>
+          </DialogHeader>
+          <ScrollArea className="grid gap-4 py-4 flex-grow">
+             {createProductForm.map((item, index) => (
+               <div key={index} className="border rounded-md mt-4 p-4 space-y-3 relative">
+                 {createProductForm.length > 1 && (
+                    <Button
+                       variant="ghost"
+                       size="icon"
+                       className="absolute top-2 right-2 h-6 w-6 text-destructive"
+                       onClick={() => setCreateProductForm(prev => prev.filter((_, i) => i !== index))}
+                       title="Xóa sản phẩm này"
+                    >
+                       <X className="h-4 w-4" />
+                    </Button>
+                 )}
+                 <div>
+                   <Label htmlFor={`product-${index}`}>Sản phẩm/Dịch vụ</Label>
+                   <Select
+                     value={item.productId}
+                     onValueChange={(value) => {
+                       const product = products.find(p => p.id === value);
+                       setCreateProductForm(prev => prev.map((p, i) => i === index ? {
+                         ...p,
+                         productId: value,
+                         totalSessions: product?.defaultSessions || 1,
+                         expiryDays: product?.expiryDays
+                       } : p));
+                     }}
+                   >
+                     <SelectTrigger id={`product-${index}`} className="w-full">
+                       <SelectValue placeholder="Chọn sản phẩm..." />
+                     </SelectTrigger>
+                     <SelectContent>
+                       {products.filter(p => p.isActive).map((product) => (
+                         <SelectItem key={product.id} value={product.id}>
+                           <div className="flex flex-col">
+                             <span>{product.name}</span>
+                             <span className="text-xs text-muted-foreground">
+                               {product.category} - {product.price.toLocaleString('vi-VN')}đ
+                             </span>
+                           </div>
+                         </SelectItem>
+                       ))}
+                     </SelectContent>
+                   </Select>
+                 </div>
+                 <div className="grid grid-cols-2 gap-4">
+                   <div>
+                     <Label htmlFor={`sessions-${index}`}>Số buổi</Label>
+                     <Input
+                       id={`sessions-${index}`}
+                       type="number"
+                       min="1"
+                       value={item.totalSessions}
+                       onChange={(e) => setCreateProductForm(prev => prev.map((p, i) => i === index ? {
+                         ...p,
+                         totalSessions: parseInt(e.target.value) || 1
+                       } : p))}
+                     />
+                   </div>
+                   <div>
+                     <Label htmlFor={`expiry-${index}`}>Thời hạn (ngày)</Label>
+                     <Input
+                       id={`expiry-${index}`}
+                       type="number"
+                       min="1"
+                       value={item.expiryDays || ''}
+                       onChange={(e) => setCreateProductForm(prev => prev.map((p, i) => i === index ? {
+                         ...p,
+                         expiryDays: e.target.value ? parseInt(e.target.value) : undefined
+                       } : p))}
+                       placeholder="Không giới hạn"
+                     />
+                   </div>
+                 </div>
+                 <div>
+                   <Label htmlFor={`notes-${index}`}>Ghi chú</Label>
+                   <Textarea
+                     id={`notes-${index}`}
+                     value={item.notes}
+                     onChange={(e) => setCreateProductForm(prev => prev.map((p, i) => i === index ? { ...p, notes: e.target.value } : p))}
+                     placeholder="Ghi chú thêm..."
+                     rows={2}
+                   />
+                 </div>
+               </div>
+             ))}
+             <Button variant="outline" className="w-full mt-4" onClick={() => setCreateProductForm(prev => [...prev, { customerId: '', productId: '', totalSessions: 1, expiryDays: undefined, notes: '', staffId: '' }])}>
+               <PlusCircle className="mr-1 h-4 w-4" /> Thêm sản phẩm khác
+             </Button>
+          </ScrollArea>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setIsCreateProductDialogOpen(false); resetCreateProductForm(); }}>Hủy</Button>
+            <Button onClick={handleCreateInvoice} disabled={isLoading || createProductForm.length === 0 || createProductForm.some(item => !item.productId || item.totalSessions <= 0)}>
+              {isLoading ? 'Đang gán...' : 'Gán sản phẩm'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* New Edit Product Dialog */}
+      <Dialog open={isEditProductDialogOpen} onOpenChange={(open) => { setIsEditProductDialogOpen(open); if (!open) setEditingCustomerProduct(null); }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Chỉnh sửa sản phẩm/dịch vụ đã gán</DialogTitle>
+            <DialogDescription>Cập nhật thông tin sản phẩm/dịch vụ của khách hàng</DialogDescription>
+          </DialogHeader>
+          {editingCustomerProduct && (
+            <div className="grid gap-4 py-4">
+              <div>
+                <Label htmlFor="edit-product-name">Tên sản phẩm</Label>
+                <Input
+                  id="edit-product-name"
+                  value={editProductForm.productName}
+                  onChange={(e) => setEditProductForm(prev => ({ ...prev, productName: e.target.value }))}
+                  disabled // Product name is not editable here
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label htmlFor="edit-total-sessions">Tổng số buổi</Label>
+                  <Input
+                    id="edit-total-sessions"
+                    type="number"
+                    min="1"
+                    value={editProductForm.totalSessions}
+                    onChange={(e) => setEditProductForm(prev => ({ ...prev, totalSessions: parseInt(e.target.value) || 1 }))}
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="edit-used-sessions">Đã sử dụng</Label>
+                  <Input
+                    id="edit-used-sessions"
+                    type="number"
+                    min="0"
+                    value={editProductForm.usedSessions}
+                    onChange={(e) => setEditProductForm(prev => ({ ...prev, usedSessions: parseInt(e.target.value) || 0 }))}
+                  />
+                </div>
+              </div>
+              <div>
+                <Label htmlFor="edit-expiry-days">Thời hạn (ngày)</Label>
+                <Input
+                  id="edit-expiry-days"
+                  type="number"
+                  min="1"
+                  value={editProductForm.expiryDays || ''}
+                  onChange={(e) => setEditProductForm(prev => ({ ...prev, expiryDays: e.target.value ? parseInt(e.target.value) : undefined }))}
+                  placeholder="Không giới hạn"
+                />
+              </div>
+              <div>
+                <Label htmlFor="edit-notes">Ghi chú</Label>
+                <Textarea
+                  id="edit-notes"
+                  value={editProductForm.notes}
+                  onChange={(e) => setEditProductForm(prev => ({ ...prev, notes: e.target.value }))}
+                  rows={3}
+                />
+              </div>
+              <div className="flex items-center space-x-2">
+                <input
+                  type="checkbox"
+                  id="edit-is-active"
+                  checked={editProductForm.isActive}
+                  onChange={(e) => setEditProductForm(prev => ({ ...prev, isActive: e.target.checked }))}
+                />
+                <Label htmlFor="edit-is-active">Đang hoạt động</Label>
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setIsEditProductDialogOpen(false); setEditingCustomerProduct(null); }}>Hủy</Button>
+            <Button onClick={handleEditProduct} disabled={isLoading || !editingCustomerProduct}>
+              {isLoading ? 'Đang lưu...' : 'Lưu thay đổi'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

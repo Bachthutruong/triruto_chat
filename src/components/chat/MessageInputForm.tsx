@@ -21,6 +21,7 @@ type MessageInputFormProps = {
   appointments?: AppointmentDetails[];
   onCancelAppointment?: (appointmentId: string) => Promise<void>;
   onAppointmentBooked?: () => Promise<void>;
+  viewerRole: 'customer' | 'staff' | 'admin';
 };
 
 const MAX_FILE_SIZE_MB = 5;
@@ -35,7 +36,8 @@ export function MessageInputForm({
   onTyping,
   appointments = [],
   onCancelAppointment,
-  onAppointmentBooked
+  onAppointmentBooked,
+  viewerRole
 }: MessageInputFormProps) {
   const [message, setMessage] = useState('');
   const [stagedFile, setStagedFile] = useState<{ dataUri: string; name: string; type: string } | null>(null);
@@ -250,40 +252,8 @@ export function MessageInputForm({
             </Button>
           </div>
         )}
-        <form onSubmit={handleSubmit} className="p-2 flex items-end gap-1">
-          <Button type="button" variant="ghost" size="icon" onClick={triggerFileInput} disabled={isLoading} aria-label="Đính kèm tệp">
-            <Paperclip className="h-5 w-5" />
-          </Button>
-          <input
-            type="file"
-            ref={fileInputRef}
-            onChange={handleFileChange}
-            className="hidden"
-            accept="image/*,application/pdf,.doc,.docx,.txt,.xls,.xlsx"
-          />
-          <Popover>
-            <PopoverTrigger asChild>
-              <Button type="button" variant="ghost" size="icon" disabled={isLoading} aria-label="Chọn emoji">
-                <Smile className="h-5 w-5" />
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent className="w-auto p-2">
-              <div className="flex gap-1">
-                {commonEmojis.map(emoji => (
-                  <Button
-                    key={emoji}
-                    variant="ghost"
-                    size="icon"
-                    className="text-xl p-1 h-8 w-8"
-                    onClick={() => handleEmojiClick(emoji)}
-                  >
-                    {emoji}
-                  </Button>
-                ))}
-              </div>
-            </PopoverContent>
-          </Popover>
-          {onBookAppointmentClick && (
+        <form onSubmit={handleSubmit} className="p-2 flex flex-col gap-1">
+          {onBookAppointmentClick && viewerRole === 'customer' && (
             <Button
               type="button"
               variant="ghost"
@@ -291,51 +261,99 @@ export function MessageInputForm({
               onClick={handleAppointmentButtonClick}
               disabled={isLoading}
               aria-label={appointments.length > 0 ? "Xem lịch hẹn" : "Đặt lịch hẹn"}
-              className="flex items-center gap-2"
+              className="flex items-center justify-center gap-2 w-full h-auto px-2 py-1 text-center"
             >
               <CalendarPlus className="h-5 w-5" />
-              <span className='hidden md:flex'>{appointments.length > 0 ? "Xem lịch hẹn" : "Đặt lịch hẹn"}</span>
+              <span>{appointments.length > 0 ? "Xem lịch hẹn" : "Đặt lịch hẹn"}</span>
             </Button>
           )}
-          {quickReplies.length > 0 && (
+          <div className="flex items-end gap-1 w-full">
+            <Button type="button" variant="ghost" size="icon" onClick={triggerFileInput} disabled={isLoading} aria-label="Đính kèm tệp">
+              <Paperclip className="h-5 w-5" />
+            </Button>
+            <input
+              type="file"
+              ref={fileInputRef}
+              onChange={handleFileChange}
+              className="hidden"
+              accept="image/*,application/pdf,.doc,.docx,.txt,.xls,.xlsx"
+            />
             <Popover>
               <PopoverTrigger asChild>
-                <Button type="button" variant="ghost" size="icon" disabled={isLoading} aria-label="Câu trả lời nhanh">
-                  <Zap className="h-5 w-5" />
+                <Button type="button" variant="ghost" size="icon" disabled={isLoading} aria-label="Chọn emoji">
+                  <Smile className="h-5 w-5" />
                 </Button>
               </PopoverTrigger>
-              <PopoverContent className="w-64 p-0">
-                <div className="p-2 text-sm font-medium border-b">Chọn câu trả lời nhanh</div>
-                <ScrollArea className="max-h-60">
-                  {quickReplies.map(reply => (
+              <PopoverContent className="w-auto p-2">
+                <div className="flex gap-1">
+                  {commonEmojis.map(emoji => (
                     <Button
-                      key={reply.id}
+                      key={emoji}
                       variant="ghost"
-                      className="w-full justify-start text-left h-auto py-2 px-3 text-sm"
-                      onClick={() => handleQuickReplySelect(reply.content)}
+                      size="icon"
+                      className="text-xl p-1 h-8 w-8"
+                      onClick={() => handleEmojiClick(emoji)}
                     >
-                      {reply.title}
+                      {emoji}
                     </Button>
                   ))}
-                </ScrollArea>
+                </div>
               </PopoverContent>
             </Popover>
-          )}
-          <Textarea
-            ref={textareaRef}
-            value={message}
-            onChange={handleInputChange}
-            onKeyDown={handleKeyDown}
-            placeholder="Nhập tin nhắn của bạn..."
-            className="flex-grow resize-none overflow-y-hidden min-h-[40px] max-h-[120px] leading-tight py-2"
-            rows={1}
-            disabled={isLoading}
-            autoComplete="off"
-          />
-          <Button type="submit" size="icon" disabled={isLoading || (!message.trim() && !stagedFile)}>
-            <Send className="h-5 w-5" />
-            <span className="sr-only">Gửi tin nhắn</span>
-          </Button>
+            {quickReplies.length > 0 && (
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button type="button" variant="ghost" size="icon" disabled={isLoading} aria-label="Câu trả lời nhanh">
+                    <Zap className="h-5 w-5" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-64 p-0">
+                  <div className="p-2 text-sm font-medium border-b">Chọn câu trả lời nhanh</div>
+                  <ScrollArea className="max-h-60">
+                    {quickReplies.map(reply => (
+                      <Button
+                        key={reply.id}
+                        variant="ghost"
+                        className="w-full justify-start text-left h-auto py-2 px-3 text-sm"
+                        onClick={() => handleQuickReplySelect(reply.content)}
+                      >
+                        {reply.title}
+                      </Button>
+                    ))}
+                  </ScrollArea>
+                </PopoverContent>
+              </Popover>
+            )}
+            {onBookAppointmentClick && viewerRole !== 'customer' && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={handleAppointmentButtonClick}
+                disabled={isLoading}
+                aria-label={appointments.length > 0 ? "Xem lịch hẹn" : "Đặt lịch hẹn"}
+                className="hidden md:flex items-center gap-2"
+              >
+                <CalendarPlus className="h-5 w-5" />
+                <span>{appointments.length > 0 ? "Xem lịch hẹn" : "Đặt lịch hẹn"}</span>
+              </Button>
+            )}
+            <Textarea
+              ref={textareaRef}
+              value={message}
+              onChange={handleInputChange}
+              onKeyDown={handleKeyDown}
+              placeholder="Nhập tin nhắn của bạn..."
+              className="flex-grow resize-none overflow-y-hidden min-h-[40px] max-h-[120px] leading-tight py-2"
+              rows={1}
+              disabled={isLoading}
+              autoComplete="off"
+            />
+            <Button type="submit" size="icon" disabled={isLoading || (!message.trim() && !stagedFile)}>
+              <Send className="h-5 w-5" />
+              <span className="sr-only">Gửi tin nhắn</span>
+            </Button>
+          </div>
         </form>
       </div>
       {onCancelAppointment && (
@@ -344,6 +362,7 @@ export function MessageInputForm({
           onClose={() => setIsAppointmentManagerOpen(false)}
           appointments={appointments}
           onCancelAppointment={onCancelAppointment}
+          onBookNewAppointmentClick={onBookAppointmentClick}
         />
       )}
     </>

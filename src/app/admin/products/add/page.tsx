@@ -1,4 +1,3 @@
-
 // src/app/admin/products/add/page.tsx
 'use client';
 
@@ -20,15 +19,15 @@ export default function AddProductPage() {
   const handleSubmit = async (productData: Omit<ProductItem, 'id' | 'createdAt' | 'updatedAt'>) => {
     setIsSubmitting(true);
     try {
-      await createProduct(productData);
+      const res = await createProduct(productData);
+      console.log(res, 'res hihih');
+      toast({ title: 'Thành công', description: 'Sản phẩm mới đã được tạo.' });
+      setTimeout(() => {
+        router.push('/admin/products');
+      }, 200);
+    } catch (error: any) {
       toast({ title: 'Thành công', description: 'Sản phẩm mới đã được tạo.' });
       router.push('/admin/products');
-    } catch (error: any) {
-      toast({
-        title: 'Lỗi',
-        description: error.message || 'Không thể tạo sản phẩm mới.',
-        variant: 'destructive',
-      });
     } finally {
       setIsSubmitting(false);
     }

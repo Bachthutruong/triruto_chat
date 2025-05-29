@@ -51,18 +51,18 @@ export function StaffSidebar() {
       </SidebarHeader>
       <SidebarContent>
         <ScrollArea className="h-full">
-          <SidebarMenu className="py-2 px-2">
+        <SidebarMenu className="!py-2 !px-2 md:group-data-[state=collapsed]:gap-4">
             {staffNavItems.map((item) => (
               <SidebarMenuItem key={item.href}>
                 <Link href={item.href} passHref legacyBehavior>
                   <SidebarMenuButton
-                    className="w-full justify-start"
-                    isActive={pathname.startsWith(item.href) && (item.href === '/staff/dashboard' ? pathname === item.href : true)}
+                    className="w-full justify-start md:group-data-[state=collapsed]:!px-1"
+                    isActive={pathname.startsWith(item.href) && (item.href === '/admin/dashboard' ? pathname === item.href : true)}
                     tooltip={{ content: item.label, side: 'right', align: 'center', className: 'sm:hidden' }}
                     onClick={handleLinkClick}
                   >
-                    <item.icon className="shrink-0" />
-                    <span className="group-data-[collapsible=icon]:hidden truncate">{item.label}</span>
+                    <item.icon className="shrink-0 h-5 w-5 md:!h-6 md:!w-6" />
+                    <span className="md:hidden truncate">{item.label}</span>
                   </SidebarMenuButton>
                 </Link>
               </SidebarMenuItem>

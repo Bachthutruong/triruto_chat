@@ -7,7 +7,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { format, parseISO } from 'date-fns';
 import { vi } from 'date-fns/locale';
-import { Trash2 } from 'lucide-react';
+import { Trash2, PlusCircle } from 'lucide-react';
 import type { AppointmentDetails } from '@/lib/types';
 
 type AppointmentManagerProps = {
@@ -15,14 +15,27 @@ type AppointmentManagerProps = {
     onClose: () => void;
     appointments: AppointmentDetails[];
     onCancelAppointment: (appointmentId: string) => Promise<void>;
+    onBookNewAppointmentClick?: () => void;
 };
 
-export function AppointmentManager({ isOpen, onClose, appointments, onCancelAppointment }: AppointmentManagerProps) {
+export function AppointmentManager({ isOpen, onClose, appointments, onCancelAppointment, onBookNewAppointmentClick }: AppointmentManagerProps) {
     return (
         <Dialog open={isOpen} onOpenChange={onClose}>
             <DialogContent className="sm:max-w-[425px]">
-                <DialogHeader>
+                <DialogHeader className="flex flex-row items-center justify-between">
                     <DialogTitle>Lịch hẹn của bạn</DialogTitle>
+                    {onBookNewAppointmentClick && (
+                        <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => { onClose(); onBookNewAppointmentClick(); }}
+                            title="Đặt lịch hẹn mới"
+                            className="flex items-center gap-1"
+                        >
+                            <PlusCircle className="h-4 w-4" />
+                            <span>Đặt lịch hẹn mới</span>
+                        </Button>
+                    )}
                 </DialogHeader>
                 <ScrollArea className="max-h-[400px] pr-4">
                     {appointments.length === 0 ? (

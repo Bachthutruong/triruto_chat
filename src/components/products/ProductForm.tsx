@@ -1,4 +1,3 @@
-
 // src/components/products/ProductForm.tsx
 'use client';
 
@@ -14,7 +13,9 @@ import { Separator } from '@/components/ui/separator';
 import { ImageIcon, CalendarCog, ClockIcon, UsersIcon, CalendarDays, Save, Trash2, PlusCircle, XCircle } from 'lucide-react';
 import type { ProductItem, ProductSchedulingRules, SpecificDayRule } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
-import { format, parse, isValid as isValidDateFns } from 'date-fns';
+import { format, parse, isValid as isValidDateFns, setHours, setMinutes, setSeconds, setMilliseconds } from 'date-fns';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Badge } from "@/components/ui/badge";
 
 const daysOfWeek = [
   { id: 1, label: 'Thứ 2' }, { id: 2, label: 'Thứ 3' }, { id: 3, label: 'Thứ 4' },
@@ -50,6 +51,10 @@ export function ProductForm({ initialProductData, onSubmit, onCancel, isSubmitti
   const [tempProductSpecRuleDuration, setTempProductSpecRuleDuration] = useState('');
   const [tempProductOneTimeOffDate, setTempProductOneTimeOffDate] = useState('');
 
+  // New state for type and expiry date
+  const [type, setType] = useState<'product' | 'service'>('product');
+  const [expiryDate, setExpiryDate] = useState<string>(''); // Use string for input type="date"
+
   useEffect(() => {
     if (initialProductData) {
       setName(initialProductData.name);
@@ -68,12 +73,21 @@ export function ProductForm({ initialProductData, onSubmit, onCancel, isSubmitti
       }
       setProductSchedulingRules(initialRules);
       setProdWorkingHoursInput(initialRules.workingHours?.join(', ') || '');
+
+      // Initialize new state fields
+      setType(initialProductData.type || 'product');
+      setExpiryDate(initialProductData.expiryDate ? format(new Date(initialProductData.expiryDate), 'yyyy-MM-dd') : '');
+
     } else {
       // Defaults for new product
       setIsActive(true);
       setIsSchedulable(true);
       setProductSchedulingRules({});
       setProdWorkingHoursInput('');
+
+      // Defaults for new product
+      setType('product');
+      setExpiryDate('');
     }
   }, [initialProductData]);
 
@@ -138,45 +152,70 @@ export function ProductForm({ initialProductData, onSubmit, onCancel, isSubmitti
         toast({ title: "Thiếu thông tin", description: "Tên, Danh mục và Giá là bắt buộc.", variant: "destructive" });
         return;
     }
-    
+
+    // Validate expiry date format if provided
+    let parsedExpiryDate: Date | null = null; // Initialize as null
+    if (expiryDate.trim()) {
+      const date = parse(expiryDate, 'yyyy-MM-dd', new Date());
+      if (!isValidDateFns(date)) {
+        toast({ title: "Lỗi định dạng ngày", description: "Hạn sử dụng không hợp lệ. Phải là YYYY-MM-DD.", variant: "destructive" });
+        return;
+      }
+      // Set time to end of day for logical expiry
+      parsedExpiryDate = setMilliseconds(setSeconds(setMinutes(setHours(date, 23), 59), 59), 999);
+    }
+
     const parsedProdWorkingHours = prodWorkingHoursInput
         .split(',')
         .map(h => h.trim())
         .filter(h => /^[0-2][0-9]:[0-5][0-9]$/.test(h));
 
     const productData: Omit<ProductItem, 'id' | 'createdAt' | 'updatedAt'> = {
-      name,
-      description,
+      name: name.trim(),
       price: parseFloat(price) || 0,
-      category,
-      imageUrl: imageUrl || undefined,
+      category: category.trim(),
       isActive,
       isSchedulable,
-      schedulingRules: isSchedulable ? {
-        numberOfStaff: productSchedulingRules.numberOfStaff !== undefined && !isNaN(parseFloat(productSchedulingRules.numberOfStaff as any)) ? parseFloat(productSchedulingRules.numberOfStaff as any) : undefined,
-        serviceDurationMinutes: productSchedulingRules.serviceDurationMinutes !== undefined && !isNaN(parseFloat(productSchedulingRules.serviceDurationMinutes as any)) ? parseFloat(productSchedulingRules.serviceDurationMinutes as any) : undefined,
-        workingHours: parsedProdWorkingHours.length > 0 ? parsedProdWorkingHours : undefined,
-        weeklyOffDays: (productSchedulingRules.weeklyOffDays && Array.isArray(productSchedulingRules.weeklyOffDays) && productSchedulingRules.weeklyOffDays.length > 0) ? productSchedulingRules.weeklyOffDays : undefined,
-        oneTimeOffDates: (productSchedulingRules.oneTimeOffDates && Array.isArray(productSchedulingRules.oneTimeOffDates) && productSchedulingRules.oneTimeOffDates.length > 0) ? productSchedulingRules.oneTimeOffDates : undefined,
-        specificDayRules: (productSchedulingRules.specificDayRules || []).map(r => { const { id, ...rest } = r; return rest; }),
-      } : undefined,
+      type: type,
+      expiryDate: parsedExpiryDate,
+      // Explicitly set description to an empty string if trimmed input is empty
+      description: description.trim(),
+      // Initialize optional fields to undefined or null explicitly if they are not provided/empty
+      imageUrl: imageUrl.trim() || undefined, // imageUrl is optional (string | undefined) in ProductItem
+      defaultSessions: undefined, // Assuming not handled in this form yet
+      expiryDays: undefined, // Assuming not handled in this form yet
+      expiryReminderTemplate: undefined, // Assuming not handled in this form yet
+      expiryReminderDaysBefore: undefined, // Assuming not handled in this form yet
+      schedulingRules: undefined,
     };
 
-    if (productData.schedulingRules) {
-      if (productData.schedulingRules.specificDayRules?.length === 0) {
-        delete productData.schedulingRules.specificDayRules;
-      }
-      // workingHours is already handled by parsedProdWorkingHours
-      if (productData.schedulingRules.weeklyOffDays?.length === 0) {
-        delete productData.schedulingRules.weeklyOffDays;
-      }
-      if (productData.schedulingRules.oneTimeOffDates?.length === 0) {
-        delete productData.schedulingRules.oneTimeOffDates;
-      }
-      if (Object.values(productData.schedulingRules).every(value => value === undefined || (Array.isArray(value) && value.length === 0))) {
-        delete productData.schedulingRules;
-      }
+    if (isSchedulable) {
+        const schedulingRules: Partial<ProductSchedulingRules> = {};
+
+        if (productSchedulingRules.numberOfStaff !== undefined && !isNaN(parseFloat(productSchedulingRules.numberOfStaff as any))) {
+            schedulingRules.numberOfStaff = parseFloat(productSchedulingRules.numberOfStaff as any);
+        }
+        if (productSchedulingRules.serviceDurationMinutes !== undefined && !isNaN(parseFloat(productSchedulingRules.serviceDurationMinutes as any))) {
+            schedulingRules.serviceDurationMinutes = parseFloat(productSchedulingRules.serviceDurationMinutes as any);
+        }
+        if (parsedProdWorkingHours.length > 0) {
+            schedulingRules.workingHours = parsedProdWorkingHours;
+        }
+        if (productSchedulingRules.weeklyOffDays && Array.isArray(productSchedulingRules.weeklyOffDays) && productSchedulingRules.weeklyOffDays.length > 0) {
+            schedulingRules.weeklyOffDays = productSchedulingRules.weeklyOffDays;
+        }
+        if (productSchedulingRules.oneTimeOffDates && Array.isArray(productSchedulingRules.oneTimeOffDates) && productSchedulingRules.oneTimeOffDates.length > 0) {
+            schedulingRules.oneTimeOffDates = productSchedulingRules.oneTimeOffDates;
+        }
+        if (productSchedulingRules.specificDayRules && Array.isArray(productSchedulingRules.specificDayRules) && productSchedulingRules.specificDayRules.length > 0) {
+             schedulingRules.specificDayRules = (productSchedulingRules.specificDayRules || []).map(r => { const { id, ...rest } = r; return rest; });
+        }
+
+        if (Object.keys(schedulingRules).length > 0) {
+            productData.schedulingRules = schedulingRules;
+        }
     }
+
     onSubmit(productData);
   };
 
@@ -190,7 +229,28 @@ export function ProductForm({ initialProductData, onSubmit, onCancel, isSubmitti
               <div className="space-y-1.5"><Label htmlFor="name">Tên <span className="text-destructive">*</span></Label><Input id="name" value={name} onChange={(e) => setName(e.target.value)} required disabled={isSubmitting} /></div>
               <div className="space-y-1.5"><Label htmlFor="category">Danh mục <span className="text-destructive">*</span></Label><Input id="category" value={category} onChange={(e) => setCategory(e.target.value)} required disabled={isSubmitting} /></div>
             </div>
-            <div className="space-y-1.5"><Label htmlFor="description">Mô tả</Label><Textarea id="description" value={description} onChange={(e) => setDescription(e.target.value)} disabled={isSubmitting} /></div>
+
+            {/* New fields for Type and Expiry Date */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <Label htmlFor="type">Loại <span className="text-destructive">*</span></Label>
+                <Select value={type} onValueChange={(value: 'product' | 'service') => setType(value)} disabled={isSubmitting}>
+                  <SelectTrigger id="type">
+                    <SelectValue placeholder="Chọn loại" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="product">Sản phẩm</SelectItem>
+                    <SelectItem value="service">Dịch vụ</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                 <Label htmlFor="expiryDate">Hạn sử dụng (tùy chọn)</Label>
+                 <Input id="expiryDate" type="date" value={expiryDate} onChange={(e) => setExpiryDate(e.target.value)} disabled={isSubmitting} />
+              </div>
+            </div>
+
+            <div className="space-y-1.5"><Label htmlFor="description">Mô tả <span className="text-destructive">*</span></Label><Textarea id="description" value={description} onChange={(e) => setDescription(e.target.value)} rows={4} required disabled={isSubmitting} /></div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-1.5"><Label htmlFor="price">Giá (VND) <span className="text-destructive">*</span></Label><Input id="price" type="number" value={price} onChange={(e) => setPrice(e.target.value)} required disabled={isSubmitting} /></div>
               <div className="space-y-1.5"><Label htmlFor="imageUrl">URL Hình ảnh</Label><Input id="imageUrl" value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} disabled={isSubmitting} placeholder="https://example.com/image.jpg" /></div>
@@ -248,59 +308,74 @@ export function ProductForm({ initialProductData, onSubmit, onCancel, isSubmitti
 
               <div className="space-y-1.5">
                 <Label><CalendarDays className="inline mr-1 h-4 w-4" />Ngày nghỉ Lễ/Đặc biệt riêng</Label>
-                <div className="flex gap-2 items-center">
-                  <Input type="date" value={tempProductOneTimeOffDate} onChange={e => setTempProductOneTimeOffDate(e.target.value)} className="max-w-xs h-9 text-sm" disabled={isSubmitting}/>
-                  <Button type="button" onClick={handleAddProductOneTimeOffDate} disabled={isSubmitting || !tempProductOneTimeOffDate} size="sm" className="h-9">Thêm</Button>
+                <div className="flex gap-2">
+                  <Input
+                    type="date"
+                    value={tempProductOneTimeOffDate}
+                    onChange={e => setTempProductOneTimeOffDate(e.target.value)}
+                    disabled={isSubmitting}
+                    className="flex-grow"
+                  />
+                  <Button type="button" onClick={handleAddProductOneTimeOffDate} disabled={!tempProductOneTimeOffDate || isSubmitting} size="sm"><PlusCircle className="h-4 w-4"/></Button>
                 </div>
-                <ul className="mt-2 space-y-1 text-sm">
-                {(productSchedulingRules.oneTimeOffDates || []).map(date => (
-                  <li key={date} className="flex items-center justify-between p-1 bg-muted/50 rounded text-xs">
-                    {isValidDateFns(parse(date, 'yyyy-MM-dd', new Date())) ? format(parse(date, 'yyyy-MM-dd', new Date()), 'dd/MM/yyyy') : 'Ngày không hợp lệ'}
-                    <Button type="button" variant="ghost" size="icon" className="h-6 w-6" onClick={() => handleRemoveProductOneTimeOffDate(date)} disabled={isSubmitting}>
-                      <Trash2 className="h-3 w-3 text-destructive" />
-                    </Button>
-                  </li>
-                ))}
-                </ul>
+                {(productSchedulingRules.oneTimeOffDates || []).length > 0 && (
+                  <div className="flex flex-wrap gap-2 mt-2">
+                    {(productSchedulingRules.oneTimeOffDates || []).map(date => (
+                      <Badge key={date} variant="secondary">
+                        {format(parse(date, 'yyyy-MM-dd', new Date()), 'dd/MM/yyyy')}
+                        <button type="button" className="ml-1 text-muted-foreground hover:text-foreground" onClick={() => handleRemoveProductOneTimeOffDate(date)} disabled={isSubmitting}><XCircle className="h-3 w-3"/></button>
+                      </Badge>
+                    ))}
+                  </div>
+                )}
               </div>
-              <Separator />
-              <div>
-                <h4 className="text-md font-semibold mb-1">Quy tắc Ngày Cụ thể (Riêng cho DV này)</h4>
-                <p className="text-xs text-muted-foreground mb-2">Ghi đè các quy tắc riêng của dịch vụ này cho một ngày nhất định.</p>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2 p-2 border rounded-md mb-3 items-end">
-                  <Input type="date" value={tempProductSpecRuleDate} onChange={e => setTempProductSpecRuleDate(e.target.value)} placeholder="Ngày" className="h-8 text-xs"/>
-                  <Input value={tempProductSpecRuleHours} onChange={e => setTempProductSpecRuleHours(e.target.value)} placeholder="Giờ làm việc (HH:MM,)" className="h-8 text-xs"/>
-                  <Input type="number" value={tempProductSpecRuleStaff} onChange={e => setTempProductSpecRuleStaff(e.target.value)} placeholder="Số NV" className="h-8 text-xs"/>
-                  <Input type="number" value={tempProductSpecRuleDuration} onChange={e => setTempProductSpecRuleDuration(e.target.value)} placeholder="TG DV (phút)" className="h-8 text-xs"/>
-                  <div className="flex items-center space-x-2"><Checkbox id="tempProdSpecRuleIsOffDialog" checked={tempProductSpecRuleIsOff} onCheckedChange={(checked) => setTempProductSpecRuleIsOff(!!checked)} /><Label htmlFor="tempProdSpecRuleIsOffDialog" className="text-xs">Ngày nghỉ</Label></div>
-                  <Button type="button" onClick={handleAddProductSpecificDayRule} size="xs" className="h-8 text-xs"><PlusCircle className="mr-1 h-3 w-3"/>Thêm</Button>
+
+              <div className="space-y-1.5">
+                <Label><CalendarCog className="inline mr-1 h-4 w-4" />Quy tắc ngày cụ thể riêng</Label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-2">
+                  <Input type="date" placeholder="Ngày (YYYY-MM-DD)" value={tempProductSpecRuleDate} onChange={e => setTempProductSpecRuleDate(e.target.value)} disabled={isSubmitting}/>
+                  <div className="flex items-center gap-2">
+                     <Checkbox id="tempSpecRuleIsOff" checked={tempProductSpecRuleIsOff} onCheckedChange={checked => setTempProductSpecRuleIsOff(!!checked)} disabled={isSubmitting}/>
+                     <Label htmlFor="tempSpecRuleIsOff" className="font-normal text-sm">Ngày nghỉ</Label>
+                  </div>
                 </div>
-                <div className="space-y-1 max-h-40 overflow-y-auto">
-                {(productSchedulingRules.specificDayRules || []).map((rule, index) => (
-                  <Card key={rule.id || index} className="p-2 bg-muted/30 text-xs">
-                    <div className="flex justify-between items-start mb-1">
-                      <p className="font-semibold">Ngày: {isValidDateFns(parse(rule.date, 'yyyy-MM-dd', new Date())) ? format(parse(rule.date, 'yyyy-MM-dd', new Date()), 'dd/MM/yyyy') : 'Ngày không hợp lệ'}</p>
-                      <Button type="button" variant="ghost" size="icon" onClick={() => handleRemoveProductSpecificDayRule(rule.id!)} className="h-5 w-5"><Trash2 className="h-3 w-3 text-destructive"/></Button>
-                    </div>
-                    <p>Nghỉ: {rule.isOff ? 'Có' : 'Không'}</p>
-                    {rule.workingHours && <p>Giờ: {rule.workingHours.join(', ')}</p>}
-                    {rule.numberOfStaff !== undefined && <p>Số NV: {rule.numberOfStaff}</p>}
-                    {rule.serviceDurationMinutes !== undefined && <p>TG DV: {rule.serviceDurationMinutes} phút</p>}
-                  </Card>
-                ))}
-                </div>
+                {!tempProductSpecRuleIsOff && (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2 mb-2">
+                    <Input placeholder="Giờ (HH:MM, HH:MM)" value={tempProductSpecRuleHours} onChange={e => setTempProductSpecRuleHours(e.target.value)} disabled={tempProductSpecRuleIsOff || isSubmitting}/>
+                    <Input type="number" min="0" placeholder="Số NV" value={tempProductSpecRuleStaff} onChange={e => setTempProductSpecRuleStaff(e.target.value)} disabled={tempProductSpecRuleIsOff || isSubmitting}/>
+                    <Input type="number" min="5" placeholder="Thời gian (phút)" value={tempProductSpecRuleDuration} onChange={e => setTempProductSpecRuleDuration(e.target.value)} disabled={tempProductSpecRuleIsOff || isSubmitting}/>
+                  </div>
+                )}
+                 <Button type="button" onClick={handleAddProductSpecificDayRule} disabled={!tempProductSpecRuleDate || isSubmitting} size="sm"><PlusCircle className="h-4 w-4"/></Button>
+
+                 {(productSchedulingRules.specificDayRules || []).length > 0 && (
+                  <div className="space-y-2 mt-2">
+                    {(productSchedulingRules.specificDayRules || []).map(rule => (
+                      <div key={rule.id} className="p-2 border rounded flex justify-between items-center text-xs bg-muted/50">
+                        <div>
+                          <p>Ngày: {format(parse(rule.date, 'yyyy-MM-dd', new Date()), 'dd/MM/yyyy')}</p>
+                          {rule.isOff ? (
+                            <p>Ngày nghỉ</p>
+                          ) : (
+                            <p>Giờ: {rule.workingHours?.join(',') || 'Mặc định'} | Số NV: {rule.numberOfStaff || 'Mặc định'} | Thời gian: {rule.serviceDurationMinutes || 'Mặc định'} phút</p>
+                          )}
+                        </div>
+                        <button type="button" className="text-destructive hover:text-destructive/80" onClick={() => handleRemoveProductSpecificDayRule(rule.id!)} disabled={isSubmitting}><Trash2 className="h-4 w-4"/></button>
+                      </div>
+                    ))}
+                  </div>
+                 )}
               </div>
             </CardContent>
           )}
         </Card>
+
       </ScrollArea>
-      <div className="pt-6 border-t shrink-0 bg-background p-4 flex justify-end space-x-2">
-        <Button type="button" variant="outline" onClick={onCancel} disabled={isSubmitting}>
-          Hủy
-        </Button>
+      <div className="flex justify-end gap-2 p-4 border-t">
+        <Button type="button" variant="outline" onClick={onCancel} disabled={isSubmitting}>Hủy</Button>
         <Button type="submit" disabled={isSubmitting}>
-          <Save className="mr-2 h-4 w-4" />
-          {isSubmitting ? 'Đang lưu...' : (formType === 'edit' ? 'Lưu thay đổi' : 'Tạo Sản phẩm')}
+          {isSubmitting && <ImageIcon className="mr-2 h-4 w-4 animate-spin" />}
+          {formType === 'add' ? 'Tạo Sản phẩm' : 'Lưu Thay đổi'}
         </Button>
       </div>
     </form>

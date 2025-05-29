@@ -654,7 +654,7 @@ export default function HomePage() {
         onSendMessage={handleSendMessage}
         onSuggestedReplyClick={handleSendMessage}
         isLoading={isChatLoading || isLoadingSession}
-        viewerRole="customer_view"
+        viewerRole="customer"
         onBookAppointmentClick={() => setIsBookingModalOpen(true)}
         onTyping={onTyping}
         typingUsers={typingUsers}

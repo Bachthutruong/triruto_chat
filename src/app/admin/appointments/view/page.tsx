@@ -222,13 +222,21 @@ export default function AdminViewAppointmentsPage() {
       setCurrentAppointment(appointment);
       setFormCustomerId(appointment.userId);
       setFormPhoneNumber(appointment.customerPhoneNumber || '');
-      setFormProductId(appointment.service);
+
+      setFormProductId(appointment.productId ?? '');
+
       setFormDate(appointment.date);
       setFormTime(appointment.time.replace(/ AM| PM/i, ''));
-      setFormBranchId(appointment.branch || '');
+
+      const existingBranch = branches.find(b => b.id === appointment.branchId);
+      setFormBranchId(existingBranch ? (appointment.branchId ?? '') : '');
+
       setFormStatus(appointment.status);
       setFormNotes(appointment.notes || '');
-      setFormStaffId(appointment.staffId || adminSession?.id || NO_STAFF_ASSIGNED_VALUE);
+
+      setFormStaffId(typeof appointment.staffId === 'string' && appointment.staffId ? appointment.staffId : (adminSession?.id || NO_STAFF_ASSIGNED_VALUE));
+
+      console.log("DEBUG: formStaffId set in handleOpenModal:", appointment.staffId || adminSession?.id || NO_STAFF_ASSIGNED_VALUE);
     } else {
       resetForm();
       setFormDate(formatDateToYYYYMMDD(selectedDate || new Date()));
@@ -248,10 +256,30 @@ export default function AdminViewAppointmentsPage() {
       branchIsRequiredAndMissing = true;
     }
 
-    if (!formPhoneNumber || !formProductId || !formDate || !formTime || branchIsRequiredAndMissing) {
+    if (!formPhoneNumber.trim() || !formProductId || !formDate || !formTime || branchIsRequiredAndMissing) {
       toast({
         title: "Thiếu thông tin",
         description: "Vui lòng điền đầy đủ các trường bắt buộc: Số điện thoại khách hàng, Dịch vụ, Ngày, Giờ và Chi nhánh (nếu có nhiều hơn 1).",
+        variant: "destructive"
+      });
+      setIsSubmitting(false);
+      return;
+    }
+
+    if (!selectedProduct) {
+      toast({
+        title: "Lỗi dữ liệu",
+        description: "Không tìm thấy thông tin dịch vụ đã chọn. Vui lòng chọn lại dịch vụ.",
+        variant: "destructive"
+      });
+      setIsSubmitting(false);
+      return;
+    }
+
+    if (branches.length > 1 && !selectedBranch) {
+       toast({
+        title: "Lỗi dữ liệu",
+        description: "Không tìm thấy thông tin chi nhánh đã chọn. Vui lòng chọn lại chi nhánh.",
         variant: "destructive"
       });
       setIsSubmitting(false);
@@ -269,7 +297,6 @@ export default function AdminViewAppointmentsPage() {
     }
 
     try {
-      // First create/get customer session
       setIsCreatingCustomer(true);
       const result = await handleCustomerAccess(formPhoneNumber.trim());
 
@@ -277,17 +304,29 @@ export default function AdminViewAppointmentsPage() {
         throw new Error("Không thể tạo phiên cho khách hàng.");
       }
 
+      const finalBranchId = selectedBranch?.id;
+      const finalBranchName = selectedBranch?.name;
+
+      console.log("DEBUG (handleSubmit): formStaffId value:", formStaffId);
+      let finalStaffId = undefined;
+
+      if (typeof formStaffId === 'string' && formStaffId !== NO_STAFF_ASSIGNED_VALUE) {
+         finalStaffId = formStaffId;
+      } else if (formStaffId !== NO_STAFF_ASSIGNED_VALUE) {
+         console.error("DEBUG (handleSubmit): formStaffId is not a string or is the default value, actual value:", formStaffId);
+      }
+
       const appointmentData = {
         customerId: result.userSession.id,
-        service: selectedProduct!.name,
-        productId: selectedProduct!.id,
+        service: selectedProduct.name,
+        productId: selectedProduct.id,
         date: formDate,
         time: formTime,
-        branch: selectedBranch?.name,
-        branchId: formBranchId || (branches.length === 1 ? branches[0].id : undefined),
+        branch: finalBranchName,
+        branchId: finalBranchId,
         status: formStatus,
         notes: formNotes.trim() || undefined,
-        staffId: formStaffId === NO_STAFF_ASSIGNED_VALUE ? undefined : formStaffId,
+        staffId: finalStaffId,
         recurrenceType: formRecurrenceType === 'none' ? undefined : formRecurrenceType,
         recurrenceCount: formRecurrenceType !== 'none' && formRecurrenceCount > 1 ? formRecurrenceCount : undefined,
       };
@@ -306,6 +345,7 @@ export default function AdminViewAppointmentsPage() {
       setIsModalOpen(false);
       fetchAppointments();
     } catch (error: any) {
+      console.error("Submit error:", error);
       toast({
         title: "Lỗi",
         description: error.message || "Thao tác thất bại.",
@@ -429,7 +469,8 @@ export default function AdminViewAppointmentsPage() {
                   <li key={appt.appointmentId} className="p-4 border rounded-lg bg-card shadow hover:shadow-md transition-shadow">
                     <div className="flex items-start justify-between">
                       <div className="flex-grow">
-                        <h3 className="font-semibold text-base">{appt.service} - {appt.time}</h3>
+                        <h3 className="font-semibold text-base">{appt.customerName ? appt.customerName : appt.customerPhoneNumber || `Khách hàng ${appt.userId}`} - {appt.time}</h3>
+                        <p className="text-sm text-muted-foreground">Dịch vụ: {appt.service}</p>
                         <p className="text-sm text-muted-foreground">
                           <Users className="inline-block mr-1 h-3 w-3" />
                           {appt.customerName ? (
@@ -503,7 +544,6 @@ export default function AdminViewAppointmentsPage() {
                 value={formProductId}
                 onValueChange={(value) => {
                   setFormProductId(value);
-                  // Reset time based on new service's potential working hours
                   const product = products.find(p => p.id === value);
                   const appSettingsToUse = appSettingsFromContext || currentAppSettings;
                   let serviceSpecificWorkingHours = product?.schedulingRules?.workingHours;
@@ -576,7 +616,10 @@ export default function AdminViewAppointmentsPage() {
             )}
             <div>
               <Label htmlFor="formStaffIdModalStaff">Nhân viên phụ trách (tùy chọn)</Label>
-              <Select value={formStaffId} onValueChange={setFormStaffId} disabled={isSubmitting}>
+              <Select value={formStaffId} onValueChange={(value) => {
+                setFormStaffId(value);
+                console.log("DEBUG: formStaffId set with value:", value);
+              }} disabled={isSubmitting}>
                 <SelectTrigger id="formStaffIdModalStaff"><SelectValue placeholder="Chọn nhân viên" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value={NO_STAFF_ASSIGNED_VALUE}>Không chọn</SelectItem>

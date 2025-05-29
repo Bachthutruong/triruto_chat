@@ -83,7 +83,7 @@ export function MessageBubble({
 
   if (isUserSender) {
     avatarIcon = <User className="h-5 w-5" />;
-    if (viewerRole === 'customer_view') {
+    if (viewerRole === 'customer') {
       displayName = 'Bạn';
       avatarFallbackText = 'B';
       isOwnMessageByViewer = true;
@@ -95,9 +95,9 @@ export function MessageBubble({
   } else if (isAISender) {
     if (message.userId) {
       avatarIcon = <User className="h-5 w-5" />;
-      displayName = message.name || (viewerRole === 'customer_view' ? `${brandName}` : `Nhân viên ${message.userId.slice(-4)}`);
+      displayName = message.name || (viewerRole === 'customer' ? `${brandName}` : `Nhân viên ${message.userId.slice(-4)}`);
       avatarFallbackText = displayName.charAt(0).toUpperCase();
-      isOwnMessageByViewer = viewerRole !== 'customer_view' && message.userId === currentStaffSessionId;
+      isOwnMessageByViewer = viewerRole !== 'customer' && message.userId === currentStaffSessionId;
     } else {
       avatarIcon = <Bot className="h-5 w-5" />;
       displayName = `${brandName}`;
@@ -193,8 +193,8 @@ export function MessageBubble({
         <Avatar className="h-8 w-8">
           <AvatarFallback className={cn(
             'bg-accent text-accent-foreground',
-            viewerRole !== 'customer_view' && isAISender && message.userId && 'bg-teal-500 text-white',
-            viewerRole !== 'customer_view' && isAISender && !message.userId && 'bg-purple-500 text-white'
+            viewerRole !== 'customer' && isAISender && message.userId && 'bg-teal-500 text-white',
+            viewerRole !== 'customer' && isAISender && !message.userId && 'bg-purple-500 text-white'
           )}>
             {avatarIcon}
           </AvatarFallback>
@@ -205,17 +205,17 @@ export function MessageBubble({
           'max-w-[70%] rounded-lg px-3 py-2 shadow-md break-words',
           isUserSender
             ? 'bg-primary text-primary-foreground rounded-br-none'
-            : viewerRole === 'customer_view' ? 'bg-accent text-accent-foreground rounded-bl-none' : 'bg-card border rounded-bl-none'
+            : viewerRole === 'customer' ? 'bg-accent text-accent-foreground rounded-bl-none' : 'bg-card border rounded-bl-none'
         )}
       >
-        {(!isUserSender || viewerRole !== 'customer_view') && (
+        {(!isUserSender || viewerRole !== 'customer') && (
           <p className="text-xs font-semibold mb-1">{displayName}</p>
         )}
         {renderContent()}
         <div className="flex items-center justify-end text-xs mt-1">
           <span className={cn(
             isUserSender ? 'text-primary-foreground/70' :
-              viewerRole === 'customer_view' ? 'text-accent-foreground/70' : 'text-muted-foreground'
+              viewerRole === 'customer' ? 'text-accent-foreground/70' : 'text-muted-foreground'
           )}>
             {formattedTime}
           </span>

@@ -1764,19 +1764,24 @@ export async function getAppointments(filters: {
 
     return appointments.map(appointment => ({
       appointmentId: appointment._id.toString(),
-      userId: appointment.customerId.toString(),
+      userId: (appointment.customerId as any)?._id?.toString(),
       service: appointment.service,
       date: appointment.date,
       time: appointment.time,
       branch: appointment.branch || '',
       status: appointment.status,
       notes: appointment.notes || '',
-      staffId: appointment.staffId?.toString(),
-      customerName: (appointment.customerId as any)?.name,
-      customerPhoneNumber: (appointment.customerId as any)?.phoneNumber,
-      staffName: (appointment.staffId as any)?.name,
-      createdAt: new Date(appointment.createdAt),
-      updatedAt: new Date(appointment.updatedAt)
+      staffId: (appointment.staffId as any)?._id?.toString(),
+      customerName: (appointment.customerId as any)?.name || appointment.customerPhoneNumber || '',
+      customerPhoneNumber: (appointment.customerId as any)?.phoneNumber || '',
+      staffName: (appointment.staffId as any)?.name || '',
+      recurrenceType: appointment.recurrenceType,
+      recurrenceCount: appointment.recurrenceCount,
+      createdAt: appointment.createdAt, // Keep as Date object
+      updatedAt: appointment.updatedAt, // Keep as Date object
+      // Ensure productId and branchId are converted to string
+      productId: appointment.productId?.toString(),
+      branchId: appointment.branchId?.toString(),
     }));
   } catch (error) {
     console.error('Error fetching appointments:', error);
@@ -2085,30 +2090,8 @@ export async function deleteCustomerNote(noteId: string, staffId: string): Promi
 }
 
 function transformProductDocToProduct(doc: IProduct): ProductItem {
-  const schedulingRulesDoc = doc.schedulingRules;
-  let transformedSchedulingRules: ProductSchedulingRules | undefined = undefined;
-
-  if (schedulingRulesDoc) {
-    transformedSchedulingRules = {
-      numberOfStaff: schedulingRulesDoc.numberOfStaff,
-      serviceDurationMinutes: schedulingRulesDoc.serviceDurationMinutes,
-      workingHours: schedulingRulesDoc.workingHours ? [...schedulingRulesDoc.workingHours] : undefined,
-      weeklyOffDays: schedulingRulesDoc.weeklyOffDays ? [...schedulingRulesDoc.weeklyOffDays] : undefined,
-      oneTimeOffDates: schedulingRulesDoc.oneTimeOffDates ? [...schedulingRulesDoc.oneTimeOffDates] : undefined,
-      specificDayRules: schedulingRulesDoc.specificDayRules ? schedulingRulesDoc.specificDayRules.map(r => ({
-        id: (r as any)._id?.toString() || new mongoose.Types.ObjectId().toString(),
-        date: r.date,
-        isOff: r.isOff,
-        workingHours: r.workingHours ? [...r.workingHours] : undefined,
-        numberOfStaff: r.numberOfStaff,
-        serviceDurationMinutes: r.serviceDurationMinutes,
-      })) : undefined,
-    };
-  }
-
   return {
-    //@ts-ignore
-    id: doc._id.toString(),
+    id: (doc._id as Types.ObjectId).toString(),
     name: doc.name,
     description: doc.description,
     price: doc.price,
@@ -2116,7 +2099,13 @@ function transformProductDocToProduct(doc: IProduct): ProductItem {
     imageUrl: doc.imageUrl,
     isActive: doc.isActive,
     isSchedulable: doc.isSchedulable,
-    schedulingRules: transformedSchedulingRules,
+    schedulingRules: doc.schedulingRules as ProductSchedulingRules, // Assuming direct mapping is okay, adjust if needed
+    defaultSessions: doc.defaultSessions,
+    expiryDays: doc.expiryDays,
+    expiryReminderTemplate: doc.expiryReminderTemplate,
+    expiryReminderDaysBefore: doc.expiryReminderDaysBefore,
+    type: doc.type as 'product' | 'service', // Cast to the new type
+    expiryDate: doc.expiryDate ? new Date(doc.expiryDate) : null, // Include expiryDate and handle null
     createdAt: new Date(doc.createdAt as Date),
     updatedAt: new Date(doc.updatedAt as Date),
   };
@@ -2145,85 +2134,82 @@ function transformReminderDocToReminder(doc: any): Reminder {
     completedAt: doc.completedAt ? new Date(doc.completedAt) : undefined,
     createdAt: new Date(doc.createdAt as Date),
     updatedAt: new Date(doc.updatedAt as Date),
-  };
+    reminderType: doc.reminderType as 'one_time' | 'recurring', // Include reminderType
+    interval: doc.interval, // Include interval
+  } as Reminder; // Explicitly cast to Reminder
 }
 
 export async function getAllProducts(): Promise<ProductItem[]> {
   await dbConnect();
-  const products = await ProductModel.find({}).sort({ createdAt: -1 });
-  return products.map(transformProductDocToProduct);
+  try {
+    const products = await ProductModel.find({}).lean();
+    return products.map(transformProductDocToProduct);
+  } catch (error) {
+    console.error("Error fetching all products:", error);
+    throw new Error("Failed to fetch products.");
+  }
 }
 
 export async function getProductById(productId: string): Promise<ProductItem | null> {
   await dbConnect();
-  const product = await ProductModel.findById(productId);
-  return product ? transformProductDocToProduct(product) : null;
+  const product = await ProductModel.findById(productId).lean(); // Add .lean()
+  return product ? transformProductDocToProduct(product as IProduct) : null;
 }
 
 export async function createProduct(data: Omit<ProductItem, 'id' | 'createdAt' | 'updatedAt'>): Promise<ProductItem> {
   await dbConnect();
-
-  const productData: Partial<IProduct> = {
-    name: data.name,
-    description: data.description,
-    price: data.price,
-    category: data.category,
-    imageUrl: data.imageUrl,
-    isActive: data.isActive,
-    isSchedulable: data.isSchedulable,
-  };
-
-  if (data.isSchedulable && data.schedulingRules) {
-    productData.schedulingRules = {
-      ...data.schedulingRules,
-      specificDayRules: data.schedulingRules.specificDayRules?.map(r => {
-        const { id, ...rest } = r;
-        return rest;
-      }) || [],
-    } as ProductSchedulingRules;
-  } else {
-    productData.schedulingRules = undefined;
+  try {
+    const newProduct = new ProductModel({
+      ...data,
+      // Ensure new fields are included
+      type: data.type,
+      expiryDate: data.expiryDate || null, // Store expiryDate, default to null if not provided
+    });
+    const savedProduct = await newProduct.save();
+    return transformProductDocToProduct(savedProduct);
+  } catch (error) {
+    console.error("Error creating product:", error);
+    throw new Error("Failed to create product.");
   }
-
-  const newProduct = new ProductModel(productData);
-  const savedProduct = await newProduct.save();
-  return transformProductDocToProduct(savedProduct);
 }
 
 export async function updateProduct(
   productId: string,
-  data: Partial<Omit<ProductItem, 'id' | 'createdAt' | 'updatedAt'>>
+  data: Partial<
+    Omit<ProductItem, 'id' | 'createdAt' | 'updatedAt'> &
+    { type?: 'product' | 'service'; expiryDate?: Date | null }
+  >
 ): Promise<ProductItem | null> {
   await dbConnect();
+  try {
+    const updatePayload: any = {
+      ...data,
+      updatedAt: new Date(), // Always update timestamp
+    };
 
-  const updateData: Partial<IProduct> = {
-    name: data.name,
-    description: data.description,
-    price: data.price,
-    category: data.category,
-    imageUrl: data.imageUrl,
-    isActive: data.isActive,
-    isSchedulable: data.isSchedulable,
-  };
+    // Explicitly set type if it exists in data to handle potential undefined from Partial
+    if (data.type !== undefined) {
+      updatePayload.type = data.type;
+    }
+    // Explicitly set expiryDate if it exists in data (can be null)
+    if (data.expiryDate !== undefined) {
+       updatePayload.expiryDate = data.expiryDate;
+    }
 
-  if (data.isSchedulable && data.schedulingRules) {
-    updateData.schedulingRules = {
-      ...data.schedulingRules,
-      specificDayRules: data.schedulingRules.specificDayRules?.map(r => {
-        const { id, ...rest } = r;
-        return rest;
-      }) || [],
-    } as ProductSchedulingRules;
-  } else {
-    updateData.schedulingRules = undefined;
+    const updatedProduct = await ProductModel.findByIdAndUpdate(
+      productId,
+      updatePayload,
+      { new: true }
+    ).lean();
+
+    if (!updatedProduct) {
+      return null;
+    }
+    return transformProductDocToProduct(updatedProduct);
+  } catch (error) {
+    console.error(`Error updating product ${productId}:`, error);
+    throw new Error("Failed to update product.");
   }
-
-  const updatedProduct = await ProductModel.findByIdAndUpdate(
-    productId,
-    { $set: updateData },
-    { new: true, runValidators: true }
-  );
-  return updatedProduct ? transformProductDocToProduct(updatedProduct) : null;
 }
 
 export async function deleteProduct(productId: string): Promise<{ success: boolean }> {

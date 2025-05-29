@@ -43,7 +43,7 @@ export type AppointmentDetails = {
 export type Product = {
   id: string;
   name: string;
-  type: 'session-based' | 'time-based';
+  type: 'session-based' | 'time-based' | 'unlimited' | 'service';
   totalSessions?: number;
   usedSessions?: number;
   expiryDate?: Date;
@@ -296,7 +296,8 @@ export type ProductItem = {
   expiryDays?: number;
   expiryReminderTemplate?: string;
   expiryReminderDaysBefore?: number;
-  type?: 'session-based' | 'time-based' | 'unlimited';
+  type: 'product' | 'service';
+  expiryDate?: Date | null;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -318,9 +319,11 @@ export type Reminder = {
   completedAt?: Date;
   createdAt: Date;
   updatedAt: Date;
+  reminderType: 'one_time' | 'recurring';
+  interval?: { type: 'days' | 'weeks' | 'months'; value: number };
 };
 
-export type MessageViewerRole = UserRole | 'customer_view';
+export type MessageViewerRole = UserRole | 'customer';
 
 export type MessageEditState = {
   messageId: string;
