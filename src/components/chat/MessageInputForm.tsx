@@ -253,7 +253,7 @@ export function MessageInputForm({
           </div>
         )}
         <form onSubmit={handleSubmit} className="p-2 flex flex-col gap-1">
-          {onBookAppointmentClick && viewerRole === 'customer' && (
+          {onBookAppointmentClick && (
             <Button
               type="button"
               variant="ghost"
@@ -324,7 +324,7 @@ export function MessageInputForm({
                 </PopoverContent>
               </Popover>
             )}
-            {onBookAppointmentClick && viewerRole !== 'customer' && (
+            {/* {onBookAppointmentClick && viewerRole !== 'customer' && (
               <Button
                 type="button"
                 variant="ghost"
@@ -337,7 +337,7 @@ export function MessageInputForm({
                 <CalendarPlus className="h-5 w-5" />
                 <span>{appointments.length > 0 ? "Xem lịch hẹn" : "Đặt lịch hẹn"}</span>
               </Button>
-            )}
+            )} */}
             <Textarea
               ref={textareaRef}
               value={message}

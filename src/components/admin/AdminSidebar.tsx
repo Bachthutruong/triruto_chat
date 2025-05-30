@@ -77,7 +77,7 @@ export function AdminSidebar() {
                   <SidebarMenuButton
                     className="w-full justify-start md:group-data-[state=collapsed]:!px-1"
                     isActive={pathname.startsWith(item.href) && (item.href === '/admin/dashboard' ? pathname === item.href : true)}
-                    tooltip={{ content: item.label, side: 'right', align: 'center', className: 'sm:hidden' }}
+                    tooltip={{ children: item.label, side: 'top', align: 'center', hidden: false }}
                     onClick={handleLinkClick}
                   >
                     <item.icon className="shrink-0 h-5 w-5 md:!h-6 md:!w-6" />

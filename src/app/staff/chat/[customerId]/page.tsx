@@ -151,14 +151,7 @@ export default function StaffIndividualChatPage() {
   const [isCreateProductDialogOpen, setIsCreateProductDialogOpen] = useState(false);
   const [isEditProductDialogOpen, setIsEditProductDialogOpen] = useState(false);
   const [editingCustomerProduct, setEditingCustomerProduct] = useState<CustomerProduct | null>(null);
-  const [createProductForm, setCreateProductForm] = useState<CreateInvoiceData[]>([{
-    customerId: '',
-    productId: '',
-    totalSessions: 1,
-    expiryDays: undefined,
-    notes: '',
-    staffId: ''
-  }]);
+  const [createProductForm, setCreateProductForm] = useState<CreateInvoiceData[]>([]);
   const [editProductForm, setEditProductForm] = useState({
     productName: '',
     totalSessions: 1,
@@ -167,6 +160,8 @@ export default function StaffIndividualChatPage() {
     notes: '',
     isActive: true
   });
+
+  const [productSearchTerm, setProductSearchTerm] = useState('');
 
   const fetchPinnedMessagesForConversation = useCallback(async (conversation: Conversation | null) => {
     if (!conversation || !conversation.pinnedMessageIds || conversation.pinnedMessageIds.length === 0) {
@@ -1061,14 +1056,7 @@ export default function StaffIndividualChatPage() {
   };
 
   const resetCreateProductForm = () => {
-    setCreateProductForm([{
-      customerId: '', // Will be filled by customer.id
-      productId: '',
-      totalSessions: 1,
-      expiryDays: undefined,
-      notes: '',
-      staffId: '' // Will be filled by staffSession.id
-    }]);
+    setCreateProductForm([]);
   };
 
   const handleEditProduct = async () => {
@@ -1121,6 +1109,38 @@ export default function StaffIndividualChatPage() {
       isActive: customerProduct.isActive
     });
     setIsEditProductDialogOpen(true);
+  };
+
+  const handleDeleteCustomerProduct = async (customerProductId: string) => {
+    setIsLoading(true);
+    try {
+      const response = await fetch(`/api/customer-products/${customerProductId}`, {
+        method: 'DELETE',
+      });
+      const data = await response.json();
+
+      if (data.success) {
+        toast({
+          title: "Thành công",
+          description: "Đã xóa sản phẩm/dịch vụ đã gán.",
+        });
+        setCustomerProducts(prev => prev.filter(cp => (cp.id || (cp as any)._id) !== customerProductId));
+      } else {
+        toast({
+          title: "Lỗi",
+          description: data.error || 'Có lỗi xảy ra khi xóa sản phẩm/dịch vụ.',
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
+      toast({
+        title: "Lỗi",
+        description: "Có lỗi xảy ra khi xóa sản phẩm/dịch vụ.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   if (isLoading && !customer && !staffSession) {
@@ -1597,6 +1617,18 @@ export default function StaffIndividualChatPage() {
                       {cp.notes && <p className="text-muted-foreground italic text-[11px]">Ghi chú: {cp.notes}</p>}
                       <div className="flex justify-end">
                         <Button variant="ghost" size="icon" className="h-5 w-5" onClick={() => openEditProductDialog(cp)}><Edit2 className="h-3 w-3" /></Button>
+                        <AlertDialog>
+                          <AlertDialogTrigger asChild>
+                            <Button variant="ghost" size="icon" className="h-5 w-5 text-destructive hover:text-destructive"><Trash2 className="h-3 w-3" /></Button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent>
+                            <AlertDialogHeader><AlertDialogTitle>Xác nhận xóa sản phẩm/dịch vụ</AlertDialogTitle><AlertDialogDescription>Bạn có chắc muốn xóa sản phẩm/dịch vụ đã gán này khỏi khách hàng?</AlertDialogDescription></AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel>Hủy</AlertDialogCancel>
+                              <AlertDialogAction onClick={() => handleDeleteCustomerProduct(cp.id || (cp as any)._id)} className="bg-destructive hover:bg-destructive/90">Xóa</AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
                       </div>
                     </div>
                   ))}
@@ -2213,6 +2245,18 @@ export default function StaffIndividualChatPage() {
                         {cp.notes && <p className="text-muted-foreground italic text-[11px]">Ghi chú: {cp.notes}</p>}
                         <div className="flex justify-end">
                           <Button variant="ghost" size="icon" className="h-5 w-5" onClick={() => openEditProductDialog(cp)}><Edit2 className="h-3 w-3" /></Button>
+                          <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                              <Button variant="ghost" size="icon" className="h-5 w-5 text-destructive hover:text-destructive"><Trash2 className="h-3 w-3" /></Button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent>
+                              <AlertDialogHeader><AlertDialogTitle>Xác nhận xóa sản phẩm/dịch vụ</AlertDialogTitle><AlertDialogDescription>Bạn có chắc muốn xóa sản phẩm/dịch vụ đã gán này khỏi khách hàng?</AlertDialogDescription></AlertDialogHeader>
+                              <AlertDialogFooter>
+                                <AlertDialogCancel>Hủy</AlertDialogCancel>
+                                <AlertDialogAction onClick={() => handleDeleteCustomerProduct(cp.id || (cp as any)._id)} className="bg-destructive hover:bg-destructive/90">Xóa</AlertDialogAction>
+                              </AlertDialogFooter>
+                            </AlertDialogContent>
+                          </AlertDialog>
                         </div>
                       </div>
                     ))}
@@ -2230,102 +2274,160 @@ export default function StaffIndividualChatPage() {
       </div>
 
       {/* New Create Product Dialog */}
-      <Dialog open={isCreateProductDialogOpen} onOpenChange={setIsCreateProductDialogOpen}>
+      <Dialog open={isCreateProductDialogOpen} onOpenChange={(open) => setIsCreateProductDialogOpen(open)}>
         <DialogContent className="sm:max-w-md max-h-[90vh] flex flex-col">
           <DialogHeader>
             <DialogTitle>Gán sản phẩm/dịch vụ cho khách hàng</DialogTitle>
             <DialogDescription>Chọn sản phẩm/dịch vụ để gán cho khách hàng này</DialogDescription>
           </DialogHeader>
-          <ScrollArea className="grid gap-4 py-4 flex-grow">
-            {createProductForm.map((item, index) => (
-              <div key={index} className="border rounded-md mt-4 p-4 space-y-3 relative">
-                {createProductForm.length > 1 && (
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="absolute top-2 right-2 h-6 w-6 text-destructive"
-                    onClick={() => setCreateProductForm(prev => prev.filter((_, i) => i !== index))}
-                    title="Xóa sản phẩm này"
-                  >
-                    <X className="h-4 w-4" />
-                  </Button>
-                )}
-                <div>
-                  <Label htmlFor={`product-${index}`}>Sản phẩm/Dịch vụ</Label>
-                  <Select
-                    value={item.productId}
-                    onValueChange={(value) => {
-                      const product = products.find(p => p.id === value);
-                      setCreateProductForm(prev => prev.map((p, i) => i === index ? {
-                        ...p,
-                        productId: value,
-                        totalSessions: product?.defaultSessions || 1,
-                        expiryDays: product?.expiryDays
-                      } : p));
-                    }}
-                  >
-                    <SelectTrigger id={`product-${index}`} className="w-full">
-                      <SelectValue placeholder="Chọn sản phẩm..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {products.filter(p => p.isActive).map((product) => (
-                        <SelectItem key={product.id} value={product.id}>
-                          <div className="flex flex-col">
-                            <span>{product.name}</span>
-                            <span className="text-xs text-muted-foreground">
-                              {product.category} - {product.price.toLocaleString('vi-VN')}đ
-                            </span>
-                          </div>
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <Label htmlFor={`sessions-${index}`}>Số buổi</Label>
+          <div className="grid gap-4 py-4 flex-grow overflow-y-auto">
+            {/* Single Select for adding new products */}
+            <div>
+              <Label htmlFor="addProductSelect">Chọn sản phẩm để thêm</Label>
+              <Select
+                onValueChange={(value) => {
+                  const productToAdd = products.find(p => p.id === value);
+                  if (productToAdd) {
+                    setCreateProductForm(prev => [
+                      ...prev,
+                      {
+                        customerId: '', // Will be filled by customer.id
+                        productId: productToAdd.id,
+                        totalSessions: productToAdd.defaultSessions || 1,
+                        expiryDays: productToAdd.expiryDays,
+                        notes: '',
+                        staffId: '' // Will be filled by staffSession.id
+                      }
+                    ]);
+                  }
+                  setProductSearchTerm(''); // Clear search term after selection
+                }}
+                value="" // Reset value after selecting
+              >
+                <SelectTrigger id="addProductSelect" className="w-full">
+                  <SelectValue placeholder="Chọn sản phẩm..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {/* Manually filter items based on search term */}
+                  <div className="relative mb-2 mt-1 mx-1">
                     <Input
-                      id={`sessions-${index}`}
-                      type="number"
-                      min="1"
-                      value={item.totalSessions}
-                      onChange={(e) => setCreateProductForm(prev => prev.map((p, i) => i === index ? {
-                        ...p,
-                        totalSessions: parseInt(e.target.value) || 1
-                      } : p))}
+                      placeholder="Tìm kiếm sản phẩm..."
+                      value={productSearchTerm}
+                      onChange={(e) => setProductSearchTerm(e.target.value)}
+                      className="h-8 w-full text-sm pr-8"
                     />
+                    {productSearchTerm && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="absolute top-0 right-0 h-8 w-8"
+                        onClick={() => setProductSearchTerm('')}
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
+                    )}
                   </div>
-                  <div>
-                    <Label htmlFor={`expiry-${index}`}>Thời hạn (ngày)</Label>
-                    <Input
-                      id={`expiry-${index}`}
-                      type="number"
-                      min="1"
-                      value={item.expiryDays || ''}
-                      onChange={(e) => setCreateProductForm(prev => prev.map((p, i) => i === index ? {
-                        ...p,
-                        expiryDays: e.target.value ? parseInt(e.target.value) : undefined
-                      } : p))}
-                      placeholder="Không giới hạn"
-                    />
-                  </div>
-                </div>
-                <div>
-                  <Label htmlFor={`notes-${index}`}>Ghi chú</Label>
-                  <Textarea
-                    id={`notes-${index}`}
-                    value={item.notes}
-                    onChange={(e) => setCreateProductForm(prev => prev.map((p, i) => i === index ? { ...p, notes: e.target.value } : p))}
-                    placeholder="Ghi chú thêm..."
-                    rows={2}
-                  />
-                </div>
+                  {/* Items rendered directly within SelectContent's Viewport for native scrolling */}
+                  {products.filter(p => p.isActive && p.name.toLowerCase().includes(productSearchTerm.toLowerCase())).map((product) => (
+                    <SelectItem key={product.id} value={product.id} className="cursor-pointer"> {/* Added cursor style */}
+                      <div className="flex flex-col">
+                        <span>{product.name}</span>
+                        <span className="text-xs text-muted-foreground">
+                          {product.category} - {product.price.toLocaleString('vi-VN')}đ
+                        </span>
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* List of selected products to assign */}
+            {createProductForm.length > 0 && (
+              <div className="space-y-3 mt-4">
+                <h4 className="font-semibold text-sm">Sản phẩm sẽ gán:</h4>
+                {createProductForm.map((item, index) => {
+                  const selectedProduct = products.find(p => p.id === item.productId);
+                  if (!selectedProduct) return null; // Should not happen if selection logic is correct, but good safeguard
+
+                  return (
+                    <div key={index} className="border rounded-md p-4 space-y-3 relative bg-muted/50">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="absolute top-2 right-2 h-6 w-6 text-destructive"
+                        onClick={() => setCreateProductForm(prev => prev.filter((_, i) => i !== index))}
+                        title="Xóa sản phẩm này"
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
+
+                      <div className="flex items-center justify-between text-sm">
+                        <div>
+                          <p className="font-medium">{selectedProduct.name}</p>
+                          <p className="text-xs text-muted-foreground">Giá: {selectedProduct.price.toLocaleString('vi-VN')}đ</p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Button
+                            variant="outline"
+                            size="icon"
+                            className="h-8 w-8"
+                            onClick={() => setCreateProductForm(prev => prev.map((p, i) => i === index ? { ...p, totalSessions: Math.max(1, p.totalSessions - 1) } : p))}
+                            disabled={item.totalSessions <= 1}
+                          >
+                            -
+                          </Button>
+                          <Input
+                            type="number"
+                            min="1"
+                            value={item.totalSessions}
+                            onChange={(e) => setCreateProductForm(prev => prev.map((p, i) => i === index ? {
+                              ...p,
+                              totalSessions: parseInt(e.target.value) || 1
+                            } : p))}
+                            className="w-12 text-center h-8"
+                          />
+                          <Button
+                            variant="outline"
+                            size="icon"
+                            className="h-8 w-8"
+                            onClick={() => setCreateProductForm(prev => prev.map((p, i) => i === index ? { ...p, totalSessions: p.totalSessions + 1 } : p))}
+                          >
+                            +
+                          </Button>
+                        </div>
+                      </div>
+                      <div>
+                        <Label htmlFor={`expiry-${index}`}>Thời hạn (ngày)</Label>
+                        <Input
+                          id={`expiry-${index}`}
+                          type="number"
+                          min="1"
+                          value={item.expiryDays || ''}
+                          onChange={(e) => setCreateProductForm(prev => prev.map((p, i) => i === index ? {
+                            ...p,
+                            expiryDays: e.target.value ? parseInt(e.target.value) : undefined
+                          } : p))}
+                          placeholder="Không giới hạn"
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor={`notes-${index}`}>Ghi chú</Label>
+                        <Textarea
+                          id={`notes-${index}`}
+                          value={item.notes}
+                          onChange={(e) => setCreateProductForm(prev => prev.map((p, i) => i === index ? { ...p, notes: e.target.value } : p))}
+                          placeholder="Ghi chú thêm..."
+                          rows={1}
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
-            ))}
-            <Button variant="outline" className="w-full mt-4" onClick={() => setCreateProductForm(prev => [...prev, { customerId: '', productId: '', totalSessions: 1, expiryDays: undefined, notes: '', staffId: '' }])}>
-              <PlusCircle className="mr-1 h-4 w-4" /> Thêm sản phẩm khác
-            </Button>
-          </ScrollArea>
+            )}
+
+          </div> {/* End of ScrollArea content */}
           <DialogFooter>
             <Button variant="outline" onClick={() => { setIsCreateProductDialogOpen(false); resetCreateProductForm(); }}>Hủy</Button>
             <Button onClick={handleCreateInvoice} disabled={isLoading || createProductForm.length === 0 || createProductForm.some(item => !item.productId || item.totalSessions <= 0)}>

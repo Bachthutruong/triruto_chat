@@ -30,7 +30,7 @@ export function AdminLayout({ children, currentSession }: AdminLayoutProps) {
         />
         <div className="flex flex-1 mt-16"> {/* mt-16 for fixed AppHeader */}
           <Sidebar
-            className="hidden sm:block fixed h-[calc(100vh-4rem)]"
+            className="hidden sm:block fixed h-[calc(100vh-4rem)] z-[1000001]"
             collapsible="icon"
             side="left"
             variant="sidebar"
