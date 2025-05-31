@@ -25,12 +25,12 @@ export function AppHeader({ userSession, onLogout, sidebarTrigger }: AppHeaderPr
 
   const renderLogo = () => {
     if (logoDataUri) {
-      return <Image src={logoDataUri} alt={`${brandName} Logo`} width={32} height={32} className="rounded-md h-8 w-8 md:h-20 md:w-20 object-contain" data-ai-hint="logo brand" />;
+      return <Image src={logoDataUri} alt={`${brandName} Logo`} width={32} height={32} className="rounded-md h-16 w-16 md:h-20 md:w-20 object-contain" data-ai-hint="logo brand" />;
     }
     if (logoUrl) {
-      return <Image src={logoUrl} alt={`${brandName} Logo`} width={32} height={32} className="rounded-md h-8 w-8 md:h-20 md:w-20 object-contain" data-ai-hint="logo brand" />;
+      return <Image src={logoUrl} alt={`${brandName} Logo`} width={32} height={32} className="rounded-md h-16 w-16 md:h-20 md:w-20 object-contain" data-ai-hint="logo brand" />;
     }
-    return <Logo className="h-8 w-8 md:h-10 md:w-10" />;
+    return <Logo className="h-16 w-16 md:h-20 md:w-20" />;
   };
 
   return (
@@ -41,8 +41,8 @@ export function AppHeader({ userSession, onLogout, sidebarTrigger }: AppHeaderPr
           <Link href="/" className="flex items-center gap-2 md:gap-3">
             {renderLogo()}
             <div>
-              <h1 className="text-lg md:text-2xl font-bold text-primary">{brandName}</h1>
-              <p className="text-xs md:text-sm text-muted-foreground hidden sm:block">Hỗ trợ trực tuyến thông minh</p>
+              <h1 className="text-md md:text-2xl font-bold text-primary">{brandName}</h1>
+              <p className="text-xs md:text-sm text-muted-foreground">Hỗ trợ trực tuyến thông minh</p>
             </div>
           </Link>
         </div>

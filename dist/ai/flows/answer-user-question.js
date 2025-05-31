@@ -1,19 +1,22 @@
 'use server';
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.answerUserQuestion = answerUserQuestion;
 /**
  * @fileOverview An AI agent that answers user questions using GPT.
  *
  * - answerUserQuestion - A function that answers user questions.
  * Schemas (AnswerUserQuestionInput, AnswerUserQuestionOutput) are defined in '@/ai/schemas/answer-user-question-schemas.ts'.
  */
-import { ai } from '@/ai/genkit';
-import { AnswerUserQuestionInputSchema, AnswerUserQuestionOutputSchema } from '@/ai/schemas/answer-user-question-schemas';
-export async function answerUserQuestion(input) {
+const genkit_1 = require("../../ai/genkit");
+const answer_user_question_schemas_1 = require("../../ai/schemas/answer-user-question-schemas");
+async function answerUserQuestion(input) {
     return answerUserQuestionFlow(input);
 }
-const answerUserQuestionPrompt = ai.definePrompt({
+const answerUserQuestionPrompt = genkit_1.ai.definePrompt({
     name: 'answerUserQuestionPromptVietnamese',
-    input: { schema: AnswerUserQuestionInputSchema },
-    output: { schema: AnswerUserQuestionOutputSchema },
+    input: { schema: answer_user_question_schemas_1.AnswerUserQuestionInputSchema },
+    output: { schema: answer_user_question_schemas_1.AnswerUserQuestionOutputSchema },
     prompt: `Bạn là một trợ lý AI hữu ích. Vui lòng trả lời câu hỏi của người dùng bằng tiếng Việt.
 
 {{#if chatHistory}}Đây là lịch sử trò chuyện (tin nhắn mới nhất ở cuối):
@@ -39,10 +42,10 @@ Câu hỏi của người dùng: {{{question}}}
 
 Trả lời của bạn (bằng tiếng Việt):`,
 });
-const answerUserQuestionFlow = ai.defineFlow({
+const answerUserQuestionFlow = genkit_1.ai.defineFlow({
     name: 'answerUserQuestionFlowVietnamese',
-    inputSchema: AnswerUserQuestionInputSchema,
-    outputSchema: AnswerUserQuestionOutputSchema,
+    inputSchema: answer_user_question_schemas_1.AnswerUserQuestionInputSchema,
+    outputSchema: answer_user_question_schemas_1.AnswerUserQuestionOutputSchema,
 }, async (input) => {
     const { output } = await answerUserQuestionPrompt(input);
     if (!output) {

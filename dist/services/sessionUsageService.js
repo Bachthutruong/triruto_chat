@@ -1,15 +1,23 @@
-import dbConnect from '@/lib/mongodb';
-import AppointmentModel from '@/models/Appointment.model';
-import CustomerProductModel from '@/models/CustomerProduct.model';
-import MessageModel from '@/models/Message.model';
-import ConversationModel from '@/models/Conversation.model';
+"use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.processEndOfDaySessionUsage = processEndOfDaySessionUsage;
+exports.sendExpiryReminders = sendExpiryReminders;
+exports.calculateDaysSinceLastAppointment = calculateDaysSinceLastAppointment;
+const mongodb_1 = __importDefault(require("../lib/mongodb"));
+const Appointment_model_1 = __importDefault(require("../models/Appointment.model"));
+const CustomerProduct_model_1 = __importDefault(require("../models/CustomerProduct.model"));
+const Message_model_1 = __importDefault(require("../models/Message.model"));
+const Conversation_model_1 = __importDefault(require("../models/Conversation.model"));
 // Tự động đánh dấu các buổi đã sử dụng (chạy cuối ngày)
-export async function processEndOfDaySessionUsage() {
+async function processEndOfDaySessionUsage() {
     try {
-        await dbConnect();
+        await (0, mongodb_1.default)();
         const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
         // Lấy tất cả lịch hẹn hôm nay chưa bị hủy và chưa được đánh dấu sử dụng
-        const appointments = await AppointmentModel.find({
+        const appointments = await Appointment_model_1.default.find({
             date: today,
             status: { $ne: 'cancelled' },
             isSessionUsed: { $ne: true }
@@ -23,7 +31,7 @@ export async function processEndOfDaySessionUsage() {
                 await appointment.save();
                 // Nếu có liên kết với CustomerProduct, cập nhật số buổi đã sử dụng
                 if (appointment.customerProductId && !appointment.isStandaloneSession) {
-                    const customerProduct = await CustomerProductModel.findById(appointment.customerProductId);
+                    const customerProduct = await CustomerProduct_model_1.default.findById(appointment.customerProductId);
                     if (customerProduct) {
                         customerProduct.usedSessions += 1;
                         customerProduct.lastUsedDate = new Date();
@@ -43,13 +51,13 @@ export async function processEndOfDaySessionUsage() {
     }
 }
 // Gửi tin nhắn nhắc nhở hết hạn
-export async function sendExpiryReminders() {
+async function sendExpiryReminders() {
     var _a;
     try {
-        await dbConnect();
+        await (0, mongodb_1.default)();
         const now = new Date();
         // Lấy tất cả sản phẩm sắp hết hạn
-        const expiringProducts = await CustomerProductModel
+        const expiringProducts = await CustomerProduct_model_1.default
             .find({
             isActive: true,
             expiryDate: { $exists: true }
@@ -78,7 +86,7 @@ export async function sendExpiryReminders() {
                     let conversationId = (_a = customer.conversationIds) === null || _a === void 0 ? void 0 : _a[0];
                     if (!conversationId) {
                         // Tạo conversation mới nếu chưa có
-                        const newConversation = new ConversationModel({
+                        const newConversation = new Conversation_model_1.default({
                             customerId: customer._id,
                             participants: [
                                 {
@@ -97,7 +105,7 @@ export async function sendExpiryReminders() {
                         await customer.save();
                     }
                     // Tạo tin nhắn nhắc nhở
-                    const reminderMessage = new MessageModel({
+                    const reminderMessage = new Message_model_1.default({
                         sender: 'system',
                         content: message,
                         timestamp: new Date(),
@@ -106,7 +114,7 @@ export async function sendExpiryReminders() {
                     });
                     await reminderMessage.save();
                     // Cập nhật conversation
-                    await ConversationModel.findByIdAndUpdate(conversationId, {
+                    await Conversation_model_1.default.findByIdAndUpdate(conversationId, {
                         $push: { messageIds: reminderMessage._id },
                         lastMessageTimestamp: new Date(),
                         lastMessagePreview: message.substring(0, 100)
@@ -125,10 +133,10 @@ export async function sendExpiryReminders() {
     }
 }
 // Tính khoảng cách từ lần hẹn cuối cùng
-export async function calculateDaysSinceLastAppointment(customerId) {
+async function calculateDaysSinceLastAppointment(customerId) {
     try {
-        await dbConnect();
-        const lastAppointment = await AppointmentModel
+        await (0, mongodb_1.default)();
+        const lastAppointment = await Appointment_model_1.default
             .findOne({
             customerId,
             status: { $in: ['completed', 'booked'] },

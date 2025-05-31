@@ -1,19 +1,24 @@
+"use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
+Object.defineProperty(exports, "__esModule", { value: true });
 // src/server.ts
-import { config } from 'dotenv';
-import { resolve } from 'path';
-import { processReminders } from './lib/cron/processReminders';
-import { processEndOfDaySessionUsage, sendExpiryReminders } from './services/sessionUsageService';
-import mongoose from 'mongoose';
+const dotenv_1 = require("dotenv");
+const path_1 = require("path");
+const processReminders_js_1 = require("./lib/cron/processReminders.js");
+const sessionUsageService_js_1 = require("./services/sessionUsageService.js");
+const mongoose_1 = __importDefault(require("mongoose"));
 // Load environment variables from all possible .env files
-config({ path: resolve(process.cwd(), '.env.local') });
-config({ path: resolve(process.cwd(), '.env') });
+(0, dotenv_1.config)({ path: (0, path_1.resolve)(process.cwd(), '.env.local') });
+(0, dotenv_1.config)({ path: (0, path_1.resolve)(process.cwd(), '.env') });
 // Log environment status
 console.log('Environment variables loaded. MONGODB_URI is', process.env.MONGODB_URI ? 'set' : 'not set');
-import { createServer } from 'http';
-import { parse } from 'url';
-import next from 'next';
-import { Server as SocketIOServer } from 'socket.io';
-import { pinMessageToConversation, unpinMessageFromConversation } from './app/actions';
+const http_1 = require("http");
+const url_1 = require("url");
+const next_1 = __importDefault(require("next"));
+const socket_io_1 = require("socket.io");
+const actions_js_1 = require("./app/actions.js");
 console.log("Socket.IO Server: dotenv configured.");
 const dev = process.env.NODE_ENV !== 'production';
 const hostname = process.env.HOSTNAME || 'localhost';
@@ -26,7 +31,7 @@ const mongooseOptions = {
     socketTimeoutMS: 45000, // Close sockets after 45s of inactivity
 };
 // Connect to MongoDB
-mongoose.connect(process.env.MONGODB_URI || '', mongooseOptions)
+mongoose_1.default.connect(process.env.MONGODB_URI || '', mongooseOptions)
     .then(() => {
     console.log('MongoDB connected successfully');
 })
@@ -35,18 +40,18 @@ mongoose.connect(process.env.MONGODB_URI || '', mongooseOptions)
     process.exit(1);
 });
 // Handle MongoDB connection events
-mongoose.connection.on('error', (err) => {
+mongoose_1.default.connection.on('error', (err) => {
     console.error('MongoDB connection error:', err);
 });
-mongoose.connection.on('disconnected', () => {
+mongoose_1.default.connection.on('disconnected', () => {
     console.log('MongoDB disconnected');
 });
-mongoose.connection.on('reconnected', () => {
+mongoose_1.default.connection.on('reconnected', () => {
     console.log('MongoDB reconnected');
 });
 console.log(`Socket.IO Server: Starting in ${dev ? 'development' : 'production'} mode on ${hostname}:${port}.`);
 console.log("Socket.IO Server: Initializing Next.js app...");
-const app = next({ dev, hostname, port });
+const app = (0, next_1.default)({ dev, hostname, port });
 const handle = app.getRequestHandler();
 console.log("Socket.IO Server: Attempting to prepare Next.js app...");
 app.prepare().then(() => {
@@ -55,11 +60,11 @@ app.prepare().then(() => {
     setInterval(async () => {
         try {
             // Check MongoDB connection before processing
-            if (mongoose.connection.readyState !== 1) {
+            if (mongoose_1.default.connection.readyState !== 1) {
                 console.log('MongoDB not connected, skipping reminder processing');
                 return;
             }
-            await processReminders();
+            await (0, processReminders_js_1.processReminders)();
         }
         catch (error) {
             console.error('Error in reminder processing:', error);
@@ -68,14 +73,14 @@ app.prepare().then(() => {
     // Run end-of-day session usage processing every hour
     setInterval(async () => {
         try {
-            if (mongoose.connection.readyState !== 1) {
+            if (mongoose_1.default.connection.readyState !== 1) {
                 console.log('MongoDB not connected, skipping session usage processing');
                 return;
             }
             const now = new Date();
             // Chỉ chạy vào cuối ngày (23:00-23:59)
             if (now.getHours() === 23) {
-                await processEndOfDaySessionUsage();
+                await (0, sessionUsageService_js_1.processEndOfDaySessionUsage)();
             }
         }
         catch (error) {
@@ -85,23 +90,23 @@ app.prepare().then(() => {
     // Run expiry reminders twice a day (9 AM and 6 PM)
     setInterval(async () => {
         try {
-            if (mongoose.connection.readyState !== 1) {
+            if (mongoose_1.default.connection.readyState !== 1) {
                 console.log('MongoDB not connected, skipping expiry reminders');
                 return;
             }
             const now = new Date();
             // Chạy vào 9h sáng và 6h chiều
             if (now.getHours() === 9 || now.getHours() === 18) {
-                await sendExpiryReminders();
+                await (0, sessionUsageService_js_1.sendExpiryReminders)();
             }
         }
         catch (error) {
             console.error('Error in expiry reminders:', error);
         }
     }, 3600000); // Chạy mỗi giờ
-    const httpServer = createServer((req, res) => {
+    const httpServer = (0, http_1.createServer)((req, res) => {
         try {
-            const parsedUrl = parse(req.url, true);
+            const parsedUrl = (0, url_1.parse)(req.url, true);
             handle(req, res, parsedUrl);
         }
         catch (err) {
@@ -112,7 +117,7 @@ app.prepare().then(() => {
     });
     console.log("Socket.IO Server: > HTTP server created.");
     console.log("Socket.IO Server: Attempting to initialize Socket.IO server with explicit path '/socket.io/'...");
-    const io = new SocketIOServer(httpServer, {
+    const io = new socket_io_1.Server(httpServer, {
         path: '/socket.io/',
         cors: {
             origin: "*", // Allow all origins for development
@@ -164,7 +169,7 @@ app.prepare().then(() => {
             console.log(`Socket.IO Server: Received pinMessageRequested for convId: ${conversationId}, msgId: ${messageId}`);
             try {
                 const userSession = JSON.parse(userSessionJsonString);
-                const updatedConversation = await pinMessageToConversation(conversationId, messageId, userSession);
+                const updatedConversation = await (0, actions_js_1.pinMessageToConversation)(conversationId, messageId, userSession);
                 if (updatedConversation) {
                     io.to(conversationId).emit('pinnedMessagesUpdated', {
                         conversationId,
@@ -182,7 +187,7 @@ app.prepare().then(() => {
             console.log(`Socket.IO Server: Received unpinMessageRequested for convId: ${conversationId}, msgId: ${messageId}`);
             try {
                 const userSession = JSON.parse(userSessionJsonString);
-                const updatedConversation = await unpinMessageFromConversation(conversationId, messageId, userSession);
+                const updatedConversation = await (0, actions_js_1.unpinMessageFromConversation)(conversationId, messageId, userSession);
                 if (updatedConversation) {
                     io.to(conversationId).emit('pinnedMessagesUpdated', {
                         conversationId,

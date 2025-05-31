@@ -1,4 +1,7 @@
+"use strict";
 // src/lib/validator.ts
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.validatePhoneNumber = validatePhoneNumber;
 /**
  * Validates a Vietnamese phone number.
  * - Starts with 0.
@@ -8,7 +11,7 @@
  * @param phoneNumber The phone number string to validate.
  * @returns True if the phone number is valid, false otherwise.
  */
-export function validatePhoneNumber(phoneNumber) {
+function validatePhoneNumber(phoneNumber) {
     if (!phoneNumber) {
         return false;
     }

@@ -1,6 +1,41 @@
+"use strict";
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
+Object.defineProperty(exports, "__esModule", { value: true });
 // src/models/AppSettings.model.ts
-import mongoose, { Schema, models } from 'mongoose';
-const SpecificDayRuleSchema = new Schema({
+const mongoose_1 = __importStar(require("mongoose"));
+const SpecificDayRuleSchema = new mongoose_1.Schema({
     id: { type: String, required: false },
     date: { type: String, required: true },
     isOff: { type: Boolean, default: false },
@@ -8,7 +43,7 @@ const SpecificDayRuleSchema = new Schema({
     numberOfStaff: { type: Number },
     serviceDurationMinutes: { type: Number },
 }, { _id: true });
-const AppSettingsSchema = new Schema({
+const AppSettingsSchema = new mongoose_1.Schema({
     greetingMessage: { type: String, default: 'Tôi là trợ lý AI của bạn. Tôi có thể giúp gì cho bạn hôm nay?' },
     greetingMessageNewCustomer: { type: String, default: 'Chào mừng bạn lần đầu đến với chúng tôi! Bạn cần hỗ trợ gì ạ?' },
     greetingMessageReturningCustomer: { type: String, default: 'Chào mừng bạn quay trở lại! Rất vui được gặp lại bạn.' },
@@ -18,7 +53,7 @@ const AppSettingsSchema = new Schema({
     logoUrl: { type: String },
     logoDataUri: { type: String },
     footerText: { type: String, default: `© ${new Date().getFullYear()} Live Chat. Đã đăng ký Bản quyền.` },
-    metaTitle: { type: String, default: 'Triruto' },
+    metaTitle: { type: String, default: 'Live Chat' },
     metaDescription: { type: String, default: 'Live chat tích hợp AI cho giao tiếp khách hàng liền mạch.' },
     metaKeywords: { type: [String], default: [] },
     openGraphImageUrl: { type: String },
@@ -49,5 +84,5 @@ AppSettingsSchema.pre('save', function (next) {
     }
     next();
 });
-const AppSettingsModel = models.AppSettings || mongoose.model('AppSettings', AppSettingsSchema);
-export default AppSettingsModel;
+const AppSettingsModel = mongoose_1.models.AppSettings || mongoose_1.default.model('AppSettings', AppSettingsSchema);
+exports.default = AppSettingsModel;

@@ -1,8 +1,8 @@
 // src/server.ts
 import { config } from 'dotenv';
 import { resolve } from 'path';
-import { processReminders } from './lib/cron/processReminders';
-import { processEndOfDaySessionUsage, sendExpiryReminders } from './services/sessionUsageService';
+import { processReminders } from './lib/cron/processReminders.js';
+import { processEndOfDaySessionUsage, sendExpiryReminders } from './services/sessionUsageService.js';
 import mongoose from 'mongoose';
 
 // Load environment variables from all possible .env files
@@ -16,7 +16,7 @@ import { createServer } from 'http';
 import { parse } from 'url';
 import next from 'next';
 import { Server as SocketIOServer, Socket } from 'socket.io';
-import { pinMessageToConversation, unpinMessageFromConversation } from './app/actions';
+import { pinMessageToConversation, unpinMessageFromConversation } from './app/actions.js';
 import type { UserSession } from './lib/types';
 
 console.log("Socket.IO Server: dotenv configured.");

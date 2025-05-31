@@ -1,20 +1,23 @@
 // This is a server-side file.
 'use server';
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.generateSuggestedReplies = generateSuggestedReplies;
 /**
  * @fileOverview Generates suggested replies based on the latest message in the chat.
  *
  * - generateSuggestedReplies - A function that handles the generation of suggested replies.
  * Schemas (GenerateSuggestedRepliesInput, GenerateSuggestedRepliesOutput) are defined in '@/ai/schemas/generate-suggested-replies-schemas.ts'.
  */
-import { ai } from '@/ai/genkit';
-import { GenerateSuggestedRepliesInputSchema, GenerateSuggestedRepliesOutputSchema } from '@/ai/schemas/generate-suggested-replies-schemas';
-export async function generateSuggestedReplies(input) {
+const genkit_1 = require("../../ai/genkit");
+const generate_suggested_replies_schemas_1 = require("../../ai/schemas/generate-suggested-replies-schemas");
+async function generateSuggestedReplies(input) {
     return generateSuggestedRepliesFlow(input);
 }
-const prompt = ai.definePrompt({
+const prompt = genkit_1.ai.definePrompt({
     name: 'generateSuggestedRepliesPromptVietnamese', // Changed name
-    input: { schema: GenerateSuggestedRepliesInputSchema },
-    output: { schema: GenerateSuggestedRepliesOutputSchema },
+    input: { schema: generate_suggested_replies_schemas_1.GenerateSuggestedRepliesInputSchema },
+    output: { schema: generate_suggested_replies_schemas_1.GenerateSuggestedRepliesOutputSchema },
     prompt: `Bạn là một trợ lý chatbot giúp người dùng bằng cách cung cấp các câu trả lời gợi ý cho tin nhắn mới nhất trong cuộc trò chuyện.
 
   Tạo ba câu trả lời gợi ý bằng tiếng Việt cho tin nhắn sau:
@@ -28,10 +31,10 @@ const prompt = ai.definePrompt({
   Sử dụng định dạng danh sách cho các câu trả lời gợi ý.
   `,
 });
-const generateSuggestedRepliesFlow = ai.defineFlow({
+const generateSuggestedRepliesFlow = genkit_1.ai.defineFlow({
     name: 'generateSuggestedRepliesFlowVietnamese', // Changed name
-    inputSchema: GenerateSuggestedRepliesInputSchema,
-    outputSchema: GenerateSuggestedRepliesOutputSchema,
+    inputSchema: generate_suggested_replies_schemas_1.GenerateSuggestedRepliesInputSchema,
+    outputSchema: generate_suggested_replies_schemas_1.GenerateSuggestedRepliesOutputSchema,
 }, async (input) => {
     const { output } = await prompt(input);
     if (!output || !output.suggestedReplies) {

@@ -1,12 +1,16 @@
 {
   "extends": "./tsconfig.json",
   "compilerOptions": {
-    "module": "esnext",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
     "outDir": "dist",
     "noEmit": false,
     "isolatedModules": false,
     "esModuleInterop": true, // Ensure this is true if using ES module imports in server.ts
     "skipLibCheck": true
   },
-  "include": ["src/server.ts", "src/ai/dev.ts"]
+  "include": [
+    "src/server.ts",
+    "src/ai/dev.ts"
+  ]
 }

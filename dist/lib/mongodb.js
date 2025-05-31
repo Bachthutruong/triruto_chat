@@ -1,5 +1,10 @@
+"use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
+Object.defineProperty(exports, "__esModule", { value: true });
 // src/lib/mongodb.ts
-import mongoose from 'mongoose';
+const mongoose_1 = __importDefault(require("mongoose"));
 // Load environment variables
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb+srv://vuduybachvp:TJ4obGsJleYENZzV@livechat.jcxnz9h.mongodb.net/aetherchat';
 console.log('MongoDB: Attempting to connect to', MONGODB_URI.replace(/\/\/([^:]+):([^@]+)@/, '//<username>:<password>@'));
@@ -22,7 +27,7 @@ async function dbConnect() {
             bufferCommands: false,
         };
         console.log('MongoDB: Creating new connection...');
-        cached.promise = mongoose.connect(MONGODB_URI, opts)
+        cached.promise = mongoose_1.default.connect(MONGODB_URI, opts)
             .then((mongoose) => {
             console.log('MongoDB: Successfully connected!');
             return mongoose;
@@ -41,4 +46,4 @@ async function dbConnect() {
         throw error;
     }
 }
-export default dbConnect;
+exports.default = dbConnect;

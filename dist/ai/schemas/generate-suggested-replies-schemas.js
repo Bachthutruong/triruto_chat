@@ -1,3 +1,6 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.GenerateSuggestedRepliesOutputSchema = exports.GenerateSuggestedRepliesInputSchema = void 0;
 // src/ai/schemas/generate-suggested-replies-schemas.ts
 /**
  * @fileOverview Schema definitions for the generateSuggestedReplies flow.
@@ -7,10 +10,10 @@
  * - GenerateSuggestedRepliesOutputSchema - Zod schema for output.
  * - GenerateSuggestedRepliesOutput - TypeScript type for output.
  */
-import { z } from 'genkit';
-export const GenerateSuggestedRepliesInputSchema = z.object({
-    latestMessage: z.string().describe('Tin nhắn mới nhất trong cuộc trò chuyện.'),
+const genkit_1 = require("genkit");
+exports.GenerateSuggestedRepliesInputSchema = genkit_1.z.object({
+    latestMessage: genkit_1.z.string().describe('Tin nhắn mới nhất trong cuộc trò chuyện.'),
 });
-export const GenerateSuggestedRepliesOutputSchema = z.object({
-    suggestedReplies: z.array(z.string()).describe('Một mảng các câu trả lời gợi ý bằng tiếng Việt.'),
+exports.GenerateSuggestedRepliesOutputSchema = genkit_1.z.object({
+    suggestedReplies: genkit_1.z.array(genkit_1.z.string()).describe('Một mảng các câu trả lời gợi ý bằng tiếng Việt.'),
 });

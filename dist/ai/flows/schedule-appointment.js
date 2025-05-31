@@ -1,19 +1,27 @@
 // schedule-appointment.ts
 'use server';
+"use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.scheduleAppointmentPrompt = void 0;
+exports.checkRealAvailability = checkRealAvailability;
+exports.scheduleAppointment = scheduleAppointment;
 /**
  * @fileOverview A flow to schedule, reschedule, or cancel appointments using natural language,
  * incorporating business rules (global and service-specific) and admin-defined appointment rules.
  */
-import { ai } from '@/ai/genkit';
-import { ScheduleAppointmentInputSchema, ScheduleAppointmentOutputSchema, } from '@/ai/schemas/schedule-appointment-schemas';
-import { getAppSettings, getAppointmentRules, getBranches } from '@/app/actions'; // Added getProductById
-import AppointmentModel from '@/models/Appointment.model';
-import { parseISO as dateFnsParseISO, getDay, addMinutes, isBefore, format as dateFnsFormat, isValid as isValidDate, compareAsc, addDays, isEqual } from 'date-fns';
-import mongoose from 'mongoose';
-export const scheduleAppointmentPrompt = ai.definePrompt({
+const genkit_1 = require("../../ai/genkit");
+const schedule_appointment_schemas_1 = require("../../ai/schemas/schedule-appointment-schemas");
+const actions_1 = require("../../app/actions"); // Added getProductById
+const Appointment_model_1 = __importDefault(require("../../models/Appointment.model"));
+const date_fns_1 = require("date-fns");
+const mongoose_1 = __importDefault(require("mongoose"));
+exports.scheduleAppointmentPrompt = genkit_1.ai.definePrompt({
     name: 'scheduleAppointmentPromptVietnameseEnhanced',
-    input: { schema: ScheduleAppointmentInputSchema },
-    output: { schema: ScheduleAppointmentOutputSchema },
+    input: { schema: schedule_appointment_schemas_1.ScheduleAppointmentInputSchema },
+    output: { schema: schedule_appointment_schemas_1.ScheduleAppointmentOutputSchema },
     prompt: `Bạn là một trợ lý AI cho một salon/spa, giúp người dùng quản lý lịch hẹn bằng tiếng Việt.
 Số điện thoại của người dùng: {{{phoneNumber}}}. ID người dùng: {{{userId}}}. Ngày/giờ hiện tại: {{{currentDateTime}}}.
 
@@ -119,9 +127,9 @@ maxSuggestions = 3, searchLimitDays = 7) {
     const suggestions = [];
     let currentDateToSearch = new Date(originalRequestDate);
     for (let dayOffset = 0; dayOffset < searchLimitDays; dayOffset++) {
-        const currentDate = addDays(currentDateToSearch, dayOffset);
-        const currentDayString = dateFnsFormat(currentDate, 'yyyy-MM-dd');
-        const currentDayOfWeek = getDay(currentDate);
+        const currentDate = (0, date_fns_1.addDays)(currentDateToSearch, dayOffset);
+        const currentDayString = (0, date_fns_1.format)(currentDate, 'yyyy-MM-dd');
+        const currentDayOfWeek = (0, date_fns_1.getDay)(currentDate);
         // Determine if the day is off using service-specific rules first, then global
         let dayIsOff = false;
         let activeWorkingHours = effectiveRules.workingHours; // Use service-specific working hours
@@ -152,26 +160,26 @@ maxSuggestions = 3, searchLimitDays = 7) {
         }
         const appointmentQuery = { date: currentDayString, service: serviceName, status: { $in: ['booked', 'pending_confirmation', 'rescheduled'] } };
         if (branchId)
-            appointmentQuery.branchId = new mongoose.Types.ObjectId(branchId);
-        const existingAppointmentsOnThisDayForService = await AppointmentModel.find(appointmentQuery).lean();
+            appointmentQuery.branchId = new mongoose_1.default.Types.ObjectId(branchId);
+        const existingAppointmentsOnThisDayForService = await Appointment_model_1.default.find(appointmentQuery).lean();
         for (const slotTime of activeWorkingHours) {
-            if (dayOffset === 0 && isEqual(currentDate, originalRequestDate) && compareAsc(dateFnsParseISO(`${currentDayString}T${slotTime}`), dateFnsParseISO(`${currentDayString}T${originalRequestTime}`)) <= 0) {
+            if (dayOffset === 0 && (0, date_fns_1.isEqual)(currentDate, originalRequestDate) && (0, date_fns_1.compareAsc)((0, date_fns_1.parseISO)(`${currentDayString}T${slotTime}`), (0, date_fns_1.parseISO)(`${currentDayString}T${originalRequestTime}`)) <= 0) {
                 continue; // Skip current or past slots on the original request day
             }
-            const slotStartDateTime = dateFnsParseISO(`${currentDayString}T${slotTime}:00.000Z`);
-            if (!isValidDate(slotStartDateTime))
+            const slotStartDateTime = (0, date_fns_1.parseISO)(`${currentDayString}T${slotTime}:00.000Z`);
+            if (!(0, date_fns_1.isValid)(slotStartDateTime))
                 continue;
-            const slotEndDateTime = addMinutes(slotStartDateTime, serviceDuration);
+            const slotEndDateTime = (0, date_fns_1.addMinutes)(slotStartDateTime, serviceDuration);
             let overlappingCount = 0;
             for (const exAppt of existingAppointmentsOnThisDayForService) {
-                const exApptStart = dateFnsParseISO(`${exAppt.date}T${exAppt.time}:00.000Z`);
-                if (!isValidDate(exApptStart))
+                const exApptStart = (0, date_fns_1.parseISO)(`${exAppt.date}T${exAppt.time}:00.000Z`);
+                if (!(0, date_fns_1.isValid)(exApptStart))
                     continue;
                 // Determine duration for the existing appointment (important: for *that* service)
                 // This part might need to fetch that specific product's duration if it's variable and not stored on appt.
                 // For simplicity here, assume all appointments for this service use `serviceDuration`.
-                const exApptEnd = addMinutes(exApptStart, serviceDuration);
-                if (isBefore(slotStartDateTime, exApptEnd) && isBefore(exApptStart, slotEndDateTime)) {
+                const exApptEnd = (0, date_fns_1.addMinutes)(exApptStart, serviceDuration);
+                if ((0, date_fns_1.isBefore)(slotStartDateTime, exApptEnd) && (0, date_fns_1.isBefore)(exApptStart, slotEndDateTime)) {
                     overlappingCount++;
                 }
             }
@@ -188,15 +196,15 @@ maxSuggestions = 3, searchLimitDays = 7) {
     }
     return suggestions;
 }
-export async function checkRealAvailability(targetDateObj, targetTime, globalAppSettings, // Global settings for fallbacks (like OOO messages) and overall structure
+async function checkRealAvailability(targetDateObj, targetTime, globalAppSettings, // Global settings for fallbacks (like OOO messages) and overall structure
 serviceName, // Name of the service being booked
 effectiveRules, // Merged rules specific to THIS service
 serviceDuration, // Duration of THIS service
 branchId // Optional branch context
 ) {
     var _a, _b, _c, _d, _e;
-    const targetDateString = dateFnsFormat(targetDateObj, 'yyyy-MM-dd');
-    const targetDayOfWeek = getDay(targetDateObj);
+    const targetDateString = (0, date_fns_1.format)(targetDateObj, 'yyyy-MM-dd');
+    const targetDayOfWeek = (0, date_fns_1.getDay)(targetDateObj);
     // Use service-specific rules first
     let currentWorkingHours = effectiveRules.workingHours;
     let currentNumStaff = effectiveRules.numberOfStaff;
@@ -220,15 +228,15 @@ branchId // Optional branch context
     if (!isDayOff && ((_e = globalAppSettings.oneTimeOffDates) === null || _e === void 0 ? void 0 : _e.includes(targetDateString)))
         isDayOff = true;
     if (isDayOff) {
-        const suggestedAlternativeSlots = await findNextAvailableSlots(addDays(targetDateObj, 1), "00:00", serviceName, effectiveRules, serviceDuration, globalAppSettings, branchId);
+        const suggestedAlternativeSlots = await findNextAvailableSlots((0, date_fns_1.addDays)(targetDateObj, 1), "00:00", serviceName, effectiveRules, serviceDuration, globalAppSettings, branchId);
         return { isAvailable: false, reason: `Ngày ${targetDateString} là ngày nghỉ cho dịch vụ này.`, suggestedSlots: suggestedAlternativeSlots };
     }
     if (currentWorkingHours.length === 0 || currentNumStaff <= 0) {
-        const suggestedAlternativeSlots = await findNextAvailableSlots(addDays(targetDateObj, 1), "00:00", serviceName, effectiveRules, serviceDuration, globalAppSettings, branchId);
+        const suggestedAlternativeSlots = await findNextAvailableSlots((0, date_fns_1.addDays)(targetDateObj, 1), "00:00", serviceName, effectiveRules, serviceDuration, globalAppSettings, branchId);
         return { isAvailable: false, reason: `Không có giờ làm việc hoặc nhân viên được cấu hình cho dịch vụ "${serviceName}" vào ngày ${targetDateString}.`, suggestedSlots: suggestedAlternativeSlots };
     }
-    const requestedStartDateTime = dateFnsParseISO(`${targetDateString}T${targetTime}:00.000Z`);
-    if (!isValidDate(requestedStartDateTime)) {
+    const requestedStartDateTime = (0, date_fns_1.parseISO)(`${targetDateString}T${targetTime}:00.000Z`);
+    if (!(0, date_fns_1.isValid)(requestedStartDateTime)) {
         return { isAvailable: false, reason: `Ngày giờ yêu cầu không hợp lệ: ${targetDateString} ${targetTime}` };
     }
     if (!currentWorkingHours.includes(targetTime)) {
@@ -236,25 +244,25 @@ branchId // Optional branch context
         return { isAvailable: false, reason: `Thời gian ${targetTime} không phải là giờ bắt đầu hợp lệ cho dịch vụ "${serviceName}" trong ngày ${targetDateString}. Các giờ có thể đặt: ${currentWorkingHours.join(', ')}.`, suggestedSlots: suggestedAlternativeSlots };
     }
     const appointmentStartDateTime = requestedStartDateTime;
-    const appointmentEndDateTime = addMinutes(appointmentStartDateTime, serviceDuration);
+    const appointmentEndDateTime = (0, date_fns_1.addMinutes)(appointmentStartDateTime, serviceDuration);
     const appointmentQuery = {
         date: targetDateString,
         service: serviceName,
         status: { $in: ['booked', 'pending_confirmation', 'rescheduled'] }
     };
     if (branchId)
-        appointmentQuery.branchId = new mongoose.Types.ObjectId(branchId);
-    const existingAppointmentsOnDateForService = await AppointmentModel.find(appointmentQuery);
+        appointmentQuery.branchId = new mongoose_1.default.Types.ObjectId(branchId);
+    const existingAppointmentsOnDateForService = await Appointment_model_1.default.find(appointmentQuery);
     let overlappingCount = 0;
     for (const exAppt of existingAppointmentsOnDateForService) {
-        const exApptStart = dateFnsParseISO(`${exAppt.date}T${exAppt.time}:00.000Z`);
-        if (!isValidDate(exApptStart))
+        const exApptStart = (0, date_fns_1.parseISO)(`${exAppt.date}T${exAppt.time}:00.000Z`);
+        if (!(0, date_fns_1.isValid)(exApptStart))
             continue;
         // For existing appointments, we assume their duration was correctly calculated at booking.
         // For simplicity, we'll use the current service's duration for overlap check.
         // A more precise check might need to store/fetch duration of *each* existing appointment.
-        const exApptEnd = addMinutes(exApptStart, serviceDuration);
-        if (isBefore(appointmentStartDateTime, exApptEnd) && isBefore(exApptStart, appointmentEndDateTime)) {
+        const exApptEnd = (0, date_fns_1.addMinutes)(exApptStart, serviceDuration);
+        if ((0, date_fns_1.isBefore)(appointmentStartDateTime, exApptEnd) && (0, date_fns_1.isBefore)(exApptStart, appointmentEndDateTime)) {
             overlappingCount++;
         }
     }
@@ -264,14 +272,14 @@ branchId // Optional branch context
     }
     return { isAvailable: true };
 }
-export async function scheduleAppointment(input) {
+async function scheduleAppointment(input) {
     const flowResult = await scheduleAppointmentFlow(input);
     return flowResult;
 }
-const scheduleAppointmentFlow = ai.defineFlow({
+const scheduleAppointmentFlow = genkit_1.ai.defineFlow({
     name: 'scheduleAppointmentFlowVietnameseEnhanced',
-    inputSchema: ScheduleAppointmentInputSchema,
-    outputSchema: ScheduleAppointmentOutputSchema,
+    inputSchema: schedule_appointment_schemas_1.ScheduleAppointmentInputSchema,
+    outputSchema: schedule_appointment_schemas_1.ScheduleAppointmentOutputSchema,
 }, 
 //@ts-ignore
 async (input) => {
@@ -281,11 +289,11 @@ async (input) => {
         console.warn("CurrentDateTime is missing, using server's current time.");
         currentDateTime = new Date().toISOString();
     }
-    const globalAppSettings = await getAppSettings();
+    const globalAppSettings = await (0, actions_1.getAppSettings)();
     if (!globalAppSettings) {
         return { intent: 'error', confirmationMessage: "Không thể tải cài đặt hệ thống. Vui lòng thử lại sau.", requiresAssistance: true };
     }
-    const appointmentRulesFromDB = await getAppointmentRules();
+    const appointmentRulesFromDB = await (0, actions_1.getAppointmentRules)();
     const appointmentRulesForAI = appointmentRulesFromDB.map(rule => {
         var _a, _b;
         return ({
@@ -293,10 +301,10 @@ async (input) => {
             aiPromptInstructions: rule.aiPromptInstructions, createdAt: (_a = rule.createdAt) === null || _a === void 0 ? void 0 : _a.toISOString(), updatedAt: (_b = rule.updatedAt) === null || _b === void 0 ? void 0 : _b.toISOString(),
         });
     });
-    const activeBranches = await getBranches(true);
+    const activeBranches = await (0, actions_1.getBranches)(true);
     const branchNamesForAI = activeBranches.map(b => b.name);
     let promptInputForNLU = Object.assign(Object.assign({}, input), { currentDateTime, appointmentRules: appointmentRulesForAI.length > 0 ? appointmentRulesForAI : undefined, availableBranches: branchNamesForAI.length > 0 ? branchNamesForAI : undefined, availabilityCheckResult: undefined });
-    const { output: nluOutput } = await scheduleAppointmentPrompt(promptInputForNLU);
+    const { output: nluOutput } = await (0, exports.scheduleAppointmentPrompt)(promptInputForNLU);
     if (!nluOutput) {
         return { intent: 'error', confirmationMessage: "Tôi gặp sự cố khi xử lý yêu cầu. Thử lại sau.", requiresAssistance: true };
     }
@@ -306,7 +314,7 @@ async (input) => {
         /^\d{4}-\d{2}-\d{2}$/.test(nluOutput.appointmentDetails.date) &&
         /^[0-2][0-9]:[0-5][0-9]$/.test(nluOutput.appointmentDetails.time) &&
         nluOutput.appointmentDetails.service) {
-        const targetDate = dateFnsParseISO(nluOutput.appointmentDetails.date);
+        const targetDate = (0, date_fns_1.parseISO)(nluOutput.appointmentDetails.date);
         const targetTime = nluOutput.appointmentDetails.time;
         const serviceName = nluOutput.appointmentDetails.service;
         const branchNameFromAI = nluOutput.appointmentDetails.branch;
@@ -315,12 +323,12 @@ async (input) => {
         const productForService = await ProductModel.findOne({ name: serviceName });
         if (!productForService || !productForService.isSchedulable) {
             const systemInstruction = `Dịch vụ "${serviceName}" không thể đặt lịch. Hãy thông báo cho người dùng và hỏi họ muốn chọn dịch vụ nào khác.`;
-            const { output: serviceNotSchedulableOutput } = await scheduleAppointmentPrompt(Object.assign(Object.assign({}, promptInputForNLU), { userInput: systemInstruction, availabilityCheckResult: { status: "SERVICE_NOT_SCHEDULABLE", reason: `Dịch vụ ${serviceName} không thể đặt lịch.`, isServiceNotSchedulable: true } }));
+            const { output: serviceNotSchedulableOutput } = await (0, exports.scheduleAppointmentPrompt)(Object.assign(Object.assign({}, promptInputForNLU), { userInput: systemInstruction, availabilityCheckResult: { status: "SERVICE_NOT_SCHEDULABLE", reason: `Dịch vụ ${serviceName} không thể đặt lịch.`, isServiceNotSchedulable: true } }));
             return serviceNotSchedulableOutput || { intent: 'clarification_needed', confirmationMessage: `Xin lỗi, dịch vụ "${serviceName}" hiện không thể đặt lịch. Bạn muốn thử dịch vụ khác không?`, missingInformation: "dịch vụ có thể đặt lịch" };
         }
-        if (!isValidDate(targetDate)) {
+        if (!(0, date_fns_1.isValid)(targetDate)) {
             const systemInstruction = `Ngày ${nluOutput.appointmentDetails.date} không hợp lệ. Yêu cầu người dùng cung cấp lại ngày.`;
-            const { output: invalidDateOutput } = await scheduleAppointmentPrompt(Object.assign(Object.assign({}, promptInputForNLU), { userInput: systemInstruction, availabilityCheckResult: { status: "NEEDS_CLARIFICATION", reason: "Ngày không hợp lệ." } }));
+            const { output: invalidDateOutput } = await (0, exports.scheduleAppointmentPrompt)(Object.assign(Object.assign({}, promptInputForNLU), { userInput: systemInstruction, availabilityCheckResult: { status: "NEEDS_CLARIFICATION", reason: "Ngày không hợp lệ." } }));
             return invalidDateOutput || { intent: 'clarification_needed', confirmationMessage: "Ngày bạn cung cấp không hợp lệ. Vui lòng kiểm tra lại (YYYY-MM-DD).", missingInformation: "ngày hợp lệ" };
         }
         const effectiveSchedulingRules = {
@@ -334,7 +342,7 @@ async (input) => {
         const availability = await checkRealAvailability(targetDate, targetTime, globalAppSettings, serviceName, effectiveSchedulingRules, serviceDuration, targetBranch === null || targetBranch === void 0 ? void 0 : targetBranch.id);
         if (availability.isAvailable) {
             const systemInstruction = "Hệ thống đã xác nhận lịch hẹn. Hãy tạo tin nhắn xác nhận cuối cùng cho người dùng.";
-            const { output: finalConfirmationOutput } = await scheduleAppointmentPrompt(Object.assign(Object.assign({}, promptInputForNLU), { userInput: systemInstruction, availabilityCheckResult: {
+            const { output: finalConfirmationOutput } = await (0, exports.scheduleAppointmentPrompt)(Object.assign(Object.assign({}, promptInputForNLU), { userInput: systemInstruction, availabilityCheckResult: {
                     status: "AVAILABLE",
                     confirmedSlot: {
                         date: nluOutput.appointmentDetails.date, time: nluOutput.appointmentDetails.time,
@@ -348,7 +356,7 @@ async (input) => {
         }
         else { // Slot is NOT available
             const systemInstruction = "Lịch yêu cầu không trống. Hãy thông báo cho người dùng và đề xuất các khung giờ sau từ suggestedSlots.";
-            const { output: alternativeOutput } = await scheduleAppointmentPrompt(Object.assign(Object.assign({}, promptInputForNLU), { userInput: systemInstruction, availabilityCheckResult: { status: "UNAVAILABLE", reason: availability.reason, suggestedSlots: availability.suggestedSlots, isStatusUnavailable: true, } }));
+            const { output: alternativeOutput } = await (0, exports.scheduleAppointmentPrompt)(Object.assign(Object.assign({}, promptInputForNLU), { userInput: systemInstruction, availabilityCheckResult: { status: "UNAVAILABLE", reason: availability.reason, suggestedSlots: availability.suggestedSlots, isStatusUnavailable: true, } }));
             if (!alternativeOutput)
                 return { intent: 'error', confirmationMessage: "Lỗi gợi ý lịch hẹn thay thế.", requiresAssistance: true };
             return Object.assign(Object.assign({}, alternativeOutput), { suggestedSlots: availability.suggestedSlots || alternativeOutput.suggestedSlots || [] });

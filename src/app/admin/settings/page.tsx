@@ -33,7 +33,7 @@ const initialSettingsState: AppSettings = {
   suggestedQuestions: ['Các dịch vụ của bạn?', 'Đặt lịch hẹn', 'Địa chỉ của bạn ở đâu?'],
   successfulBookingMessageTemplate: "Lịch hẹn của bạn cho {{service}} vào lúc {{time}} ngày {{date}}{{#if branch}} tại {{branch}}{{/if}} đã được đặt thành công!",
   footerText: `© ${new Date().getFullYear()} ${defaultInitialBrandName}. Đã đăng ký Bản quyền.`,
-  metaTitle: `${defaultInitialBrandName} - Live Chat Thông Minh`,
+  metaTitle: `Triruto - Trợ lý AI cho giao tiếp khách hàng liền mạch.`,
   metaDescription: 'Live chat tích hợp AI cho giao tiếp khách hàng liền mạch.',
   metaKeywords: [],
   openGraphImageUrl: '',
