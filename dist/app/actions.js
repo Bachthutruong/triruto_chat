@@ -288,6 +288,7 @@ function transformAppointmentDocToDetails(apptDoc) {
         staffId: typeof apptDoc.staffId === 'string' ? apptDoc.staffId : (_d = staffIdObj === null || staffIdObj === void 0 ? void 0 : staffIdObj._id) === null || _d === void 0 ? void 0 : _d.toString(),
         customerName: customerIdObj === null || customerIdObj === void 0 ? void 0 : customerIdObj.name,
         customerPhoneNumber: customerIdObj === null || customerIdObj === void 0 ? void 0 : customerIdObj.phoneNumber,
+        internalName: customerIdObj === null || customerIdObj === void 0 ? void 0 : customerIdObj.internalName,
         staffName: staffIdObj === null || staffIdObj === void 0 ? void 0 : staffIdObj.name,
         packageType: apptDoc.packageType,
         priority: apptDoc.priority,
@@ -355,7 +356,7 @@ function transformAppSettingsDoc(doc) {
         suggestedQuestions: ['Các dịch vụ của bạn?', 'Đặt lịch hẹn', 'Địa chỉ của bạn ở đâu?'],
         successfulBookingMessageTemplate: "Lịch hẹn của bạn cho {{service}} vào lúc {{time}} ngày {{date}}{{#if branch}} tại {{branch}}{{/if}} đã được đặt thành công!",
         footerText: `© ${new Date().getFullYear()} ${defaultBrandName}. Đã đăng ký Bản quyền.`,
-        metaTitle: `${defaultBrandName} - Live Chat Thông Minh`,
+        metaTitle: `Triruto - Trợ lý AI cho giao tiếp khách hàng liền mạch.`,
         metaDescription: 'Live chat tích hợp AI cho giao tiếp khách hàng liền mạch.',
         metaKeywords: [],
         numberOfStaff: 1,
@@ -934,6 +935,7 @@ async function processUserMessage(userMessageContent, currentUserSession, curren
                             //@ts-ignore
                             products: allProducts.map(p => ({ name: p.name, description: p.description, price: p.price, category: p.category })),
                         });
+                        //@ts-ignore
                         aiResponseContent = answerResult.answer;
                     }
                     catch (error) {
@@ -1444,7 +1446,17 @@ async function editStaffMessage(messageId, newContent, staffSession) {
     if (!message) {
         throw new Error("Không tìm thấy tin nhắn.");
     }
-    if (message.sender !== 'ai' || ((_a = message.userId) === null || _a === void 0 ? void 0 : _a.toString()) !== staffSession.id) {
+    // Kiểm tra quyền sửa tin nhắn
+    let hasPermission = false;
+    // Admin luôn có quyền
+    if (staffSession.role === 'admin') {
+        hasPermission = true;
+    }
+    // Staff có quyền nếu là người gửi tin nhắn hoặc tin nhắn là của AI
+    else if (staffSession.role === 'staff') {
+        hasPermission = message.sender === 'ai' || ((_a = message.userId) === null || _a === void 0 ? void 0 : _a.toString()) === staffSession.id;
+    }
+    if (!hasPermission) {
         throw new Error("Bạn không có quyền chỉnh sửa tin nhắn này.");
     }
     message.content = newContent;
@@ -1486,7 +1498,17 @@ async function deleteStaffMessage(messageId, staffSession) {
     if (!message) {
         throw new Error("Không tìm thấy tin nhắn.");
     }
-    if (message.sender !== 'ai' || ((_a = message.userId) === null || _a === void 0 ? void 0 : _a.toString()) !== staffSession.id) {
+    // Kiểm tra quyền xóa tin nhắn
+    let hasPermission = false;
+    // Admin luôn có quyền
+    if (staffSession.role === 'admin') {
+        hasPermission = true;
+    }
+    // Staff có quyền nếu là người gửi tin nhắn hoặc tin nhắn là của AI
+    else if (staffSession.role === 'staff') {
+        hasPermission = message.sender === 'ai' || ((_a = message.userId) === null || _a === void 0 ? void 0 : _a.toString()) === staffSession.id;
+    }
+    if (!hasPermission) {
         throw new Error("Bạn không có quyền xóa tin nhắn này.");
     }
     //@ts-ignore
@@ -1647,12 +1669,12 @@ async function getAppointments(filters = {}) {
             query.staffId = new mongoose_1.default.Types.ObjectId(filters.staffId);
         }
         const appointments = await Appointment_model_1.default.find(query)
-            .populate('customerId', 'name phoneNumber')
+            .populate('customerId', 'name phoneNumber internalName')
             .populate('staffId', 'name')
             .sort({ date: 1, time: 1 })
             .lean();
         return appointments.map(appointment => {
-            var _a, _b, _c, _d, _e, _f, _g, _h, _j;
+            var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k;
             return ({
                 appointmentId: appointment._id.toString(),
                 userId: (_b = (_a = appointment.customerId) === null || _a === void 0 ? void 0 : _a._id) === null || _b === void 0 ? void 0 : _b.toString(),
@@ -1665,14 +1687,14 @@ async function getAppointments(filters = {}) {
                 staffId: (_d = (_c = appointment.staffId) === null || _c === void 0 ? void 0 : _c._id) === null || _d === void 0 ? void 0 : _d.toString(),
                 customerName: ((_e = appointment.customerId) === null || _e === void 0 ? void 0 : _e.name) || appointment.customerPhoneNumber || '',
                 customerPhoneNumber: ((_f = appointment.customerId) === null || _f === void 0 ? void 0 : _f.phoneNumber) || '',
-                staffName: ((_g = appointment.staffId) === null || _g === void 0 ? void 0 : _g.name) || '',
+                internalName: ((_g = appointment.customerId) === null || _g === void 0 ? void 0 : _g.internalName) || '',
+                staffName: ((_h = appointment.staffId) === null || _h === void 0 ? void 0 : _h.name) || '',
                 recurrenceType: appointment.recurrenceType,
                 recurrenceCount: appointment.recurrenceCount,
-                createdAt: appointment.createdAt, // Keep as Date object
-                updatedAt: appointment.updatedAt, // Keep as Date object
-                // Ensure productId and branchId are converted to string
-                productId: (_h = appointment.productId) === null || _h === void 0 ? void 0 : _h.toString(),
-                branchId: (_j = appointment.branchId) === null || _j === void 0 ? void 0 : _j.toString(),
+                createdAt: appointment.createdAt,
+                updatedAt: appointment.updatedAt,
+                productId: (_j = appointment.productId) === null || _j === void 0 ? void 0 : _j.toString(),
+                branchId: (_k = appointment.branchId) === null || _k === void 0 ? void 0 : _k.toString(),
             });
         });
     }

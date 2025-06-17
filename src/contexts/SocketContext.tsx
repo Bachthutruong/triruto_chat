@@ -9,15 +9,12 @@ interface SocketContextType {
   isConnected: boolean;
 }
 
-const SocketContext = createContext<SocketContextType | undefined>(undefined);
+const SocketContext = createContext<SocketContextType>({
+  socket: null,
+  isConnected: false,
+});
 
-export function useSocket() {
-  const context = useContext(SocketContext);
-  if (context === undefined) {
-    throw new Error('useSocket must be used within a SocketProvider');
-  }
-  return context;
-}
+export const useSocket = () => useContext(SocketContext);
 
 interface SocketProviderProps {
   children: ReactNode;
@@ -26,6 +23,9 @@ interface SocketProviderProps {
 export function SocketProvider({ children }: SocketProviderProps) {
   const [socket, setSocket] = useState<Socket | null>(null);
   const [isConnected, setIsConnected] = useState(false);
+  const [reconnectAttempts, setReconnectAttempts] = useState(0);
+  const MAX_RECONNECT_ATTEMPTS = 5;
+  const RECONNECT_DELAY = 3000;
 
   useEffect(() => {
     console.log('SocketProvider: useEffect triggered for socket initialization.');
@@ -44,9 +44,14 @@ export function SocketProvider({ children }: SocketProviderProps) {
             transports: isProd ? ['polling'] : ['websocket', 'polling'],
             upgrade: !isProd,
             reconnection: true,
-            reconnectionAttempts: 5,
-            reconnectionDelay: 3000,
-            timeout: 10000, // Client-side connection attempt timeout
+            reconnectionAttempts: MAX_RECONNECT_ATTEMPTS,
+            reconnectionDelay: RECONNECT_DELAY,
+            reconnectionDelayMax: 5000,
+            randomizationFactor: 0.5,
+            timeout: 20000,
+            autoConnect: true,
+            forceNew: true,
+            multiplex: false
           });
 
           if (newSocketInstance) {
@@ -56,34 +61,49 @@ export function SocketProvider({ children }: SocketProviderProps) {
             newSocketInstance.on('connect', () => {
               console.log('SocketProvider: Socket connected successfully, ID:', newSocketInstance?.id);
               setIsConnected(true);
+              setReconnectAttempts(0); // Reset reconnect attempts on successful connection
             });
 
             newSocketInstance.on('disconnect', (reason) => {
               console.log('SocketProvider: Socket disconnected. Reason:', reason);
               setIsConnected(false);
+              
               if (reason === 'io server disconnect') {
-                 console.warn('SocketProvider: Server deliberately disconnected socket.');
+                console.warn('SocketProvider: Server deliberately disconnected socket.');
+                // Server initiated disconnect - attempt to reconnect
+                setTimeout(() => {
+                  if (newSocketInstance) {
+                    newSocketInstance.connect();
+                  }
+                }, RECONNECT_DELAY);
               } else if (reason === 'transport close' || reason === 'ping timeout' || reason === 'transport error') {
                 console.warn('SocketProvider: Socket disconnected due to transport/ping/error issue. Will attempt to reconnect if configured.');
+                // Transport issues - let the built-in reconnection handle it
               }
             });
 
             newSocketInstance.on('connect_error', (err) => {
-              // This event fires when the initial connection fails or subsequent reconnections fail.
-              console.error('SocketProvider: CRITICAL SOCKET CONNECTION ERROR (connect_error event). This indicates a problem reaching or handshaking with the Socket.IO server.');
-              console.error('Full error object:', err); 
-              // err.message often includes more details like 'xhr poll error', 'websocket error', etc.
-              // err.cause might provide underlying error details in some cases.
+              console.error('SocketProvider: Socket connection error:', err);
               setIsConnected(false);
+              
+              // Increment reconnect attempts
+              setReconnectAttempts(prev => {
+                const newAttempts = prev + 1;
+                if (newAttempts >= MAX_RECONNECT_ATTEMPTS) {
+                  console.error('SocketProvider: Maximum reconnection attempts reached');
+                  // Optionally show a user-friendly message or trigger a fallback
+                }
+                return newAttempts;
+              });
             });
             
             newSocketInstance.on('connect_timeout', (timeoutValue) => {
-              console.error('SocketProvider: SOCKET CONNECTION TIMEOUT (connect_timeout event). Connection attempt exceeded', timeoutValue, 'ms.');
+              console.error('SocketProvider: Socket connection timeout:', timeoutValue);
               setIsConnected(false);
             });
 
-            newSocketInstance.on('error', (err) => { // General error events
-                console.error('SocketProvider: GENERAL SOCKET ERROR (error event on socket instance). Full error object:', err);
+            newSocketInstance.on('error', (err) => {
+              console.error('SocketProvider: Socket error:', err);
             });
 
             newSocketInstance.on('reconnect_attempt', (attemptNumber) => {
@@ -91,32 +111,36 @@ export function SocketProvider({ children }: SocketProviderProps) {
             });
 
             newSocketInstance.on('reconnect_failed', () => {
-              console.error('SocketProvider: All reconnection attempts failed.');
+              console.error('SocketProvider: All reconnection attempts failed');
+              // Optionally show a user-friendly message or trigger a fallback
+            });
+
+            newSocketInstance.on('reconnect', (attemptNumber) => {
+              console.log(`SocketProvider: Successfully reconnected after ${attemptNumber} attempts`);
+              setIsConnected(true);
+              setReconnectAttempts(0);
             });
 
           } else {
-             console.error('SocketProvider: Socket.IO client (ioClient) did not return an instance. This is unexpected.');
+            console.error('SocketProvider: Failed to create Socket.IO client instance');
           }
         } catch (error) {
-          console.error('SocketProvider: CRITICAL ERROR during Socket.IO client instantiation or initial event listener setup:');
-          console.error(error);
+          console.error('SocketProvider: Error initializing Socket.IO client:', error);
         }
       } else {
-        console.error('SocketProvider: Socket.IO client (ioClient) is not a function. Ensure socket.io-client is installed correctly and imported.');
+        console.error('SocketProvider: Socket.IO client not available');
       }
 
       return () => {
         if (newSocketInstance) {
-          console.log('SocketProvider: Cleaning up socket connection on component unmount...');
+          console.log('SocketProvider: Cleaning up socket connection');
           newSocketInstance.disconnect();
           setSocket(null);
           setIsConnected(false);
+          setReconnectAttempts(0);
         }
       };
-    } else {
-      console.log('SocketProvider: Not in a browser environment, skipping Socket.IO client initialization.');
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); 
 
   return (

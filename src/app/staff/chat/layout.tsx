@@ -168,8 +168,8 @@ export default function StaffChatLayout({ children }: { children: ReactNode }) {
   }
 
   const sidebarContent = (
-    <Card className="h-full flex flex-col rounded-none border-r border-border">
-      <CardHeader className="border-b border-border p-3 sm:p-6">
+    <Card className="h-full flex flex-col rounded-none border-r border-border overflow-hidden">
+      <CardHeader className="border-b border-border shrink-0 p-3 sm:p-6">
         <div className="flex items-center justify-between">
           <CardTitle className="flex items-center text-sm sm:text-base">
             <Users className="mr-2 h-4 w-4 sm:h-5 sm:w-5" />
@@ -297,7 +297,7 @@ export default function StaffChatLayout({ children }: { children: ReactNode }) {
   );
 
   return (
-    <div className="flex h-full relative">
+    <div className="flex w-full h-[calc(100vh-var(--header-height,4rem))] relative">
       {/* Mobile Sidebar Overlay */}
       {isSidebarOpen && (
         <div
@@ -310,7 +310,7 @@ export default function StaffChatLayout({ children }: { children: ReactNode }) {
       <div className={cn(
         "fixed inset-y-0 left-0 z-50 w-80 transform transition-transform duration-300 ease-in-out md:relative md:translate-x-0 md:w-1/3 lg:w-1/4",
         isSidebarOpen ? "translate-x-0" : "-translate-x-full"
-      )}>
+      )} style={{ width: '300px' }}>
         {sidebarContent}
       </div>
 

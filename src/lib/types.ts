@@ -32,6 +32,7 @@ export type AppointmentDetails = {
   staffName?: string;
   customerName?: string;
   customerPhoneNumber?: string;
+  internalName?: string;
   recurrenceType?: 'none' | 'daily' | 'weekly' | 'monthly';
   recurrenceCount?: number;
   customerProductId?: string;

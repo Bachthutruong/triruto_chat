@@ -42,14 +42,40 @@ Câu hỏi của người dùng: {{{question}}}
 
 Trả lời của bạn (bằng tiếng Việt):`,
 });
+// Add predefined keywords
+const PREDEFINED_KEYWORDS = [
+    'xin chào',
+    'chào',
+    'hi',
+    'hello',
+    'tạm biệt',
+    'goodbye',
+    'bye',
+    'cảm ơn',
+    'thank',
+    'thanks',
+    'giúp',
+    'help',
+    'hỗ trợ',
+    'support'
+];
+// Function to check if message contains any predefined keywords
+function containsPredefinedKeywords(message) {
+    const lowerMessage = message.toLowerCase();
+    return PREDEFINED_KEYWORDS.some(keyword => lowerMessage.includes(keyword.toLowerCase()));
+}
 const answerUserQuestionFlow = genkit_1.ai.defineFlow({
     name: 'answerUserQuestionFlowVietnamese',
     inputSchema: answer_user_question_schemas_1.AnswerUserQuestionInputSchema,
     outputSchema: answer_user_question_schemas_1.AnswerUserQuestionOutputSchema,
 }, async (input) => {
+    // Check if the question contains any predefined keywords
+    if (!containsPredefinedKeywords(input.question)) {
+        return { answer: null }; // Return null answer to prevent any response from being shown
+    }
     const { output } = await answerUserQuestionPrompt(input);
     if (!output) {
-        return { answer: "Xin lỗi, tôi đang gặp sự cố. Vui lòng thử lại sau." };
+        return { answer: null }; // Return null for error cases to prevent showing error message
     }
     return output;
 });

@@ -1217,7 +1217,7 @@ export default function StaffIndividualChatPage() {
               <AvatarFallback>{(customer?.internalName || customer?.name || customer?.phoneNumber || 'K').charAt(0)}</AvatarFallback>
             </Avatar>
             <div>
-              <CardTitle className="text-lg">{customer?.internalName || customer?.name || `Người dùng ${customer?.phoneNumber}`}</CardTitle>
+              <CardTitle className="text-lg">{customer?.internalName || customer?.name || customer?.phoneNumber}</CardTitle>
               <p className="text-xs text-muted-foreground">
                 {customer && `Hoạt động cuối: ${format(new Date(customer.lastInteractionAt), 'HH:mm dd/MM/yy', { locale: vi })}`}
                 {customer?.assignedStaffId ? ` (Giao cho: ${customer.assignedStaffId === staffSession?.id ? 'Bạn' : customer.assignedStaffName || 'NV khác'})` : "(Chưa giao)"}

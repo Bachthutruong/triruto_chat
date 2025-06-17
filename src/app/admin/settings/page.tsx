@@ -1,4 +1,3 @@
-
 // src/app/admin/settings/page.tsx
 'use client';
 
@@ -41,7 +40,7 @@ const initialSettingsState: AppSettings = {
   sitemapXmlContent: `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n  <url>\n    <loc>YOUR_DOMAIN_HERE</loc>\n    <lastmod>${new Date().toISOString().split('T')[0]}</lastmod>\n  </url>\n</urlset>`,
   numberOfStaff: 1,
   defaultServiceDurationMinutes: 60,
-  workingHours: ["09:00", "10:00", "11:00", "13:00", "14:00", "15:00", "16:00", "17:00"],
+  workingHours: [],
   weeklyOffDays: [],
   oneTimeOffDates: [],
   specificDayRules: [],
@@ -141,7 +140,20 @@ export default function AdminSettingsPage() {
   };
 
   const handleWorkingHoursChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setSettings(prev => ({ ...prev, workingHours: e.target.value.split(',').map(h => h.trim()).filter(h => /^[0-2][0-9]:[0-5][0-9]$/.test(h)) }));
+    const value = e.target.value;
+    // Allow any input but validate when saving
+    setSettings(prev => ({
+      ...prev,
+      workingHours: value.split(',').map(h => h.trim())
+    }));
+  };
+
+  // Add a new function to validate working hours before saving
+  const validateWorkingHours = (hours: string[]): string[] => {
+    return hours.filter(h => {
+      const timeRegex = /^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/;
+      return timeRegex.test(h);
+    });
   };
 
   const handleWeeklyOffDayChange = (dayId: number, checked: boolean | 'indeterminate') => {
@@ -253,11 +265,11 @@ export default function AdminSettingsPage() {
         brandName: settings.brandName || defaultInitialBrandName,
         suggestedQuestions: settings.suggestedQuestions || [],
         metaKeywords: settings.metaKeywords || [],
-        workingHours: settings.workingHours || [],
+        workingHours: validateWorkingHours(settings.workingHours || []),
         weeklyOffDays: settings.weeklyOffDays || [],
         oneTimeOffDates: settings.oneTimeOffDates || [],
         specificDayRules: (settings.specificDayRules || []).map(rule => {
-          const { id: ruleId, ...restOfRule } = rule; // remove client-side id
+          const { id: ruleId, ...restOfRule } = rule;
           return restOfRule;
         }),
         officeDays: settings.officeDays || [],
@@ -302,7 +314,7 @@ export default function AdminSettingsPage() {
 
       await updateAppSettings(settingsToSave);
       toast({ title: "Thành công", description: "Cài đặt đã được lưu." });
-      fetchSettings(); // Re-fetch to confirm and get updated specificDayRule IDs
+      fetchSettings();
     } catch (error: any) {
       toast({ title: "Lỗi", description: error.message || "Không thể lưu cài đặt.", variant: "destructive" });
     } finally {
@@ -497,7 +509,30 @@ export default function AdminSettingsPage() {
           </div>
           <div className="space-y-2">
             <Label htmlFor="workingHoursInput"><Clock className="inline mr-1 h-4 w-4" />Giờ nhận khách (chung) (HH:MM, cách nhau bằng dấu phẩy)</Label>
-            <Input id="workingHoursInput" name="workingHours" value={(settings.workingHours || []).join(', ')} onChange={handleWorkingHoursChange} placeholder="Ví dụ: 09:00, 10:00, 13:30, 14:30" disabled={isSubmitting} />
+            <Input 
+              id="workingHoursInput" 
+              name="workingHours" 
+              value={settings.workingHours?.join(', ') || ''} 
+              onChange={handleWorkingHoursChange}
+              onBlur={(e) => {
+                // Validate on blur
+                const hours = e.target.value.split(',').map(h => h.trim());
+                const validHours = validateWorkingHours(hours);
+                if (validHours.length !== hours.length) {
+                  toast({
+                    title: "Cảnh báo",
+                    description: "Một số giờ không hợp lệ đã được loại bỏ. Vui lòng nhập theo định dạng HH:MM (ví dụ: 09:00)",
+                    variant: "destructive"
+                  });
+                }
+                setSettings(prev => ({
+                  ...prev,
+                  workingHours: validHours
+                }));
+              }}
+              placeholder="Ví dụ: 09:00, 10:00, 13:30, 14:30" 
+              disabled={isSubmitting}
+            />
             <p className="text-xs text-muted-foreground">Các giờ bắt đầu của lịch hẹn. Ví dụ: 09:00,10:00,14:00,15:00</p>
           </div>
           <div className="space-y-2">

@@ -12,19 +12,19 @@ export function AppFooter() {
   return (
     <footer className="py-6 px-6 border-t bg-card text-muted-foreground">
       <div className="container mx-auto text-center text-sm">
-        <p>{footerText.replace('Live Chat', brandName)}</p>
+        <p>© 2023 Triruto Live Chat. Đã đăng ký Bản quyền.</p>
         <div className="mt-2 space-x-4">
-          <Link href={`mailto:hotro@${brandName.toLowerCase().replace(/\s+/g, '')}.com`} className="hover:text-primary">
-            hotro@{brandName.toLowerCase().replace(/\s+/g, '')}.com
+          <Link href={`mailto:trirutohaircare@gmail.com`} className="hover:text-primary">
+            trirutohaircare@gmail.com
           </Link>
           <span className="text-border">|</span>
-          <Link href="tel:+84123456789" className="hover:text-primary">
-            Hotline: (0123) 456 789
+          <Link href="tel:+84909097664" className="hover:text-primary">
+            Hotline: 0909097664
           </Link>
-          <span className="text-border">|</span>
-          <Link href="/policies" className="hover:text-primary">
+          {/* <span className="text-border">|</span> */}
+          {/* <Link href="/policies" className="hover:text-primary">
             Chính sách
-          </Link>
+          </Link> */}
         </div>
       </div>
     </footer>

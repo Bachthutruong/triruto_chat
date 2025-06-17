@@ -55,6 +55,7 @@ export default function AdminViewAppointmentsPage() {
   const { toast } = useToast();
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(new Date());
   const [appointments, setAppointments] = useState<AppointmentDetails[]>([]);
+  console.log('appointments', appointments)
   const [isLoading, setIsLoading] = useState(false);
   const [adminSession, setAdminSession] = useState<UserSession | null>(null);
   console.log('appointments', appointments)
@@ -469,17 +470,17 @@ export default function AdminViewAppointmentsPage() {
                   <li key={appt.appointmentId} className="p-4 border rounded-lg bg-card shadow hover:shadow-md transition-shadow">
                     <div className="flex items-start justify-between">
                       <div className="flex-grow">
-                        <h3 className="font-semibold text-base">{appt.customerName ? appt.customerName : appt.customerPhoneNumber || `Khách hàng ${appt.userId}`} - {appt.time}</h3>
+                        <h3 className="font-semibold text-base">{appt.internalName || appt.customerName || appt.customerPhoneNumber || `Khách hàng ${appt.userId}`} - {appt.time}</h3>
                         <p className="text-sm text-muted-foreground">Dịch vụ: {appt.service}</p>
                         <p className="text-sm text-muted-foreground">
                           <Users className="inline-block mr-1 h-3 w-3" />
-                          {appt.customerName ? (
+                          {appt.internalName ? (
                             <>
-                              {appt.customerName}
-                              {appt.customerPhoneNumber && <span className="ml-1">({appt.customerPhoneNumber})</span>}
+                              {appt.internalName}
+                              {(appt.customerName || appt.customerPhoneNumber) && <span className="ml-1">({appt.customerName || appt.customerPhoneNumber})</span>}
                             </>
                           ) : (
-                            appt.customerPhoneNumber || `Khách hàng ${appt.userId}`
+                            appt.customerName || appt.customerPhoneNumber || `Khách hàng ${appt.userId}`
                           )}
                         </p>
                         {appt.branch && <p className="text-sm text-muted-foreground">Chi nhánh: {appt.branch}</p>}

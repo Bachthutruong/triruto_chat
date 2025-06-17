@@ -307,19 +307,21 @@ export function MessageInputForm({
                     <Zap className="h-5 w-5" />
                   </Button>
                 </PopoverTrigger>
-                <PopoverContent className="w-64 p-0">
-                  <div className="p-2 text-sm font-medium border-b">Chọn câu trả lời nhanh</div>
-                  <ScrollArea className="max-h-60">
-                    {quickReplies.map(reply => (
-                      <Button
-                        key={reply.id}
-                        variant="ghost"
-                        className="w-full justify-start text-left h-auto py-2 px-3 text-sm"
-                        onClick={() => handleQuickReplySelect(reply.content)}
-                      >
-                        {reply.title}
-                      </Button>
-                    ))}
+                <PopoverContent className="w-64 p-0 max-h-[300px]">
+                  <div className="p-2 text-sm font-medium border-b sticky top-0 bg-background z-10">Chọn câu trả lời nhanh</div>
+                  <ScrollArea className="h-[200px]">
+                    <div className="p-1">
+                      {quickReplies.map(reply => (
+                        <Button
+                          key={reply.id}
+                          variant="ghost"
+                          className="w-full justify-start text-left h-auto py-2 px-3 text-sm"
+                          onClick={() => handleQuickReplySelect(reply.content)}
+                        >
+                          {reply.title}
+                        </Button>
+                      ))}
+                    </div>
                   </ScrollArea>
                 </PopoverContent>
               </Popover>
