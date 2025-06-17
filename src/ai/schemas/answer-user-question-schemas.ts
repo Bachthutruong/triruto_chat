@@ -21,7 +21,7 @@ export const AnswerUserQuestionInputSchema = z.object({
 export type AnswerUserQuestionInput = z.infer<typeof AnswerUserQuestionInputSchema>;
 
 export const AnswerUserQuestionOutputSchema = z.object({
-  answer: z.string().describe('Câu trả lời cho câu hỏi của người dùng bằng tiếng Việt.'),
+  answer: z.string().nullable().describe('Câu trả lời cho câu hỏi của người dùng bằng tiếng Việt. Nếu null thì không hiển thị gì cả.'),
 });
 export type AnswerUserQuestionOutput = z.infer<typeof AnswerUserQuestionOutputSchema>;
 

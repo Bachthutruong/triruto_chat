@@ -197,7 +197,7 @@ export default function StaffAppointmentsPage() {
     setFormProductId('');
     setFormDate(formatDateToYYYYMMDD(selectedDate || new Date()));
     setFormTime('09:00');
-    setFormBranchId('');
+    setFormBranchId(branches.length === 1 ? branches[0].id : '');
     setFormStatus('booked');
     setFormNotes('');
     setFormStaffId(staffSession?.id || NO_STAFF_ASSIGNED_VALUE);
@@ -208,17 +208,21 @@ export default function StaffAppointmentsPage() {
   const handleOpenModal = (appointment: AppointmentDetails | null = null) => {
     if (appointment) {
       setCurrentAppointment(appointment);
-      setFormCustomerId(appointment.userId); // This should be customerId from transformed object
-      setFormProductId(appointment.service);
+      setFormCustomerId(appointment.userId);
+      setFormProductId(appointment.productId || '');
       setFormDate(appointment.date);
       setFormTime(appointment.time.replace(/ AM| PM/i, ''));
-      setFormBranchId(appointment.branch || '');
+      setFormBranchId(appointment.branchId || '');
       setFormStatus(appointment.status);
       setFormNotes(appointment.notes || '');
       setFormStaffId(appointment.staffId || staffSession?.id || NO_STAFF_ASSIGNED_VALUE);
     } else {
       resetForm();
       setFormDate(formatDateToYYYYMMDD(selectedDate || new Date()));
+      // Set default branch if there's only one branch
+      if (branches.length === 1) {
+        setFormBranchId(branches[0].id);
+      }
     }
     setIsModalOpen(true);
   };
@@ -252,7 +256,7 @@ export default function StaffAppointmentsPage() {
       date: formDate,
       time: formTime,
       branch: selectedBranch?.name,
-      branchId: formBranchId || (branches.length === 1 ? branches[0].id : undefined),
+      branchId: selectedBranch?.id || (branches.length === 1 ? branches[0].id : undefined),
       status: formStatus,
       notes: formNotes.trim() || undefined,
       staffId: formStaffId === NO_STAFF_ASSIGNED_VALUE ? undefined : formStaffId,
@@ -353,9 +357,18 @@ export default function StaffAppointmentsPage() {
                   <li key={appt.appointmentId} className="p-4 border rounded-lg bg-card shadow hover:shadow-md transition-shadow">
                     <div className="flex items-start justify-between">
                       <div className="flex-grow">
-                        <h3 className="font-semibold text-base">{appt.service} - {appt.time}</h3>
+                        <h3 className="font-semibold text-base">{appt.internalName || appt.customerName || appt.customerPhoneNumber || `Khách hàng ${appt.userId}`} - {appt.time}</h3>
+                        <p className="text-sm text-muted-foreground">Dịch vụ: {appt.service}</p>
                         <p className="text-sm text-muted-foreground">
-                          <Users className="inline-block mr-1 h-3 w-3" />KH: {appt.customerName || `Người dùng ${appt.userId}`} {appt.customerPhoneNumber && `(${appt.customerPhoneNumber})`}
+                          <Users className="inline-block mr-1 h-3 w-3" />
+                          {appt.internalName ? (
+                            <>
+                              {appt.internalName}
+                              {(appt.customerName || appt.customerPhoneNumber) && <span className="ml-1">({appt.customerName || appt.customerPhoneNumber})</span>}
+                            </>
+                          ) : (
+                            appt.customerName || appt.customerPhoneNumber || `Khách hàng ${appt.userId}`
+                          )}
                         </p>
                         {appt.branch && <p className="text-sm text-muted-foreground">Chi nhánh: {appt.branch}</p>}
                         {appt.staffName && <p className="text-sm text-muted-foreground">NV: {appt.staffName}</p>}

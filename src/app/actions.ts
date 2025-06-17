@@ -194,6 +194,7 @@ function transformAppointmentDocToDetails(apptDoc: any): AppointmentDetails {
     staffId: typeof apptDoc.staffId === 'string' ? apptDoc.staffId : staffIdObj?._id?.toString(),
     customerName: customerIdObj?.name,
     customerPhoneNumber: customerIdObj?.phoneNumber,
+    internalName: customerIdObj?.internalName,
     staffName: staffIdObj?.name,
     packageType: apptDoc.packageType,
     priority: apptDoc.priority,
@@ -915,6 +916,7 @@ export async function processUserMessage(
               //@ts-ignore
               products: allProducts.map(p => ({ name: p.name, description: p.description, price: p.price, category: p.category })),
             });
+            //@ts-ignore
             aiResponseContent = answerResult.answer;
           } catch (error) {
             console.error('[processUserMessage] Error answering user question:', error);
@@ -1515,7 +1517,20 @@ export async function editStaffMessage(
   if (!message) {
     throw new Error("Không tìm thấy tin nhắn.");
   }
-  if (message.sender !== 'ai' || message.userId?.toString() !== staffSession.id) {
+
+  // Kiểm tra quyền sửa tin nhắn
+  let hasPermission = false;
+
+  // Admin luôn có quyền
+  if (staffSession.role === 'admin') {
+    hasPermission = true;
+  }
+  // Staff có quyền nếu là người gửi tin nhắn hoặc tin nhắn là của AI
+  else if (staffSession.role === 'staff') {
+    hasPermission = message.sender === 'ai' || message.userId?.toString() === staffSession.id;
+  }
+
+  if (!hasPermission) {
     throw new Error("Bạn không có quyền chỉnh sửa tin nhắn này.");
   }
 
@@ -1565,11 +1580,24 @@ export async function deleteStaffMessage(
   if (!message) {
     throw new Error("Không tìm thấy tin nhắn.");
   }
-  if (message.sender !== 'ai' || message.userId?.toString() !== staffSession.id) {
+
+  // Kiểm tra quyền xóa tin nhắn
+  let hasPermission = false;
+
+  // Admin luôn có quyền
+  if (staffSession.role === 'admin') {
+    hasPermission = true;
+  }
+  // Staff có quyền nếu là người gửi tin nhắn hoặc tin nhắn là của AI
+  else if (staffSession.role === 'staff') {
+    hasPermission = message.sender === 'ai' || message.userId?.toString() === staffSession.id;
+  }
+
+  if (!hasPermission) {
     throw new Error("Bạn không có quyền xóa tin nhắn này.");
   }
-  //@ts-ignore
 
+  //@ts-ignore
   const customerIdString = message.customerId?.toString();
   let conversationIdString: string | undefined = message.conversationId?.toString();
 
@@ -1596,7 +1624,6 @@ export async function deleteStaffMessage(
   }
 
   await MessageModel.findByIdAndDelete(messageId);
-
 
   if (customerIdString) {
     const customer = await CustomerModel.findById(customerIdString);
@@ -1757,7 +1784,7 @@ export async function getAppointments(filters: {
     }
 
     const appointments = await AppointmentModel.find(query)
-      .populate<{ customerId: ICustomer }>('customerId', 'name phoneNumber')
+      .populate<{ customerId: ICustomer }>('customerId', 'name phoneNumber internalName')
       .populate<{ staffId: IUser }>('staffId', 'name')
       .sort({ date: 1, time: 1 })
       .lean();
@@ -1774,12 +1801,12 @@ export async function getAppointments(filters: {
       staffId: (appointment.staffId as any)?._id?.toString(),
       customerName: (appointment.customerId as any)?.name || appointment.customerPhoneNumber || '',
       customerPhoneNumber: (appointment.customerId as any)?.phoneNumber || '',
+      internalName: (appointment.customerId as any)?.internalName || '',
       staffName: (appointment.staffId as any)?.name || '',
       recurrenceType: appointment.recurrenceType,
       recurrenceCount: appointment.recurrenceCount,
-      createdAt: appointment.createdAt, // Keep as Date object
-      updatedAt: appointment.updatedAt, // Keep as Date object
-      // Ensure productId and branchId are converted to string
+      createdAt: appointment.createdAt,
+      updatedAt: appointment.updatedAt,
       productId: appointment.productId?.toString(),
       branchId: appointment.branchId?.toString(),
     }));

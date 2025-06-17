@@ -400,6 +400,7 @@ export default function HomePage() {
   const handleSendMessage = async (messageContent: string) => {
     if (!currentUserSession || !activeConversation?.id) return;
 
+    // Create and show user message immediately
     const userMessage: Message = {
       id: `msg_local_user_${Date.now()}`,
       sender: 'user',
@@ -409,9 +410,8 @@ export default function HomePage() {
       name: currentUserSession.name || `Người dùng ${currentUserSession.phoneNumber}`,
       userId: currentUserSession.id,
     };
-
     setCurrentMessages((prevMessages) => [...prevMessages, userMessage]);
-    setCurrentSuggestedReplies([]);
+    
     setIsChatLoading(true);
     if (socket && isConnected && onTyping) {
       onTyping(false);
@@ -426,41 +426,34 @@ export default function HomePage() {
         currentMessages
       );
 
+      // Update the temporary user message with the saved one
       setCurrentMessages((prevMessages) =>
         prevMessages.map(m => m.id === userMessage.id ? { ...savedUserMessage, timestamp: new Date(savedUserMessage.timestamp) } : m)
       );
-      setCurrentMessages(prev => [...prev, { ...aiMessage, timestamp: new Date(aiMessage.timestamp) }]);
 
+      // Only show AI response if it has content (keywords matched)
+      if (aiMessage?.content) {
+        setCurrentMessages(prev => [...prev, { ...aiMessage, timestamp: new Date(aiMessage.timestamp) }]);
+        
+        if (socket && isConnected) {
+          socket.emit('sendMessage', { message: savedUserMessage, conversationId: activeConversation.id });
+          socket.emit('sendMessage', { message: aiMessage, conversationId: activeConversation.id });
+        }
 
-      if (socket && isConnected) {
-        socket.emit('sendMessage', { message: savedUserMessage, conversationId: activeConversation.id });
-        socket.emit('sendMessage', { message: aiMessage, conversationId: activeConversation.id });
+        if (updatedAppointment) {
+          toast({
+            title: "Cập nhật lịch hẹn",
+            description: `Dịch vụ: ${updatedAppointment.service}, Ngày: ${updatedAppointment.date}, Giờ: ${updatedAppointment.time}, Trạng thái: ${updatedAppointment.status}`,
+          });
+        }
       }
-
-      if (updatedAppointment) {
-        toast({
-          title: "Cập nhật lịch hẹn",
-          description: `Dịch vụ: ${updatedAppointment.service}, Ngày: ${updatedAppointment.date}, Giờ: ${updatedAppointment.time}, Trạng thái: ${updatedAppointment.status}`,
-        });
-      }
-
+      
     } catch (error) {
       console.error("Lỗi xử lý tin nhắn:", error);
-      const errorMessage: Message = {
-        id: `msg_error_${Date.now()}`,
-        sender: 'system',
-        content: 'Xin lỗi, tôi gặp lỗi. Vui lòng thử lại.',
-        timestamp: new Date(),
-        conversationId: activeConversation.id,
-      };
-      setCurrentMessages((prevMessages) => [...prevMessages.filter(m => m.id !== userMessage.id), errorMessage]);
-      toast({
-        title: "Lỗi tin nhắn",
-        description: "Không thể xử lý tin nhắn của bạn. Vui lòng thử lại.",
-        variant: "destructive",
-      });
+      // Keep the user message visible even if there's an error
     } finally {
       setIsChatLoading(false);
+      setCurrentSuggestedReplies([]);
     }
   };
 

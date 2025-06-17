@@ -21,5 +21,5 @@ exports.AnswerUserQuestionInputSchema = genkit_1.z.object({
     })).optional().describe('Các ví dụ huấn luyện đã được phê duyệt có liên quan để giúp hướng dẫn câu trả lời.'),
 });
 exports.AnswerUserQuestionOutputSchema = genkit_1.z.object({
-    answer: genkit_1.z.string().describe('Câu trả lời cho câu hỏi của người dùng bằng tiếng Việt.'),
+    answer: genkit_1.z.string().nullable().describe('Câu trả lời cho câu hỏi của người dùng bằng tiếng Việt. Nếu null thì không hiển thị gì cả.'),
 });
