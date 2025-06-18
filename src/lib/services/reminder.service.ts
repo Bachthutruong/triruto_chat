@@ -34,7 +34,7 @@ export class ReminderService {
                 // Create system message for the reminder
                 const systemMessage = await MessageModel.create({
                     conversationId: latestConversation._id,
-                    content: `🔔 Nhắc nhở: ${reminder.title}\n${reminder.description}`,
+                    content: `${reminder.title}\n${reminder.description}`,
                     type: 'system',
                     sender: 'system',
                     timestamp: new Date(),

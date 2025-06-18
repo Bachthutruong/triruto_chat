@@ -17,6 +17,7 @@ export interface IMessage extends Document {
   deletedBy?: Types.ObjectId;
   createdAt: Date;
   updatedAt: Date;
+  customerId: Types.ObjectId;
 }
 
 const MessageSchema = new Schema<IMessage>(
@@ -36,7 +37,8 @@ const MessageSchema = new Schema<IMessage>(
     editedAt: { type: Date },
     editedBy: { type: Schema.Types.ObjectId, ref: 'User' },
     deletedAt: { type: Date },
-    deletedBy: { type: Schema.Types.ObjectId, ref: 'User' }
+    deletedBy: { type: Schema.Types.ObjectId, ref: 'User' },
+    customerId: { type: Schema.Types.ObjectId, ref: 'Customer', required: true }
   },
   { timestamps: true }
 );

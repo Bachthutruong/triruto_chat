@@ -1190,7 +1190,7 @@ export async function getCustomerDetails(customerId: string): Promise<{ customer
       populate: {
         path: 'messageIds',
         model: MessageModel,
-        options: { sort: { timestamp: 1 }, limit: 50 }
+        options: { sort: { timestamp: 1 } }
       }
     });
 
@@ -1212,7 +1212,7 @@ export async function getCustomerDetails(customerId: string): Promise<{ customer
 
 
   const appointmentDocs = await AppointmentModel.find({ customerId: customerDoc._id })
-    .populate<{ customerId: ICustomer }>('customerId', 'name phoneNumber')
+    .populate<{ customerId: ICustomer }>('customerId', 'name phoneNumber internalName')
     .populate<{ staffId: IUser }>('staffId', 'name')
     .sort({ date: -1, time: -1 });
 
@@ -2554,8 +2554,8 @@ export async function getCustomerMediaMessages(customerId: string): Promise<Mess
   const messages = await MessageModel.find({
     customerId: new mongoose.Types.ObjectId(customerId) as any,
     content: { $regex: /^data:(image\/(jpeg|png|gif|webp|svg\+xml)|application\/(pdf|msword|vnd\.openxmlformats-officedocument\.wordprocessingml\.document|vnd\.ms-excel|vnd\.openxmlformats-officedocument\.spreadsheetml\.sheet|plain|rtf|zip|x-rar-compressed|octet-stream))/ }
-  }).sort({ timestamp: -1 });
-
+  }).sort({ timestamp: -1 }); // KHÔNG có .limit()
+  console.log(`[getCustomerMediaMessages] Found ${messages.length} media messages for customerId ${customerId}`);
   return messages.map(transformMessageDocToMessage);
 }
 
@@ -2769,13 +2769,17 @@ export async function deleteQuickReply(id: string): Promise<{ success: boolean }
 
 export async function createSystemMessage({ conversationId, content }: { conversationId: string, content: string }) {
   await dbConnect();
+  // Lấy conversation để lấy customerId
+  const conversation = await ConversationModel.findById(conversationId);
+  if (!conversation) throw new Error('Conversation not found');
   const message = await MessageModel.create({
     conversationId,
     content,
     type: 'system',
     sender: 'system',
     timestamp: new Date(),
-    isRead: false
+    isRead: false,
+    customerId: conversation.customerId // BẮT BUỘC PHẢI TRUYỀN customerId
   });
 
   // Update conversation with new message
