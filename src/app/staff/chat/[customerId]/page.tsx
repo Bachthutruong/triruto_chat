@@ -431,6 +431,17 @@ export default function StaffIndividualChatPage() {
         setCustomer(prev => prev ? { ...prev, interactionStatus: 'replied_by_staff', lastMessagePreview: messageContent.substring(0, 100), lastMessageTimestamp: new Date(sentMessage.timestamp) } : null);
         setActiveConversation(prev => prev ? { ...prev, lastMessagePreview: messageContent.substring(0, 100), lastMessageTimestamp: new Date(sentMessage.timestamp) } : null);
 
+        // Sau khi gửi tin nhắn, cập nhật lại media (sidebar)
+        if (customer) {
+          try {
+            const updatedMedia = await getCustomerMediaMessages(customer.id);
+            console.log('[handleSendMessage] Updated media count:', updatedMedia.length);
+            setAllMediaMessages(updatedMedia || []);
+          } catch (error) {
+            console.error('[handleSendMessage] Error updating media:', error);
+          }
+        }
+
         if (socket && isConnected) {
           socket.emit('sendMessage', { message: sentMessage, conversationId: activeConversation.id });
           console.log("Staff: Emitting sendMessage via socket:", sentMessage, activeConversation.id);
@@ -1340,7 +1351,7 @@ export default function StaffIndividualChatPage() {
 
             <div>
               <h4 className="font-semibold text-sm flex items-center mb-1"><UserCircle className="mr-2 h-4 w-4 text-primary" />Chi tiết</h4>
-              <p className="text-xs"><span className="text-muted-foreground">Điện thoại:</span> {customer?.phoneNumber}</p>
+              <p className="text-xs"><span className="text-muted-foreground">Điện thoại:</span> <a href={`https://zalo.me/${customer?.phoneNumber}`} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">{customer?.phoneNumber}</a></p>
               <div className="text-xs flex items-center">
                 <span className="text-muted-foreground mr-1">Tên nội bộ:</span>
                 {editingInternalName ? (
@@ -1962,7 +1973,7 @@ export default function StaffIndividualChatPage() {
                   <UserCircle className="mr-2 h-4 w-4 text-primary" />Chi tiết
                 </h4>
                 <p className="text-xs">
-                  <span className="text-muted-foreground">Điện thoại:</span> {customer?.phoneNumber}
+                  <span className="text-muted-foreground">Điện thoại:</span> <a href={`https://zalo.me/${customer?.phoneNumber}`} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">{customer?.phoneNumber}</a>
                 </p>
                 <div className="text-xs flex items-center">
                   <span className="text-muted-foreground mr-1">Tên nội bộ:</span>
