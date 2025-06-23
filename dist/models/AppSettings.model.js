@@ -35,6 +35,12 @@ var __importStar = (this && this.__importStar) || (function () {
 Object.defineProperty(exports, "__esModule", { value: true });
 // src/models/AppSettings.model.ts
 const mongoose_1 = __importStar(require("mongoose"));
+const BreakTimeSchema = new mongoose_1.Schema({
+    id: { type: String, required: false },
+    startTime: { type: String, required: true },
+    endTime: { type: String, required: true },
+    name: { type: String, required: false },
+}, { _id: true });
 const SpecificDayRuleSchema = new mongoose_1.Schema({
     id: { type: String, required: false },
     date: { type: String, required: true },
@@ -42,6 +48,7 @@ const SpecificDayRuleSchema = new mongoose_1.Schema({
     workingHours: [{ type: String }],
     numberOfStaff: { type: Number },
     serviceDurationMinutes: { type: Number },
+    breakTimes: { type: [BreakTimeSchema], default: [] },
 }, { _id: true });
 const AppSettingsSchema = new mongoose_1.Schema({
     greetingMessage: { type: String, default: 'Tôi là trợ lý AI của bạn. Tôi có thể giúp gì cho bạn hôm nay?' },
@@ -62,6 +69,9 @@ const AppSettingsSchema = new mongoose_1.Schema({
     numberOfStaff: { type: Number, default: 1, min: 0 },
     defaultServiceDurationMinutes: { type: Number, default: 60, min: 5 },
     workingHours: { type: [String], default: ["09:00", "10:00", "11:00", "13:00", "14:00", "15:00", "16:00", "17:00"] },
+    breakTimes: { type: [BreakTimeSchema], default: [] },
+    breakTimeNotificationEnabled: { type: Boolean, default: false },
+    breakTimeNotificationMessage: { type: String, default: 'Hiện tại chúng tôi đang trong giờ nghỉ {{breakName}} từ {{startTime}} đến {{endTime}}. Vui lòng liên hệ lại sau hoặc để lại lời nhắn.' },
     weeklyOffDays: { type: [Number], default: [] },
     oneTimeOffDates: { type: [String], default: [] },
     specificDayRules: { type: [SpecificDayRuleSchema], default: [] },

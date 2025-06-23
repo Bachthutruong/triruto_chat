@@ -35,6 +35,7 @@ type ChatWindowProps = {
   appointments?: AppointmentDetails[];
   onCancelAppointment?: (appointmentId: string) => Promise<void>;
   onAppointmentBooked?: () => Promise<void>;
+  isAppointmentDisabled?: boolean;
 };
 
 const TypingIndicator = ({ users }: { users: Record<string, string> }) => {
@@ -74,6 +75,7 @@ export function ChatWindow({
   appointments = [],
   onCancelAppointment,
   onAppointmentBooked,
+  isAppointmentDisabled,
 }: ChatWindowProps) {
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   // Manage local pinned messages for immediate UI update on unpin
@@ -179,6 +181,7 @@ export function ChatWindow({
         onCancelAppointment={onCancelAppointment}
         onAppointmentBooked={onAppointmentBooked}
         viewerRole={viewerRole}
+        isAppointmentDisabled={isAppointmentDisabled}
       />
     </div>
   );

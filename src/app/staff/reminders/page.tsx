@@ -50,7 +50,7 @@ type CustomerOption = {
   phoneNumber: string;
 };
 
-export default function StaffRemindersPage() {
+export default function AdminRemindersManagementPage() {
   const [reminderMode, setReminderMode] = useState<'all' | 'upcoming' | 'overdue'>('all');
   const [reminders, setReminders] = useState<Reminder[]>([]);
   const [filteredReminders, setFilteredReminders] = useState<Reminder[]>([]);
@@ -232,6 +232,7 @@ export default function StaffRemindersPage() {
         }
       } else {
         // Create new reminder
+        //@ts-ignore
         const newReminder = await createReminder(reminderData);
         setReminders((prevReminders) => [newReminder, ...prevReminders]);
         toast({ title: 'Thành công', description: 'Nhắc nhở mới đã được tạo.' });
@@ -335,7 +336,7 @@ export default function StaffRemindersPage() {
   };
   
   return (
-    <div className="space-y-6">
+    <div className="space-y-6" style={{ maxWidth: 'none', width: '1500px' }}>
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-2xl sm:text-3xl font-bold">Nhắc nhở Chăm sóc Khách hàng</h1>

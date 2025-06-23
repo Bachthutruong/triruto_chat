@@ -16,9 +16,10 @@ type AppointmentManagerProps = {
     appointments: AppointmentDetails[];
     onCancelAppointment: (appointmentId: string) => Promise<void>;
     onBookNewAppointmentClick?: () => void;
+    canBookNew?: boolean;
 };
 
-export function AppointmentManager({ isOpen, onClose, appointments, onCancelAppointment, onBookNewAppointmentClick }: AppointmentManagerProps) {
+export function AppointmentManager({ isOpen, onClose, appointments, onCancelAppointment, onBookNewAppointmentClick, canBookNew = true }: AppointmentManagerProps) {
     const filteredAppointments = appointments
         .filter(appointment => {
             const appointmentDate = parseISO(appointment.date);
@@ -49,7 +50,7 @@ export function AppointmentManager({ isOpen, onClose, appointments, onCancelAppo
             <DialogContent className="sm:max-w-[425px]">
                 <DialogHeader className="flex flex-row items-center justify-between">
                     <DialogTitle>Lịch hẹn của bạn</DialogTitle>
-                    {onBookNewAppointmentClick && (
+                    {onBookNewAppointmentClick && canBookNew && (
                         <Button
                             variant="ghost"
                             size="sm"

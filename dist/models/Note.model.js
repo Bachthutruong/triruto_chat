@@ -43,14 +43,16 @@ const NoteSchema = new mongoose_1.Schema({
     //@ts-ignore
     content: { type: String, trim: true }, // Made content optional at schema level
     //@ts-ignore
-    imageDataUri: { type: String },
+    imageUrl: { type: String },
+    //@ts-ignore
+    imagePublicId: { type: String },
     //@ts-ignore
     imageFileName: { type: String },
 }, { timestamps: true }); // createdAt and updatedAt managed by Mongoose
-// Custom validator to ensure either content or imageDataUri exists
+// Custom validator to ensure either content or imageUrl exists
 NoteSchema.pre('validate', function (next) {
     var _a;
-    if (!((_a = this.content) === null || _a === void 0 ? void 0 : _a.trim()) && !this.imageDataUri) {
+    if (!((_a = this.content) === null || _a === void 0 ? void 0 : _a.trim()) && !this.imageUrl) {
         next(new Error('Ghi chú phải có nội dung văn bản hoặc hình ảnh.'));
     }
     else {

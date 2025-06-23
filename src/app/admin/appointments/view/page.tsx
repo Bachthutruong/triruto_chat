@@ -8,6 +8,7 @@ import { Calendar } from '@/components/ui/calendar';
 import { PlusCircle, ListFilter, Edit, Trash2, Save, Users, Clock, Search } from 'lucide-react';
 import type { AppointmentDetails, UserSession, GetAppointmentsFilters, ProductItem, Branch, AppSettings } from '@/lib/types';
 import { getAppointments, createNewAppointment, updateExistingAppointment, deleteExistingAppointment, getCustomerListForSelect, getAllUsers, getAllProducts, getBranches, getAppSettings, handleCustomerAccess } from '@/app/actions';
+import { filterTimeSlotsForBreakTime } from '@/lib/utils/timeSlots';
 import { useToast } from '@/hooks/use-toast';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogClose, DialogTrigger, DialogFooter } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
@@ -139,10 +140,13 @@ export default function AdminViewAppointmentsPage() {
       serviceSpecificDuration,
       appSettingsToUse?.defaultServiceDurationMinutes
     );
-    setTimeSlots(slots);
-    if (slots.length > 0 && !slots.includes(formTime)) {
-      setFormTime(slots[0]);
-    } else if (slots.length === 0 && formTime) {
+    
+    // Filter out break times
+    const filteredSlots = filterTimeSlotsForBreakTime(slots, appSettingsToUse?.breakTimes || []);
+    setTimeSlots(filteredSlots);
+    if (filteredSlots.length > 0 && !filteredSlots.includes(formTime)) {
+      setFormTime(filteredSlots[0]);
+    } else if (filteredSlots.length === 0 && formTime) {
       setFormTime('');
     }
   }, [formProductId, products, appSettingsFromContext, currentAppSettings, formTime]);
@@ -384,7 +388,7 @@ export default function AdminViewAppointmentsPage() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6" style={{ maxWidth: 'none', width: '1500px' }}>
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold">Xem Lịch hẹn (Admin)</h1>

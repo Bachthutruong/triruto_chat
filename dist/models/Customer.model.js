@@ -57,6 +57,7 @@ const CustomerSchema = new mongoose_1.Schema({
     lastMessagePreview: { type: String, maxlength: 100 },
     lastMessageTimestamp: { type: Date, index: true },
     createdAt: { type: Date, default: Date.now },
+    isAppointmentDisabled: { type: Boolean, default: false, index: true }, // Mặc định cho phép đặt lịch hẹn
 }, { timestamps: true, strictPopulate: false }); // Added strictPopulate: false
 const CustomerModel = mongoose_1.models.Customer || mongoose_1.default.model('Customer', CustomerSchema);
 exports.default = CustomerModel;

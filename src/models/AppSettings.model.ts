@@ -1,6 +1,13 @@
 // src/models/AppSettings.model.ts
 import mongoose, { Schema, Document, models, Model } from 'mongoose';
-import type { AppSettings, SpecificDayRule } from '@/lib/types';
+import type { AppSettings, SpecificDayRule, BreakTime } from '@/lib/types';
+
+const BreakTimeSchema: Schema<BreakTime> = new Schema({
+  id: { type: String, required: false },
+  startTime: { type: String, required: true },
+  endTime: { type: String, required: true },
+  name: { type: String, required: false },
+}, { _id: true });
 
 const SpecificDayRuleSchema: Schema<SpecificDayRule> = new Schema({
   id: { type: String, required: false },
@@ -9,11 +16,13 @@ const SpecificDayRuleSchema: Schema<SpecificDayRule> = new Schema({
   workingHours: [{ type: String }],
   numberOfStaff: { type: Number },
   serviceDurationMinutes: { type: Number },
+  breakTimes: { type: [BreakTimeSchema], default: [] },
 }, { _id: true });
 
 //@ts-ignore
-export interface IAppSettings extends Document, Omit<AppSettings, 'id' | 'specificDayRules' | 'updatedAt'> {
+export interface IAppSettings extends Document, Omit<AppSettings, 'id' | 'specificDayRules' | 'breakTimes' | 'updatedAt'> {
   specificDayRules?: mongoose.Types.DocumentArray<Omit<SpecificDayRule, 'id'>>; // For Mongoose array handling
+  breakTimes?: mongoose.Types.DocumentArray<Omit<BreakTime, 'id'>>; // For Mongoose array handling
   createdAt?: Date; // Added for consistency if needed, though timestamps:true handles it
   updatedAt?: Date; // Added for consistency
 }
@@ -38,6 +47,9 @@ const AppSettingsSchema: Schema<IAppSettings> = new Schema({
   numberOfStaff: { type: Number, default: 1, min: 0 },
   defaultServiceDurationMinutes: { type: Number, default: 60, min: 5 },
   workingHours: { type: [String], default: ["09:00", "10:00", "11:00", "13:00", "14:00", "15:00", "16:00", "17:00"] },
+  breakTimes: { type: [BreakTimeSchema], default: [] },
+  breakTimeNotificationEnabled: { type: Boolean, default: false },
+  breakTimeNotificationMessage: { type: String, default: 'Hiện tại chúng tôi đang trong giờ nghỉ {{breakName}} từ {{startTime}} đến {{endTime}}. Vui lòng liên hệ lại sau hoặc để lại lời nhắn.' },
   weeklyOffDays: { type: [Number], default: [] },
   oneTimeOffDates: { type: [String], default: [] },
   specificDayRules: { type: [SpecificDayRuleSchema], default: [] },

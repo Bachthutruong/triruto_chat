@@ -63,7 +63,7 @@ export default function AdminDashboardPage() {
 
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6" style={{ maxWidth: 'none', width: '1500px' }}>
       <h1 className="text-3xl font-bold">Bảng điều khiển Admin</h1>
       <p className="text-muted-foreground">Tổng quan về ứng dụng {brandName} của bạn.</p>
 

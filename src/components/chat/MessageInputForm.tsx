@@ -5,12 +5,14 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import NextImage from 'next/image';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
-import { Send, Paperclip, X, FileText, Smile, CalendarPlus, Zap } from 'lucide-react';
+import { Send, Paperclip, X, FileText, Smile, CalendarPlus, Zap, Images } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import type { QuickReplyType, AppointmentDetails } from '@/lib/types';
 import { AppointmentManager } from './AppointmentManager';
+import { MediaLibraryModal } from './MediaLibraryModal';
+import { uploadFile, validateFile, fileToDataUri } from '@/lib/utils/upload';
 
 type MessageInputFormProps = {
   onSubmit: (messageContent: string) => void;
@@ -22,6 +24,7 @@ type MessageInputFormProps = {
   onCancelAppointment?: (appointmentId: string) => Promise<void>;
   onAppointmentBooked?: () => Promise<void>;
   viewerRole: 'customer' | 'staff' | 'admin';
+  isAppointmentDisabled?: boolean;
 };
 
 const MAX_FILE_SIZE_MB = 5;
@@ -37,10 +40,17 @@ export function MessageInputForm({
   appointments = [],
   onCancelAppointment,
   onAppointmentBooked,
-  viewerRole
+  viewerRole,
+  isAppointmentDisabled = false
 }: MessageInputFormProps) {
   const [message, setMessage] = useState('');
-  const [stagedFile, setStagedFile] = useState<{ dataUri: string; name: string; type: string } | null>(null);
+  const [stagedFile, setStagedFile] = useState<{ 
+    previewDataUri: string; 
+    cloudinaryUrl?: string; 
+    name: string; 
+    type: string; 
+    isUploading?: boolean 
+  } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const { toast } = useToast();
@@ -48,6 +58,7 @@ export function MessageInputForm({
   const [isDraggingOver, setIsDraggingOver] = useState(false);
   const dropZoneRef = useRef<HTMLDivElement>(null);
   const [isAppointmentManagerOpen, setIsAppointmentManagerOpen] = useState(false);
+  const [isMediaLibraryOpen, setIsMediaLibraryOpen] = useState(false);
 
   const adjustTextareaHeight = useCallback(() => {
     if (textareaRef.current) {
@@ -66,8 +77,9 @@ export function MessageInputForm({
 
     if (stagedFile) {
       const fileNameEncoded = encodeURIComponent(stagedFile.name);
-      const dataUriWithFileName = `${stagedFile.dataUri}#filename=${fileNameEncoded}`;
-      contentToSend = dataUriWithFileName + (contentToSend ? `\n${contentToSend}` : '');
+      const fileUrl = stagedFile.cloudinaryUrl || stagedFile.previewDataUri;
+      const urlWithFileName = `${fileUrl}#filename=${fileNameEncoded}`;
+      contentToSend = urlWithFileName + (contentToSend ? `\n${contentToSend}` : '');
     }
 
     if (contentToSend) {
@@ -83,8 +95,9 @@ export function MessageInputForm({
     } else if (stagedFile && !contentToSend) {
       // This case handles sending only the file if no text message is present
       const fileNameEncoded = encodeURIComponent(stagedFile.name);
-      const dataUriWithFileName = `${stagedFile.dataUri}#filename=${fileNameEncoded}`;
-      onSubmit(dataUriWithFileName);
+      const fileUrl = stagedFile.cloudinaryUrl || stagedFile.previewDataUri;
+      const urlWithFileName = `${fileUrl}#filename=${fileNameEncoded}`;
+      onSubmit(urlWithFileName);
       setMessage('');
       setStagedFile(null);
       if (textareaRef.current) {
@@ -95,34 +108,58 @@ export function MessageInputForm({
     }
   };
 
-  const processFile = (file: File) => {
-    if (file.size > MAX_FILE_SIZE_BYTES) {
+  const processFile = async (file: File) => {
+    const validation = validateFile(file, MAX_FILE_SIZE_MB);
+    if (!validation.isValid) {
       toast({
-        title: "Tệp quá lớn",
-        description: `Kích thước tệp không được vượt quá ${MAX_FILE_SIZE_MB}MB.`,
+        title: "Tệp không hợp lệ",
+        description: validation.error,
         variant: "destructive",
       });
       return;
     }
 
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      if (reader.result) {
-        setStagedFile({
-          dataUri: reader.result as string,
-          name: file.name,
-          type: file.type,
-        });
-      }
-    };
-    reader.onerror = () => {
+    try {
+      // First, create preview
+      const previewDataUri = await fileToDataUri(file);
+      
+      // Set initial state with preview
+      setStagedFile({
+        previewDataUri,
+        name: file.name,
+        type: file.type,
+        isUploading: true,
+      });
+
+      // Upload to Cloudinary
+      const uploadResult = await uploadFile(file, 'chat');
+      
+      // Update with Cloudinary URL
+      setStagedFile(prev => prev ? {
+        ...prev,
+        cloudinaryUrl: uploadResult.url,
+        isUploading: false,
+      } : null);
+
       toast({
-        title: "Lỗi đọc tệp",
-        description: "Không thể đọc tệp đã chọn. Vui lòng thử lại.",
+        title: "Tải lên thành công",
+        description: `Đã tải lên "${file.name}" thành công.`,
+      });
+
+    } catch (error: any) {
+      console.error('File upload error:', error);
+      
+      setStagedFile(prev => prev ? {
+        ...prev,
+        isUploading: false,
+      } : null);
+
+      toast({
+        title: "Lỗi tải lên",
+        description: error.message || "Không thể tải lên tệp. Vui lòng thử lại.",
         variant: "destructive",
       });
-    };
-    reader.readAsDataURL(file);
+    }
   };
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -206,13 +243,26 @@ export function MessageInputForm({
 
   const handleAppointmentButtonClick = () => {
     if (appointments.length > 0) {
+      // Nếu có lịch hẹn, luôn cho xem (không cần check isAppointmentDisabled)
       setIsAppointmentManagerOpen(true);
-    } else if (onBookAppointmentClick) {
+    } else if (onBookAppointmentClick && !isAppointmentDisabled) {
+      // Nếu không có lịch hẹn, chỉ cho đặt mới khi không bị disable
       onBookAppointmentClick();
       if (onAppointmentBooked) {
         onAppointmentBooked();
       }
     }
+  };
+
+  const handleMediaSelect = (mediaUrl: string, fileName: string) => {
+    // Create a staged file from the selected media
+    const isCloudinary = mediaUrl.startsWith('https://res.cloudinary.com/');
+    setStagedFile({
+      previewDataUri: mediaUrl, // Use media URL as preview
+      cloudinaryUrl: isCloudinary ? mediaUrl : undefined,
+      name: fileName,
+      type: isCloudinary ? 'image/jpeg' : (mediaUrl.split(';')[0].split(':')[1] || 'unknown')
+    });
   };
 
   return (
@@ -235,7 +285,7 @@ export function MessageInputForm({
             <div className="flex items-center gap-2 overflow-hidden">
               {stagedFile.type.startsWith('image/') ? (
                 <NextImage
-                  src={stagedFile.dataUri}
+                  src={stagedFile.previewDataUri}
                   alt={stagedFile.name}
                   width={24}
                   height={24}
@@ -245,7 +295,10 @@ export function MessageInputForm({
               ) : (
                 <FileText className="h-5 w-5 text-muted-foreground flex-shrink-0" />
               )}
-              <span className="truncate" title={stagedFile.name}>{stagedFile.name}</span>
+              <span className="truncate" title={stagedFile.name}>
+                {stagedFile.name}
+                {stagedFile.isUploading && " (đang tải lên...)"}
+              </span>
             </div>
             <Button variant="ghost" size="icon" onClick={removeStagedFile} aria-label="Bỏ chọn tệp">
               <X className="h-4 w-4" />
@@ -253,7 +306,7 @@ export function MessageInputForm({
           </div>
         )}
         <form onSubmit={handleSubmit} className="p-2 flex flex-col gap-1">
-          {onBookAppointmentClick && (
+          {(appointments.length > 0 || (onBookAppointmentClick && !isAppointmentDisabled)) && (
             <Button
               type="button"
               variant="ghost"
@@ -278,6 +331,19 @@ export function MessageInputForm({
               className="hidden"
               accept="image/*,application/pdf,.doc,.docx,.txt,.xls,.xlsx"
             />
+            {(viewerRole === 'admin' || viewerRole === 'staff') && (
+              <Button 
+                type="button" 
+                variant="ghost" 
+                size="icon" 
+                onClick={() => setIsMediaLibraryOpen(true)} 
+                disabled={isLoading} 
+                aria-label="Chọn từ thư viện media"
+                title="Chọn media đã gửi trước đó"
+              >
+                <Images className="h-5 w-5" />
+              </Button>
+            )}
             <Popover>
               <PopoverTrigger asChild>
                 <Button type="button" variant="ghost" size="icon" disabled={isLoading} aria-label="Chọn emoji">
@@ -326,20 +392,6 @@ export function MessageInputForm({
                 </PopoverContent>
               </Popover>
             )}
-            {/* {onBookAppointmentClick && viewerRole !== 'customer' && (
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                onClick={handleAppointmentButtonClick}
-                disabled={isLoading}
-                aria-label={appointments.length > 0 ? "Xem lịch hẹn" : "Đặt lịch hẹn"}
-                className="hidden md:flex items-center gap-2"
-              >
-                <CalendarPlus className="h-5 w-5" />
-                <span>{appointments.length > 0 ? "Xem lịch hẹn" : "Đặt lịch hẹn"}</span>
-              </Button>
-            )} */}
             <Textarea
               ref={textareaRef}
               value={message}
@@ -365,6 +417,14 @@ export function MessageInputForm({
           appointments={appointments}
           onCancelAppointment={onCancelAppointment}
           onBookNewAppointmentClick={onBookAppointmentClick}
+          canBookNew={!isAppointmentDisabled}
+        />
+      )}
+      {(viewerRole === 'admin' || viewerRole === 'staff') && (
+        <MediaLibraryModal
+          isOpen={isMediaLibraryOpen}
+          onClose={() => setIsMediaLibraryOpen(false)}
+          onSelectMedia={handleMediaSelect}
         />
       )}
     </>

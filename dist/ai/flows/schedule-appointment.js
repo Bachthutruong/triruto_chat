@@ -16,6 +16,7 @@ const genkit_1 = require("../../ai/genkit");
 const schedule_appointment_schemas_1 = require("../../ai/schemas/schedule-appointment-schemas");
 const actions_1 = require("../../app/actions"); // Added getProductById
 const Appointment_model_1 = __importDefault(require("../../models/Appointment.model"));
+const Product_model_1 = __importDefault(require("../../models/Product.model"));
 const date_fns_1 = require("date-fns");
 const mongoose_1 = __importDefault(require("mongoose"));
 exports.scheduleAppointmentPrompt = genkit_1.ai.definePrompt({
@@ -123,7 +124,7 @@ serviceName, effectiveRules, // Rules specific to the service
 serviceDuration, globalAppSettings, // For global off-days, etc.
 branchId, // Branch context for filtering existing appointments
 maxSuggestions = 3, searchLimitDays = 7) {
-    var _a, _b, _c, _d, _e;
+    var _a, _b, _c, _d, _e, _f, _g, _h, _j;
     const suggestions = [];
     let currentDateToSearch = new Date(originalRequestDate);
     for (let dayOffset = 0; dayOffset < searchLimitDays; dayOffset++) {
@@ -133,7 +134,6 @@ maxSuggestions = 3, searchLimitDays = 7) {
         // Determine if the day is off using service-specific rules first, then global
         let dayIsOff = false;
         let activeWorkingHours = effectiveRules.workingHours; // Use service-specific working hours
-        let activeNumStaff = effectiveRules.numberOfStaff; // Use service-specific staff count
         // Check service-specific specificDayRules
         const serviceSpecificRuleForDay = (_a = effectiveRules.specificDayRules) === null || _a === void 0 ? void 0 : _a.find(rule => rule.date === currentDayString);
         if (serviceSpecificRuleForDay) {
@@ -142,26 +142,33 @@ maxSuggestions = 3, searchLimitDays = 7) {
             activeWorkingHours = serviceSpecificRuleForDay.workingHours && serviceSpecificRuleForDay.workingHours.length > 0
                 ? serviceSpecificRuleForDay.workingHours
                 : activeWorkingHours;
-            activeNumStaff = (_b = serviceSpecificRuleForDay.numberOfStaff) !== null && _b !== void 0 ? _b : activeNumStaff;
         }
         else {
             // Fallback to service's general weekly off days
-            if ((_c = effectiveRules.weeklyOffDays) === null || _c === void 0 ? void 0 : _c.includes(currentDayOfWeek))
+            if ((_b = effectiveRules.weeklyOffDays) === null || _b === void 0 ? void 0 : _b.includes(currentDayOfWeek))
                 dayIsOff = true;
             // Fallback to service's general one-time off dates
-            if ((_d = effectiveRules.oneTimeOffDates) === null || _d === void 0 ? void 0 : _d.includes(currentDayString))
+            if ((_c = effectiveRules.oneTimeOffDates) === null || _c === void 0 ? void 0 : _c.includes(currentDayString))
                 dayIsOff = true;
         }
         // If still not determined as off by service rules, check global AppSettings for one-time off dates (holidays etc)
-        if (!dayIsOff && ((_e = globalAppSettings.oneTimeOffDates) === null || _e === void 0 ? void 0 : _e.includes(currentDayString)))
+        if (!dayIsOff && ((_d = globalAppSettings.oneTimeOffDates) === null || _d === void 0 ? void 0 : _d.includes(currentDayString)))
             dayIsOff = true;
-        if (dayIsOff || activeWorkingHours.length === 0 || activeNumStaff <= 0) {
+        if (dayIsOff || activeWorkingHours.length === 0) {
             continue;
         }
-        const appointmentQuery = { date: currentDayString, service: serviceName, status: { $in: ['booked', 'pending_confirmation', 'rescheduled'] } };
+        // NEW LOGIC: Check all appointments on this day (not just for this service)
+        const allAppointmentsQuery = { date: currentDayString, status: { $in: ['booked', 'pending_confirmation', 'rescheduled'] } };
         if (branchId)
-            appointmentQuery.branchId = new mongoose_1.default.Types.ObjectId(branchId);
-        const existingAppointmentsOnThisDayForService = await Appointment_model_1.default.find(appointmentQuery).lean();
+            allAppointmentsQuery.branchId = new mongoose_1.default.Types.ObjectId(branchId);
+        const allExistingAppointmentsOnThisDay = await Appointment_model_1.default.find(allAppointmentsQuery).lean();
+        // Calculate total available staff for this day
+        let totalAvailableStaffForDay = (_e = globalAppSettings.numberOfStaff) !== null && _e !== void 0 ? _e : 1;
+        // Get the current service product to check if it has additional staff allocation
+        const currentServiceProduct = await Product_model_1.default.findOne({ name: serviceName });
+        if ((_f = currentServiceProduct === null || currentServiceProduct === void 0 ? void 0 : currentServiceProduct.schedulingRules) === null || _f === void 0 ? void 0 : _f.numberOfStaff) {
+            totalAvailableStaffForDay += currentServiceProduct.schedulingRules.numberOfStaff;
+        }
         for (const slotTime of activeWorkingHours) {
             if (dayOffset === 0 && (0, date_fns_1.isEqual)(currentDate, originalRequestDate) && (0, date_fns_1.compareAsc)((0, date_fns_1.parseISO)(`${currentDayString}T${slotTime}`), (0, date_fns_1.parseISO)(`${currentDayString}T${originalRequestTime}`)) <= 0) {
                 continue; // Skip current or past slots on the original request day
@@ -170,20 +177,24 @@ maxSuggestions = 3, searchLimitDays = 7) {
             if (!(0, date_fns_1.isValid)(slotStartDateTime))
                 continue;
             const slotEndDateTime = (0, date_fns_1.addMinutes)(slotStartDateTime, serviceDuration);
-            let overlappingCount = 0;
-            for (const exAppt of existingAppointmentsOnThisDayForService) {
+            let totalOverlappingCount = 0;
+            for (const exAppt of allExistingAppointmentsOnThisDay) {
                 const exApptStart = (0, date_fns_1.parseISO)(`${exAppt.date}T${exAppt.time}:00.000Z`);
                 if (!(0, date_fns_1.isValid)(exApptStart))
                     continue;
-                // Determine duration for the existing appointment (important: for *that* service)
-                // This part might need to fetch that specific product's duration if it's variable and not stored on appt.
-                // For simplicity here, assume all appointments for this service use `serviceDuration`.
-                const exApptEnd = (0, date_fns_1.addMinutes)(exApptStart, serviceDuration);
+                // Get the duration for each existing appointment's service
+                let exApptDuration = serviceDuration; // Default to current service duration
+                if (exAppt.service !== serviceName) {
+                    // Try to get the duration for the existing appointment's service
+                    const exApptProduct = await Product_model_1.default.findOne({ name: exAppt.service });
+                    exApptDuration = (_j = (_h = (_g = exApptProduct === null || exApptProduct === void 0 ? void 0 : exApptProduct.schedulingRules) === null || _g === void 0 ? void 0 : _g.serviceDurationMinutes) !== null && _h !== void 0 ? _h : globalAppSettings.defaultServiceDurationMinutes) !== null && _j !== void 0 ? _j : 60;
+                }
+                const exApptEnd = (0, date_fns_1.addMinutes)(exApptStart, exApptDuration);
                 if ((0, date_fns_1.isBefore)(slotStartDateTime, exApptEnd) && (0, date_fns_1.isBefore)(exApptStart, slotEndDateTime)) {
-                    overlappingCount++;
+                    totalOverlappingCount++;
                 }
             }
-            if (overlappingCount < activeNumStaff) {
+            if (totalOverlappingCount < totalAvailableStaffForDay) {
                 suggestions.push({ date: currentDayString, time: slotTime });
                 if (suggestions.length >= maxSuggestions) {
                     return suggestions;
@@ -202,12 +213,11 @@ effectiveRules, // Merged rules specific to THIS service
 serviceDuration, // Duration of THIS service
 branchId // Optional branch context
 ) {
-    var _a, _b, _c, _d, _e;
+    var _a, _b, _c, _d, _e, _f, _g, _h, _j;
     const targetDateString = (0, date_fns_1.format)(targetDateObj, 'yyyy-MM-dd');
     const targetDayOfWeek = (0, date_fns_1.getDay)(targetDateObj);
     // Use service-specific rules first
     let currentWorkingHours = effectiveRules.workingHours;
-    let currentNumStaff = effectiveRules.numberOfStaff;
     let isDayOff = false;
     const serviceSpecificRuleForDay = (_a = effectiveRules.specificDayRules) === null || _a === void 0 ? void 0 : _a.find(rule => rule.date === targetDateString);
     if (serviceSpecificRuleForDay) {
@@ -216,24 +226,23 @@ branchId // Optional branch context
         currentWorkingHours = serviceSpecificRuleForDay.workingHours && serviceSpecificRuleForDay.workingHours.length > 0
             ? serviceSpecificRuleForDay.workingHours
             : currentWorkingHours;
-        currentNumStaff = (_b = serviceSpecificRuleForDay.numberOfStaff) !== null && _b !== void 0 ? _b : currentNumStaff;
     }
     else {
-        if ((_c = effectiveRules.weeklyOffDays) === null || _c === void 0 ? void 0 : _c.includes(targetDayOfWeek))
+        if ((_b = effectiveRules.weeklyOffDays) === null || _b === void 0 ? void 0 : _b.includes(targetDayOfWeek))
             isDayOff = true;
-        if ((_d = effectiveRules.oneTimeOffDates) === null || _d === void 0 ? void 0 : _d.includes(targetDateString))
+        if ((_c = effectiveRules.oneTimeOffDates) === null || _c === void 0 ? void 0 : _c.includes(targetDateString))
             isDayOff = true;
     }
     // Check global one-time off dates (like public holidays) if service-specific rules don't mark it as off
-    if (!isDayOff && ((_e = globalAppSettings.oneTimeOffDates) === null || _e === void 0 ? void 0 : _e.includes(targetDateString)))
+    if (!isDayOff && ((_d = globalAppSettings.oneTimeOffDates) === null || _d === void 0 ? void 0 : _d.includes(targetDateString)))
         isDayOff = true;
     if (isDayOff) {
         const suggestedAlternativeSlots = await findNextAvailableSlots((0, date_fns_1.addDays)(targetDateObj, 1), "00:00", serviceName, effectiveRules, serviceDuration, globalAppSettings, branchId);
         return { isAvailable: false, reason: `Ngày ${targetDateString} là ngày nghỉ cho dịch vụ này.`, suggestedSlots: suggestedAlternativeSlots };
     }
-    if (currentWorkingHours.length === 0 || currentNumStaff <= 0) {
+    if (currentWorkingHours.length === 0) {
         const suggestedAlternativeSlots = await findNextAvailableSlots((0, date_fns_1.addDays)(targetDateObj, 1), "00:00", serviceName, effectiveRules, serviceDuration, globalAppSettings, branchId);
-        return { isAvailable: false, reason: `Không có giờ làm việc hoặc nhân viên được cấu hình cho dịch vụ "${serviceName}" vào ngày ${targetDateString}.`, suggestedSlots: suggestedAlternativeSlots };
+        return { isAvailable: false, reason: `Không có giờ làm việc được cấu hình cho dịch vụ "${serviceName}" vào ngày ${targetDateString}.`, suggestedSlots: suggestedAlternativeSlots };
     }
     const requestedStartDateTime = (0, date_fns_1.parseISO)(`${targetDateString}T${targetTime}:00.000Z`);
     if (!(0, date_fns_1.isValid)(requestedStartDateTime)) {
@@ -245,30 +254,48 @@ branchId // Optional branch context
     }
     const appointmentStartDateTime = requestedStartDateTime;
     const appointmentEndDateTime = (0, date_fns_1.addMinutes)(appointmentStartDateTime, serviceDuration);
-    const appointmentQuery = {
+    // NEW LOGIC: Check total staff availability across all services
+    // Get all appointments on the target date that overlap with the requested time slot (regardless of service)
+    const allAppointmentsQuery = {
         date: targetDateString,
-        service: serviceName,
         status: { $in: ['booked', 'pending_confirmation', 'rescheduled'] }
     };
     if (branchId)
-        appointmentQuery.branchId = new mongoose_1.default.Types.ObjectId(branchId);
-    const existingAppointmentsOnDateForService = await Appointment_model_1.default.find(appointmentQuery);
-    let overlappingCount = 0;
-    for (const exAppt of existingAppointmentsOnDateForService) {
+        allAppointmentsQuery.branchId = new mongoose_1.default.Types.ObjectId(branchId);
+    const allExistingAppointments = await Appointment_model_1.default.find(allAppointmentsQuery);
+    // Calculate total available staff
+    let totalAvailableStaff = (_e = globalAppSettings.numberOfStaff) !== null && _e !== void 0 ? _e : 1; // Start with global staff count
+    // Get the current service product to check if it has additional staff allocation
+    const currentServiceProduct = await Product_model_1.default.findOne({ name: serviceName });
+    if ((_f = currentServiceProduct === null || currentServiceProduct === void 0 ? void 0 : currentServiceProduct.schedulingRules) === null || _f === void 0 ? void 0 : _f.numberOfStaff) {
+        // Add service-specific staff to the total (only if service has its own staff config)
+        totalAvailableStaff += currentServiceProduct.schedulingRules.numberOfStaff;
+    }
+    // Count overlapping appointments across all services
+    let totalOverlappingCount = 0;
+    for (const exAppt of allExistingAppointments) {
         const exApptStart = (0, date_fns_1.parseISO)(`${exAppt.date}T${exAppt.time}:00.000Z`);
         if (!(0, date_fns_1.isValid)(exApptStart))
             continue;
-        // For existing appointments, we assume their duration was correctly calculated at booking.
-        // For simplicity, we'll use the current service's duration for overlap check.
-        // A more precise check might need to store/fetch duration of *each* existing appointment.
-        const exApptEnd = (0, date_fns_1.addMinutes)(exApptStart, serviceDuration);
+        // Get the duration for each existing appointment's service
+        let exApptDuration = serviceDuration; // Default to current service duration
+        if (exAppt.service !== serviceName) {
+            // Try to get the duration for the existing appointment's service
+            const exApptProduct = await Product_model_1.default.findOne({ name: exAppt.service });
+            exApptDuration = (_j = (_h = (_g = exApptProduct === null || exApptProduct === void 0 ? void 0 : exApptProduct.schedulingRules) === null || _g === void 0 ? void 0 : _g.serviceDurationMinutes) !== null && _h !== void 0 ? _h : globalAppSettings.defaultServiceDurationMinutes) !== null && _j !== void 0 ? _j : 60;
+        }
+        const exApptEnd = (0, date_fns_1.addMinutes)(exApptStart, exApptDuration);
         if ((0, date_fns_1.isBefore)(appointmentStartDateTime, exApptEnd) && (0, date_fns_1.isBefore)(exApptStart, appointmentEndDateTime)) {
-            overlappingCount++;
+            totalOverlappingCount++;
         }
     }
-    if (overlappingCount >= currentNumStaff) {
+    if (totalOverlappingCount >= totalAvailableStaff) {
         const suggestedAlternativeSlots = await findNextAvailableSlots(targetDateObj, targetTime, serviceName, effectiveRules, serviceDuration, globalAppSettings, branchId);
-        return { isAvailable: false, reason: `Xin lỗi, đã đủ ${currentNumStaff} nhân viên bận cho dịch vụ "${serviceName}" vào lúc ${targetTime} ngày ${targetDateString}.`, suggestedSlots: suggestedAlternativeSlots };
+        return {
+            isAvailable: false,
+            reason: `Xin lỗi, đã đủ ${totalAvailableStaff} nhân viên bận vào lúc ${targetTime} ngày ${targetDateString}. Hiện có ${totalOverlappingCount} lịch hẹn trùng giờ.`,
+            suggestedSlots: suggestedAlternativeSlots
+        };
     }
     return { isAvailable: true };
 }
@@ -320,7 +347,7 @@ async (input) => {
         const branchNameFromAI = nluOutput.appointmentDetails.branch;
         const targetBranch = activeBranches.find(b => b.name === branchNameFromAI);
         //@ts-ignore
-        const productForService = await ProductModel.findOne({ name: serviceName });
+        const productForService = await Product_model_1.default.findOne({ name: serviceName });
         if (!productForService || !productForService.isSchedulable) {
             const systemInstruction = `Dịch vụ "${serviceName}" không thể đặt lịch. Hãy thông báo cho người dùng và hỏi họ muốn chọn dịch vụ nào khác.`;
             const { output: serviceNotSchedulableOutput } = await (0, exports.scheduleAppointmentPrompt)(Object.assign(Object.assign({}, promptInputForNLU), { userInput: systemInstruction, availabilityCheckResult: { status: "SERVICE_NOT_SCHEDULABLE", reason: `Dịch vụ ${serviceName} không thể đặt lịch.`, isServiceNotSchedulable: true } }));

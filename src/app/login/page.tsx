@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
 import { loginUser } from '@/app/actions';
@@ -15,10 +16,12 @@ import { AppHeader } from '@/components/layout/AppHeader';
 import { AppFooter } from '@/components/layout/AppFooter';
 import { LogIn } from 'lucide-react';
 import { useAppSettingsContext } from '@/contexts/AppSettingsContext';
+import { saveUserSession } from '@/lib/utils/auth';
 
 export default function LoginPage() {
   const [phoneNumber, setPhoneNumber] = useState('');
   const [password, setPassword] = useState('');
+  const [rememberMe, setRememberMe] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
   const { toast } = useToast();
@@ -31,7 +34,8 @@ export default function LoginPage() {
     try {
       const session = await loginUser(phoneNumber, password);
       if (session) {
-        sessionStorage.setItem('aetherChatUserSession', JSON.stringify(session));
+        // Sử dụng auth utility để lưu session với remember me
+        saveUserSession(session, rememberMe);
         toast({
           title: 'Đăng nhập thành công',
           description: `Chào mừng quay trở lại, ${session.name || session.phoneNumber}!`,
@@ -93,6 +97,20 @@ export default function LoginPage() {
                   required
                   disabled={isLoading}
                 />
+              </div>
+              <div className="flex items-center space-x-2">
+                <Checkbox 
+                  id="remember-me" 
+                  checked={rememberMe}
+                  onCheckedChange={(checked) => setRememberMe(checked as boolean)}
+                  disabled={isLoading}
+                />
+                <Label 
+                  htmlFor="remember-me" 
+                  className="text-sm font-normal cursor-pointer"
+                >
+                  Ghi nhớ đăng nhập (30 ngày)
+                </Label>
               </div>
             </CardContent>
             <CardFooter className="flex flex-col gap-4">

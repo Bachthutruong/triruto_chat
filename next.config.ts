@@ -16,10 +16,13 @@ const nextConfig: NextConfig = {
         port: '',
         pathname: '/**',
       },
+      {
+        protocol: 'https',
+        hostname: 'res.cloudinary.com',
+        port: '',
+        pathname: '/**',
+      },
     ],
-  },
-  serverActions: {
-    bodySizeLimit: '5mb', // Increased body size limit to 5MB for image uploads
   },
 };
 

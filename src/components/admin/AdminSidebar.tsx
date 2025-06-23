@@ -17,7 +17,9 @@ import {
   BellRing,
   MapPin, // Added for Branches
   Zap, // Icon for Quick Replies
-  Receipt // Icon for Invoices
+  Receipt, // Icon for Invoices
+  ShoppingCart, // Icon for Customer Products
+  CalendarDays // Icon for Appointments
 } from 'lucide-react';
 import { Logo } from '@/components/icons/Logo';
 import { useAppSettingsContext } from '@/contexts/AppSettingsContext';
@@ -30,27 +32,60 @@ import {
   useSidebar,
 } from '@/components/ui/sidebar';
 
-const adminNavItems = [
-  { href: '/admin/dashboard', label: 'Bảng điều khiển', icon: LayoutDashboard },
-  { href: '/admin/chat', label: 'Live Chats', icon: MessageSquare },
-  { href: '/admin/customers', label: 'Khách hàng', icon: User },
-  { href: '/admin/products', label: 'Sản phẩm/Dịch vụ', icon: Package },
-  // { href: '/admin/invoices', label: 'Hóa đơn & Gán SP', icon: Receipt }, // Thêm trang invoices
-  { href: '/admin/branches', label: 'Quản lý Chi nhánh', icon: MapPin },
-  { href: '/admin/reminders', label: 'Nhắc nhở Chăm sóc', icon: BellRing },
-  { href: '/admin/appointments/view', label: 'Xem Lịch hẹn', icon: Eye },
-  // { href: '/admin/appointments/rules', label: 'Quy tắc Đặt lịch', icon: CalendarCog },
-  { href: '/admin/quick-replies', label: 'Câu trả lời nhanh', icon: Zap }, // New Quick Replies Link
-  { href: '/admin/users', label: 'Quản lý Người dùng', icon: Users },
-  { href: '/admin/qna', label: 'Hỏi & Đáp / Từ khóa', icon: MessageSquareText },
-  { href: '/admin/settings', label: 'Cài đặt Chung', icon: Settings },
-];
+type AdminSidebarProps = {
+  userRole: 'admin' | 'staff';
+};
 
-export function AdminSidebar() {
+export function AdminSidebar({ userRole }: AdminSidebarProps) {
   const pathname = usePathname();
   const appSettings = useAppSettingsContext();
-  const brandName = appSettings?.brandName || 'Admin Panel';
   const { setOpenMobile, isMobile } = useSidebar();
+  
+  const isAdmin = userRole === 'admin';
+  const rolePrefix = isAdmin ? '/admin' : '/staff';
+  const brandName = appSettings?.brandName || (isAdmin ? 'Admin Panel' : 'Staff Panel');
+
+  // Base navigation items available to both admin and staff
+  const baseNavItems = [
+    { href: `${rolePrefix}/dashboard`, label: 'Bảng điều khiển', icon: LayoutDashboard },
+    { href: `${rolePrefix}/chat`, label: 'Live Chats', icon: MessageSquare },
+    { href: `${rolePrefix}/customers`, label: 'Khách hàng', icon: User },
+    { href: `${rolePrefix}/products`, label: 'Sản phẩm/Dịch vụ', icon: Package },
+  ];
+
+
+
+  // Common bottom items
+  const commonBottomItems = [
+    { href: `${rolePrefix}/reminders`, label: 'Nhắc nhở Chăm sóc', icon: BellRing },
+  ];
+
+  // Build the final navigation items based on role - Staff có đầy đủ như Admin trừ Users
+  const navItems = [
+    ...baseNavItems,
+    // Common items for both admin and staff
+    { href: `${rolePrefix}/invoices`, label: 'Hóa đơn & Gán SP', icon: Receipt },
+    { href: `${rolePrefix}/branches`, label: 'Quản lý Chi nhánh', icon: MapPin },
+    // Staff-specific item (only for staff)
+    ...(isAdmin ? [] : [
+      { href: `${rolePrefix}/customer-products`, label: 'SP Khách hàng', icon: ShoppingCart },
+    ]),
+    // Appointments - staff có cả appointments thường và appointments/view, appointments/rules
+    ...(isAdmin ? [] : [
+      { href: `${rolePrefix}/appointments`, label: 'Lịch hẹn', icon: CalendarDays },
+    ]),
+    { href: `${rolePrefix}/appointments/view`, label: 'Xem Lịch hẹn', icon: Eye },
+    { href: `${rolePrefix}/appointments/rules`, label: 'Quy tắc Đặt lịch', icon: CalendarCog },
+    ...commonBottomItems,
+    // Common items for both
+    { href: `${rolePrefix}/quick-replies`, label: 'Câu trả lời nhanh', icon: Zap },
+    { href: `${rolePrefix}/qna`, label: 'Hỏi & Đáp / Từ khóa', icon: MessageSquareText },
+    { href: `${rolePrefix}/settings`, label: 'Cài đặt Chung', icon: Settings },
+    // Admin-only items (Users management)
+    ...(isAdmin ? [
+      { href: `${rolePrefix}/users`, label: 'Quản lý Người dùng', icon: Users },
+    ] : []),
+  ];
 
   const handleLinkClick = () => {
     if (isMobile) {
@@ -71,12 +106,12 @@ export function AdminSidebar() {
       <SidebarContent>
         <ScrollArea className="h-full">
           <SidebarMenu className="!py-2 !px-2 md:group-data-[state=collapsed]:gap-4">
-            {adminNavItems.map((item) => (
+            {navItems.map((item) => (
               <SidebarMenuItem key={item.href}>
                 <Link href={item.href} passHref legacyBehavior>
                   <SidebarMenuButton
                     className="w-full justify-start md:group-data-[state=collapsed]:!px-1"
-                    isActive={pathname.startsWith(item.href) && (item.href === '/admin/dashboard' ? pathname === item.href : true)}
+                    isActive={pathname.startsWith(item.href) && (item.href.endsWith('/dashboard') ? pathname === item.href : true)}
                     tooltip={{ children: item.label, side: 'top', align: 'center', hidden: false }}
                     onClick={handleLinkClick}
                   >

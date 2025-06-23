@@ -104,7 +104,8 @@ export type Note = {
   staffId: string;
   staffName?: string;
   content: string;
-  imageDataUri?: string;
+  imageUrl?: string;
+  imagePublicId?: string;
   imageFileName?: string;
   createdAt: Date;
   updatedAt: Date;
@@ -118,20 +119,27 @@ export type CustomerProfile = {
   phoneNumber: string;
   name?: string;
   internalName?: string;
+  email?: string;
+  address?: string;
+  dateOfBirth?: Date;
+  gender?: 'male' | 'female' | 'other';
+  notes?: string;
   conversationIds: string[];
   appointmentIds: string[];
   productIds: string[];
   noteIds: string[];
+  pinnedMessageIds: string[];
   tags?: string[];
   assignedStaffId?: string;
   assignedStaffName?: string;
   lastInteractionAt: Date;
   createdAt: Date;
-  interactionStatus?: CustomerInteractionStatus;
+  interactionStatus: CustomerInteractionStatus;
   lastMessagePreview?: string;
   lastMessageTimestamp?: Date;
-  timezone?: string;
-  pinnedConversationIds?: string[];
+  messagePinningAllowedConversationIds: string[];
+  pinnedConversationIds: string[];
+  isAppointmentDisabled?: boolean;
   customerProducts?: CustomerProduct[];
   serviceUsage?: CustomerServiceUsage;
 };
@@ -183,6 +191,13 @@ export type AppointmentRule = {
   updatedAt?: Date;
 };
 
+export type BreakTime = {
+  id?: string;
+  startTime: string; // HH:MM format
+  endTime: string;   // HH:MM format
+  name?: string;     // Optional name for the break (e.g., "Nghỉ trưa", "Nghỉ chiều")
+};
+
 export type SpecificDayRule = {
   id?: string;
   date: string;
@@ -190,6 +205,7 @@ export type SpecificDayRule = {
   workingHours?: string[];
   numberOfStaff?: number;
   serviceDurationMinutes?: number;
+  breakTimes?: BreakTime[];
 };
 
 export type AppSettings = {
@@ -212,6 +228,9 @@ export type AppSettings = {
   numberOfStaff: number;
   defaultServiceDurationMinutes: number;
   workingHours: string[];
+  breakTimes: BreakTime[];
+  breakTimeNotificationEnabled: boolean;
+  breakTimeNotificationMessage: string;
   weeklyOffDays: number[];
   oneTimeOffDates: string[];
   specificDayRules: SpecificDayRule[];
@@ -278,6 +297,7 @@ export type ProductSchedulingRules = {
   numberOfStaff?: number;
   serviceDurationMinutes?: number;
   workingHours?: string[];
+  breakTimes?: BreakTime[];
   weeklyOffDays?: number[];
   oneTimeOffDates?: string[];
   specificDayRules?: SpecificDayRule[];
