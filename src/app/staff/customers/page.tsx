@@ -8,10 +8,11 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Search, Phone, User, Tag, AlertCircle, BellRing, CalendarDays } from 'lucide-react';
+import { Search, Phone, User, Tag, AlertCircle, BellRing, CalendarDays, CalendarX } from 'lucide-react';
+import { Switch } from '@/components/ui/switch';
 import { useToast } from '@/hooks/use-toast';
 import { format } from 'date-fns';
-import { getCustomersWithProductsAndReminders } from '@/app/actions';
+import { getCustomersWithProductsAndReminders, updateCustomerAppointmentStatus } from '@/app/actions';
 import type { UserSession } from '@/lib/types';
 
 export default function StaffCustomersPage() {
@@ -19,6 +20,7 @@ export default function StaffCustomersPage() {
   const [filteredCustomers, setFilteredCustomers] = useState<any[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [isLoading, setIsLoading] = useState(true);
+  const [updatingCustomers, setUpdatingCustomers] = useState<Set<string>>(new Set());
   const { toast } = useToast();
   const router = useRouter();
   const [currentSession, setCurrentSession] = useState<UserSession | null>(null);
@@ -82,6 +84,52 @@ export default function StaffCustomersPage() {
     }
   };
 
+  const handleToggleAppointmentAccess = async (customerId: string, currentStatus: boolean) => {
+    if (currentSession?.role !== 'admin') {
+      toast({
+        title: 'Không có quyền',
+        description: 'Chỉ admin mới có thể thay đổi cài đặt này.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    try {
+      setUpdatingCustomers(prev => new Set(prev).add(customerId));
+      
+      const newStatus = !currentStatus;
+      await updateCustomerAppointmentStatus(customerId, newStatus);
+      
+      // Cập nhật state local
+      setCustomers(prev => prev.map(customer => 
+        customer.id === customerId 
+          ? { ...customer, isAppointmentDisabled: newStatus }
+          : customer
+      ));
+      
+      toast({
+        title: 'Thành công',
+        description: newStatus 
+          ? 'Đã tắt tính năng đặt lịch hẹn cho khách hàng này.'
+          : 'Đã bật tính năng đặt lịch hẹn cho khách hàng này.',
+        variant: 'default',
+      });
+    } catch (error: any) {
+      console.error('Error updating appointment status:', error);
+      toast({
+        title: 'Lỗi',
+        description: error.message || 'Không thể cập nhật cài đặt đặt lịch hẹn.',
+        variant: 'destructive',
+      });
+    } finally {
+      setUpdatingCustomers(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(customerId);
+        return newSet;
+      });
+    }
+  };
+
   const formatDate = (date: Date) => {
     try {
       return format(new Date(date), 'dd/MM/yyyy HH:mm');
@@ -91,11 +139,16 @@ export default function StaffCustomersPage() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 md:w-[1500px]">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-2xl sm:text-3xl font-bold">Quản lý Khách hàng</h1>
-          <p className="text-muted-foreground text-sm sm:text-base">Xem và quản lý danh sách khách hàng.</p>
+          <p className="text-muted-foreground text-sm sm:text-base">
+            Xem và quản lý danh sách khách hàng.
+            {currentSession?.role === 'admin' && (
+              <span className="block mt-1">Admin có thể bật/tắt tính năng đặt lịch hẹn cho từng khách hàng.</span>
+            )}
+          </p>
         </div>
       </div>
 
@@ -141,6 +194,9 @@ export default function StaffCustomersPage() {
                     <TableHead className="hidden md:table-cell">Lần tương tác cuối</TableHead>
                     <TableHead className="hidden md:table-cell">Tags</TableHead>
                     <TableHead className="text-center">Nhắc nhở</TableHead>
+                    {currentSession?.role === 'admin' && (
+                      <TableHead className="text-center">Đặt lịch hẹn</TableHead>
+                    )}
                     <TableHead className="text-right">Hành động</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -180,6 +236,27 @@ export default function StaffCustomersPage() {
                           <span className="text-muted-foreground text-xs">0</span>
                         )}
                       </TableCell>
+                      {currentSession?.role === 'admin' && (
+                        <TableCell className="text-center">
+                          <div className="flex items-center justify-center gap-2">
+                            <Switch
+                              checked={!customer.isAppointmentDisabled}
+                              onCheckedChange={() => handleToggleAppointmentAccess(customer.id, !!customer.isAppointmentDisabled)}
+                              disabled={updatingCustomers.has(customer.id)}
+                              className="data-[state=checked]:bg-green-600"
+                            />
+                                                         {customer.isAppointmentDisabled ? (
+                               <div title="Đặt lịch hẹn bị tắt">
+                                 <CalendarX className="h-4 w-4 text-red-500" />
+                               </div>
+                             ) : (
+                               <div title="Đặt lịch hẹn được phép">
+                                 <CalendarDays className="h-4 w-4 text-green-600" />
+                               </div>
+                             )}
+                          </div>
+                        </TableCell>
+                      )}
                       <TableCell className="text-right">
                         <Button variant="outline" size="sm" onClick={() => handleViewCustomer(customer.id)}>
                           Xem

@@ -6,6 +6,8 @@ import { AppHeader } from '@/components/layout/AppHeader';
 import type { UserSession } from '@/lib/types';
 import { AdminSidebar as AdminSidebarContent } from './AdminSidebar';
 import { SidebarProvider, Sidebar, SidebarTrigger, SidebarInset } from '@/components/ui/sidebar';
+import { clearUserSession } from '@/lib/utils/auth';
+import { useNotification } from '@/hooks/use-notification';
 
 type AdminLayoutProps = {
   children: ReactNode;
@@ -14,9 +16,13 @@ type AdminLayoutProps = {
 
 export function AdminLayout({ children, currentSession }: AdminLayoutProps) {
   const router = useRouter();
+  
+  // Initialize notification system for admin users
+  useNotification();
 
   const handleLogout = () => {
-    sessionStorage.removeItem('aetherChatUserSession');
+    // Sử dụng auth utility để xóa toàn bộ session data
+    clearUserSession();
     router.push('/login');
   };
 
@@ -36,7 +42,7 @@ export function AdminLayout({ children, currentSession }: AdminLayoutProps) {
             variant="sidebar"
             style={{ '--sidebar-width-icon': '2rem' } as React.CSSProperties}
           >
-            <AdminSidebarContent />
+            <AdminSidebarContent userRole={currentSession.role as 'admin' | 'staff'} />
           </Sidebar>
           <SidebarInset> {/* Manages margin based on desktop sidebar state */}
             <main className="flex-1 p-4 md:p-6 overflow-y-auto">

@@ -1,4 +1,3 @@
-
 // schedule-appointment.ts
 'use server';
 
@@ -19,6 +18,7 @@ import {
 import { getAppSettings, getAppointmentRules, getBranches, getAllProducts, getProductById } from '@/app/actions'; // Added getProductById
 import type { AppSettings, SpecificDayRule, Branch, ProductItem, EffectiveSchedulingRules, ProductSchedulingRules } from '@/lib/types';
 import AppointmentModel, { type IAppointment } from '@/models/Appointment.model';
+import ProductModel from '@/models/Product.model';
 import { parseISO as dateFnsParseISO, getDay, addMinutes, isBefore, format as dateFnsFormat, isValid as isValidDate, compareAsc, addDays, isEqual } from 'date-fns';
 import mongoose from 'mongoose';
 
@@ -146,7 +146,6 @@ async function findNextAvailableSlots(
     // Determine if the day is off using service-specific rules first, then global
     let dayIsOff = false;
     let activeWorkingHours = effectiveRules.workingHours; // Use service-specific working hours
-    let activeNumStaff = effectiveRules.numberOfStaff;   // Use service-specific staff count
 
     // Check service-specific specificDayRules
     const serviceSpecificRuleForDay = effectiveRules.specificDayRules?.find(rule => rule.date === currentDayString);
@@ -155,7 +154,6 @@ async function findNextAvailableSlots(
       activeWorkingHours = serviceSpecificRuleForDay.workingHours && serviceSpecificRuleForDay.workingHours.length > 0
         ? serviceSpecificRuleForDay.workingHours
         : activeWorkingHours;
-      activeNumStaff = serviceSpecificRuleForDay.numberOfStaff ?? activeNumStaff;
     } else {
       // Fallback to service's general weekly off days
       if (effectiveRules.weeklyOffDays?.includes(currentDayOfWeek)) dayIsOff = true;
@@ -166,13 +164,23 @@ async function findNextAvailableSlots(
     if (!dayIsOff && globalAppSettings.oneTimeOffDates?.includes(currentDayString)) dayIsOff = true;
 
 
-    if (dayIsOff || activeWorkingHours.length === 0 || activeNumStaff <= 0) {
+    if (dayIsOff || activeWorkingHours.length === 0) {
       continue;
     }
 
-    const appointmentQuery: any = { date: currentDayString, service: serviceName, status: { $in: ['booked', 'pending_confirmation', 'rescheduled'] } };
-    if (branchId) appointmentQuery.branchId = new mongoose.Types.ObjectId(branchId);
-    const existingAppointmentsOnThisDayForService = await AppointmentModel.find(appointmentQuery).lean();
+    // NEW LOGIC: Check all appointments on this day (not just for this service)
+    const allAppointmentsQuery: any = { date: currentDayString, status: { $in: ['booked', 'pending_confirmation', 'rescheduled'] } };
+    if (branchId) allAppointmentsQuery.branchId = new mongoose.Types.ObjectId(branchId);
+    const allExistingAppointmentsOnThisDay = await AppointmentModel.find(allAppointmentsQuery).lean();
+
+    // Calculate total available staff for this day
+    let totalAvailableStaffForDay = globalAppSettings.numberOfStaff ?? 1;
+    
+    // Get the current service product to check if it has additional staff allocation
+    const currentServiceProduct = await ProductModel.findOne({ name: serviceName });
+    if (currentServiceProduct?.schedulingRules?.numberOfStaff) {
+      totalAvailableStaffForDay += currentServiceProduct.schedulingRules.numberOfStaff;
+    }
 
     for (const slotTime of activeWorkingHours) {
       if (dayOffset === 0 && isEqual(currentDate, originalRequestDate) && compareAsc(dateFnsParseISO(`${currentDayString}T${slotTime}`), dateFnsParseISO(`${currentDayString}T${originalRequestTime}`)) <= 0) {
@@ -184,22 +192,28 @@ async function findNextAvailableSlots(
 
       const slotEndDateTime = addMinutes(slotStartDateTime, serviceDuration);
 
-      let overlappingCount = 0;
-      for (const exAppt of existingAppointmentsOnThisDayForService) {
+      let totalOverlappingCount = 0;
+      for (const exAppt of allExistingAppointmentsOnThisDay) {
         const exApptStart = dateFnsParseISO(`${exAppt.date}T${exAppt.time}:00.000Z`);
         if (!isValidDate(exApptStart)) continue;
         
-        // Determine duration for the existing appointment (important: for *that* service)
-        // This part might need to fetch that specific product's duration if it's variable and not stored on appt.
-        // For simplicity here, assume all appointments for this service use `serviceDuration`.
-        const exApptEnd = addMinutes(exApptStart, serviceDuration); 
+        // Get the duration for each existing appointment's service
+        let exApptDuration = serviceDuration; // Default to current service duration
+        if (exAppt.service !== serviceName) {
+          // Try to get the duration for the existing appointment's service
+          const exApptProduct = await ProductModel.findOne({ name: exAppt.service });
+          exApptDuration = exApptProduct?.schedulingRules?.serviceDurationMinutes ?? 
+                           globalAppSettings.defaultServiceDurationMinutes ?? 60;
+        }
+        
+        const exApptEnd = addMinutes(exApptStart, exApptDuration); 
 
         if (isBefore(slotStartDateTime, exApptEnd) && isBefore(exApptStart, slotEndDateTime)) {
-          overlappingCount++;
+          totalOverlappingCount++;
         }
       }
 
-      if (overlappingCount < activeNumStaff) {
+      if (totalOverlappingCount < totalAvailableStaffForDay) {
         suggestions.push({ date: currentDayString, time: slotTime });
         if (suggestions.length >= maxSuggestions) {
           return suggestions;
@@ -232,7 +246,6 @@ export async function checkRealAvailability(
 
   // Use service-specific rules first
   let currentWorkingHours = effectiveRules.workingHours;
-  let currentNumStaff = effectiveRules.numberOfStaff;
   let isDayOff = false;
 
   const serviceSpecificRuleForDay = effectiveRules.specificDayRules?.find(rule => rule.date === targetDateString);
@@ -242,7 +255,6 @@ export async function checkRealAvailability(
     currentWorkingHours = serviceSpecificRuleForDay.workingHours && serviceSpecificRuleForDay.workingHours.length > 0
       ? serviceSpecificRuleForDay.workingHours
       : currentWorkingHours;
-    currentNumStaff = serviceSpecificRuleForDay.numberOfStaff ?? currentNumStaff;
   } else {
     if (effectiveRules.weeklyOffDays?.includes(targetDayOfWeek)) isDayOff = true;
     if (effectiveRules.oneTimeOffDates?.includes(targetDateString)) isDayOff = true;
@@ -258,11 +270,11 @@ export async function checkRealAvailability(
     return { isAvailable: false, reason: `Ngày ${targetDateString} là ngày nghỉ cho dịch vụ này.`, suggestedSlots: suggestedAlternativeSlots };
   }
 
-  if (currentWorkingHours.length === 0 || currentNumStaff <= 0) {
+  if (currentWorkingHours.length === 0) {
      const suggestedAlternativeSlots = await findNextAvailableSlots(
       addDays(targetDateObj, 1), "00:00", serviceName, effectiveRules, serviceDuration, globalAppSettings, branchId
     );
-    return { isAvailable: false, reason: `Không có giờ làm việc hoặc nhân viên được cấu hình cho dịch vụ "${serviceName}" vào ngày ${targetDateString}.`, suggestedSlots: suggestedAlternativeSlots };
+    return { isAvailable: false, reason: `Không có giờ làm việc được cấu hình cho dịch vụ "${serviceName}" vào ngày ${targetDateString}.`, suggestedSlots: suggestedAlternativeSlots };
   }
 
   const requestedStartDateTime = dateFnsParseISO(`${targetDateString}T${targetTime}:00.000Z`);
@@ -280,34 +292,56 @@ export async function checkRealAvailability(
   const appointmentStartDateTime = requestedStartDateTime;
   const appointmentEndDateTime = addMinutes(appointmentStartDateTime, serviceDuration);
 
-  const appointmentQuery: any = { 
+  // NEW LOGIC: Check total staff availability across all services
+  // Get all appointments on the target date that overlap with the requested time slot (regardless of service)
+  const allAppointmentsQuery: any = { 
     date: targetDateString, 
-    service: serviceName, 
     status: { $in: ['booked', 'pending_confirmation', 'rescheduled'] } 
   };
-  if (branchId) appointmentQuery.branchId = new mongoose.Types.ObjectId(branchId);
-  const existingAppointmentsOnDateForService = await AppointmentModel.find(appointmentQuery);
+  if (branchId) allAppointmentsQuery.branchId = new mongoose.Types.ObjectId(branchId);
+  const allExistingAppointments = await AppointmentModel.find(allAppointmentsQuery);
 
-  let overlappingCount = 0;
-  for (const exAppt of existingAppointmentsOnDateForService) {
+  // Calculate total available staff
+  let totalAvailableStaff = globalAppSettings.numberOfStaff ?? 1; // Start with global staff count
+  
+  // Get the current service product to check if it has additional staff allocation
+  const currentServiceProduct = await ProductModel.findOne({ name: serviceName });
+  if (currentServiceProduct?.schedulingRules?.numberOfStaff) {
+    // Add service-specific staff to the total (only if service has its own staff config)
+    totalAvailableStaff += currentServiceProduct.schedulingRules.numberOfStaff;
+  }
+
+  // Count overlapping appointments across all services
+  let totalOverlappingCount = 0;
+  for (const exAppt of allExistingAppointments) {
     const exApptStart = dateFnsParseISO(`${exAppt.date}T${exAppt.time}:00.000Z`);
     if (!isValidDate(exApptStart)) continue;
     
-    // For existing appointments, we assume their duration was correctly calculated at booking.
-    // For simplicity, we'll use the current service's duration for overlap check.
-    // A more precise check might need to store/fetch duration of *each* existing appointment.
-    const exApptEnd = addMinutes(exApptStart, serviceDuration); 
+    // Get the duration for each existing appointment's service
+    let exApptDuration = serviceDuration; // Default to current service duration
+    if (exAppt.service !== serviceName) {
+      // Try to get the duration for the existing appointment's service
+      const exApptProduct = await ProductModel.findOne({ name: exAppt.service });
+      exApptDuration = exApptProduct?.schedulingRules?.serviceDurationMinutes ?? 
+                       globalAppSettings.defaultServiceDurationMinutes ?? 60;
+    }
+    
+    const exApptEnd = addMinutes(exApptStart, exApptDuration); 
 
     if (isBefore(appointmentStartDateTime, exApptEnd) && isBefore(exApptStart, appointmentEndDateTime)) {
-      overlappingCount++;
+      totalOverlappingCount++;
     }
   }
 
-  if (overlappingCount >= currentNumStaff) {
+  if (totalOverlappingCount >= totalAvailableStaff) {
     const suggestedAlternativeSlots = await findNextAvailableSlots(
       targetDateObj, targetTime, serviceName, effectiveRules, serviceDuration, globalAppSettings, branchId
     );
-    return { isAvailable: false, reason: `Xin lỗi, đã đủ ${currentNumStaff} nhân viên bận cho dịch vụ "${serviceName}" vào lúc ${targetTime} ngày ${targetDateString}.`, suggestedSlots: suggestedAlternativeSlots };
+    return { 
+      isAvailable: false, 
+      reason: `Xin lỗi, đã đủ ${totalAvailableStaff} nhân viên bận vào lúc ${targetTime} ngày ${targetDateString}. Hiện có ${totalOverlappingCount} lịch hẹn trùng giờ.`, 
+      suggestedSlots: suggestedAlternativeSlots 
+    };
   }
 
   return { isAvailable: true };
@@ -415,7 +449,7 @@ const scheduleAppointmentFlow = ai.defineFlow(
           ...finalConfirmationOutput,
           appointmentDetails: {
             ...nluOutput.appointmentDetails,
-            productId: productForService._id.toString(),
+            productId: (productForService._id as any).toString(),
             branchId: targetBranch?.id,
             status: 'booked', 
           },

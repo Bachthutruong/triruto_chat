@@ -51,7 +51,8 @@ const MessageSchema = new mongoose_1.Schema({
     editedAt: { type: Date },
     editedBy: { type: mongoose_1.Schema.Types.ObjectId, ref: 'User' },
     deletedAt: { type: Date },
-    deletedBy: { type: mongoose_1.Schema.Types.ObjectId, ref: 'User' }
+    deletedBy: { type: mongoose_1.Schema.Types.ObjectId, ref: 'User' },
+    customerId: { type: mongoose_1.Schema.Types.ObjectId, ref: 'Customer', required: true }
 }, { timestamps: true });
 // Create indexes for better query performance
 MessageSchema.index({ conversationId: 1, timestamp: 1 }); // Updated index

@@ -26,6 +26,8 @@ export interface ICustomer extends Document, Omit<CustomerProfile, 'id' | 'assig
   dateOfBirth?: Date;
   gender?: 'male' | 'female' | 'other';
   notes?: string;
+  // Trường mới để bật/tắt tính năng đặt lịch hẹn
+  isAppointmentDisabled?: boolean;
 }
 
 const CustomerSchema: Schema<ICustomer> = new Schema({
@@ -51,8 +53,8 @@ const CustomerSchema: Schema<ICustomer> = new Schema({
   lastMessagePreview: { type: String, maxlength: 100 },
   lastMessageTimestamp: { type: Date, index: true },
   createdAt: { type: Date, default: Date.now },
+  isAppointmentDisabled: { type: Boolean, default: false, index: true }, // Mặc định cho phép đặt lịch hẹn
 }, { timestamps: true, strictPopulate: false }); // Added strictPopulate: false
-
 
 const CustomerModel = models.Customer as Model<ICustomer> || mongoose.model<ICustomer>('Customer', CustomerSchema);
 

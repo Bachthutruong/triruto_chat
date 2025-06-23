@@ -6,7 +6,7 @@ import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
 import { AppHeader } from '@/components/layout/AppHeader';
 import { ChatWindow } from '@/components/chat/ChatWindow';
-import type { Message, UserSession, Conversation, MessageViewerRole, AppointmentBookingFormData, AppointmentDetails } from '@/lib/types';
+import type { Message, UserSession, Conversation, MessageViewerRole, AppointmentBookingFormData, AppointmentDetails, CustomerProfile } from '@/lib/types';
 import {
   handleCustomerAccess,
   processUserMessage,
@@ -20,8 +20,16 @@ import {
   getAppointments,
   deleteExistingAppointment,
   createSystemMessage,
-  getConversationHistory
+  getConversationHistory,
+  getCurrentCustomerProfile
 } from './actions';
+import { 
+  getUserSession, 
+  clearUserSession, 
+  getPrefetchedData, 
+  clearPrefetchedData,
+  extendSession 
+} from '@/lib/utils/auth';
 import { useToast } from '@/hooks/use-toast';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -44,6 +52,7 @@ export default function HomePage() {
 
   const [activeConversation, setActiveConversation] = useState<Conversation | null>(null);
   const [isBookingModalOpen, setIsBookingModalOpen] = useState(false);
+  const [currentCustomerProfile, setCurrentCustomerProfile] = useState<CustomerProfile | null>(null);
 
   const { toast } = useToast();
   const router = useRouter();
@@ -119,6 +128,15 @@ export default function HomePage() {
       if (primaryConversation) {
         fetchPinnedMessages(primaryConversation);
       }
+      
+      // Load customer profile to check appointment settings
+      try {
+        const customerProfile = await getCurrentCustomerProfile(session.id);
+        setCurrentCustomerProfile(customerProfile);
+      } catch (error) {
+        console.error("HomePage: Error loading customer profile:", error);
+      }
+      
       setHasLoadedInitialData(true);
       console.log("HomePage: loadInitialData completed. Active conversation ID:", primaryConversation?.id);
     } catch (error) {
@@ -135,16 +153,19 @@ export default function HomePage() {
   useEffect(() => {
     console.log("HomePage: Initial session check effect running. Pathname:", pathname);
     setIsLoadingSession(true);
-    const storedSessionString = sessionStorage.getItem('aetherChatUserSession');
-    if (storedSessionString) {
+    
+    // Sử dụng auth utility để lấy session (sẽ check cả localStorage và sessionStorage)
+    const session = getUserSession();
+    if (session) {
       try {
-        const session: UserSession = JSON.parse(storedSessionString);
         console.log("HomePage: Found session in storage:", session);
         setInitialSessionFromStorage(session);
+        
+        // Extend session nếu đang dùng remember me
+        extendSession();
       } catch (error) {
-        console.error("HomePage: Error parsing session from sessionStorage:", error);
-        sessionStorage.removeItem('aetherChatUserSession');
-        sessionStorage.removeItem('aetherChatPrefetchedData');
+        console.error("HomePage: Error with stored session:", error);
+        clearUserSession();
         if (router && router.replace) router.replace('/enter-phone'); else window.location.pathname = '/enter-phone';
       }
     } else {
@@ -163,10 +184,9 @@ export default function HomePage() {
       if (initialSessionFromStorage.role === 'customer') {
         setCurrentUserSession(initialSessionFromStorage);
 
-        const prefetchedDataRaw = sessionStorage.getItem('aetherChatPrefetchedData');
-        if (prefetchedDataRaw && !hasLoadedInitialData) {
+        const prefetchedData = getPrefetchedData();
+        if (prefetchedData && !hasLoadedInitialData) {
           try {
-            const prefetchedData = JSON.parse(prefetchedDataRaw);
             if (prefetchedData.userSession && prefetchedData.userSession.id === initialSessionFromStorage.id) {
               console.log("HomePage: Using pre-fetched data for session:", initialSessionFromStorage.id);
 
@@ -188,15 +208,15 @@ export default function HomePage() {
               }
 
               setHasLoadedInitialData(true);
-              sessionStorage.removeItem('aetherChatPrefetchedData');
+              clearPrefetchedData();
               setIsLoadingSession(false);
               return;
             } else {
-              sessionStorage.removeItem('aetherChatPrefetchedData');
+              clearPrefetchedData();
             }
           } catch (e) {
             console.error("HomePage: Error parsing pre-fetched data. Clearing.", e);
-            sessionStorage.removeItem('aetherChatPrefetchedData');
+            clearPrefetchedData();
           }
         }
 
@@ -347,13 +367,9 @@ export default function HomePage() {
   }, [socket, isConnected, activeConversation, currentUserSession, handlePinnedMessagesUpdated]);
 
   const handleLogout = () => {
-    const currentSessionString = sessionStorage.getItem('aetherChatUserSession');
-    let role: UserSession['role'] | null = null;
-    if (currentSessionString) {
-      try {
-        role = JSON.parse(currentSessionString).role;
-      } catch (e) { /* ignore */ }
-    }
+    // Lấy role hiện tại trước khi xóa session
+    const currentSession = getUserSession();
+    const role = currentSession?.role || null;
 
     if (typingTimeoutRef.current) {
       clearTimeout(typingTimeoutRef.current);
@@ -365,8 +381,10 @@ export default function HomePage() {
 
     setCurrentUserSession(null);
     setInitialSessionFromStorage(null);
-    sessionStorage.removeItem('aetherChatUserSession');
-    sessionStorage.removeItem('aetherChatPrefetchedData');
+    
+    // Sử dụng auth utility để xóa toàn bộ session data
+    clearUserSession();
+    
     setCurrentMessages([]);
     setPinnedMessages([]);
     setCurrentSuggestedReplies([]);
@@ -662,6 +680,7 @@ export default function HomePage() {
         appointments={appointments}
         onCancelAppointment={handleCancelAppointment}
         onAppointmentBooked={refreshAppointments}
+        isAppointmentDisabled={currentCustomerProfile?.isAppointmentDisabled}
       />
     );
   };
@@ -700,14 +719,14 @@ export default function HomePage() {
         return (
           <Card className="w-full max-w-md text-center shadow-xl mx-auto my-auto">
             <CardHeader>
-              <CardTitle>Truy cập Admin</CardTitle>
+              <CardTitle>Truy cập Quản trị</CardTitle>
               <CardDescription>Chào mừng, {currentUserSession.name || 'Admin'}.</CardDescription>
             </CardHeader>
             <CardContent>
-              <p className="mb-4">Bạn đã đăng nhập với tư cách Admin.</p>
+              <p className="mb-4">Bạn đã đăng nhập với tư cách Quản trị viên.</p>
               <Button asChild>
                 <Link href="/admin/dashboard">
-                  <LogIn className="mr-2 h-4 w-4" /> Đến Bảng điều khiển Admin
+                  <LogIn className="mr-2 h-4 w-4" /> Đến Bảng điều khiển
                 </Link>
               </Button>
             </CardContent>
@@ -726,7 +745,7 @@ export default function HomePage() {
               <p className="mb-4">Bạn đã đăng nhập với tư cách Nhân viên.</p>
               <Button asChild>
                 <Link href="/staff/dashboard">
-                  <LogIn className="mr-2 h-4 w-4" /> Đến Bảng điều khiển Nhân viên
+                  <LogIn className="mr-2 h-4 w-4" /> Đến Bảng điều khiển
                 </Link>
               </Button>
             </CardContent>

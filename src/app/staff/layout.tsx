@@ -7,6 +7,7 @@ import { useRouter } from 'next/navigation';
 import { StaffLayout as StaffLayoutComponent } from '@/components/staff/StaffLayout';
 import type { UserSession } from '@/lib/types';
 import { Skeleton } from '@/components/ui/skeleton'; // For loading state
+import { getUserSession, extendSession } from '@/lib/utils/auth';
 
 export default function Layout({ children }: { children: ReactNode }) {
   const router = useRouter();
@@ -14,18 +15,20 @@ export default function Layout({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<UserSession | null>(null);
 
   useEffect(() => {
-    const sessionString = sessionStorage.getItem('aetherChatUserSession');
-    if (sessionString) {
+    // Sử dụng auth utility để lấy session (check cả localStorage và sessionStorage)
+    const currentSession = getUserSession();
+    if (currentSession) {
       try {
-        const parsedSession: UserSession = JSON.parse(sessionString);
         // Staff or Admin can access staff area (Admin might have more permissions within staff pages)
-        if (parsedSession && (parsedSession.role === 'staff' || parsedSession.role === 'admin')) {
-          setSession(parsedSession);
+        if (currentSession.role === 'staff' || currentSession.role === 'admin') {
+          setSession(currentSession);
+          // Extend session nếu đang dùng remember me
+          extendSession();
         } else {
           router.replace('/login?error=unauthorized_staff');
         }
       } catch(e) {
-        console.error("Error parsing session for staff layout:", e);
+        console.error("Error with session for staff layout:", e);
         router.replace('/login?error=session_error');
       }
     } else {

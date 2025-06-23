@@ -7,6 +7,7 @@ import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { AppHeader } from '@/components/layout/AppHeader';
 import { AppFooter } from '@/components/layout/AppFooter';
@@ -18,9 +19,11 @@ import { useAppSettingsContext } from '@/contexts/AppSettingsContext';
 import { Logo } from '@/components/icons/Logo';
 import Image from 'next/image';
 import { validatePhoneNumber } from '@/lib/validator';
+import { saveUserSession, savePrefetchedData } from '@/lib/utils/auth';
 
 export default function EnterPhonePage() {
   const [phoneNumber, setPhoneNumber] = useState('');
+  const [rememberMe, setRememberMe] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
   const { toast } = useToast();
@@ -41,16 +44,17 @@ export default function EnterPhonePage() {
       console.log("EnterPhonePage: Kết quả từ handleCustomerAccess:", result);
 
       if (result.userSession) {
-        sessionStorage.setItem('aetherChatUserSession', JSON.stringify(result.userSession));
+        // Sử dụng auth utility để lưu session với remember me
+        saveUserSession(result.userSession, rememberMe);
 
         // Store all pre-fetched data for the main chat page
-        sessionStorage.setItem('aetherChatPrefetchedData', JSON.stringify({
+        savePrefetchedData({
           userSession: result.userSession, // Include session here for verification on next page
           initialMessages: result.initialMessages,
           initialSuggestedReplies: result.initialSuggestedReplies,
           activeConversationId: result.activeConversationId,
           conversations: result.conversations,
-        }));
+        });
 
         toast({
           title: "Bắt đầu trò chuyện",
@@ -114,6 +118,20 @@ export default function EnterPhonePage() {
                   className="text-center text-lg h-12 w-full"
                   autoComplete="tel"
                 />
+              </div>
+              <div className="flex items-center justify-center space-x-2">
+                <Checkbox 
+                  id="remember-me-customer" 
+                  checked={rememberMe}
+                  onCheckedChange={(checked) => setRememberMe(checked as boolean)}
+                  disabled={isLoading}
+                />
+                <Label 
+                  htmlFor="remember-me-customer" 
+                  className="text-sm font-normal cursor-pointer"
+                >
+                  Ghi nhớ số điện thoại (30 ngày)
+                </Label>
               </div>
             </CardContent>
             <CardFooter className="flex flex-col gap-4 pt-2">

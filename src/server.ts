@@ -17,6 +17,7 @@ import { parse } from 'url';
 import next from 'next';
 import { Server as SocketIOServer, Socket } from 'socket.io';
 import { pinMessageToConversation, unpinMessageFromConversation } from './app/actions.js';
+import { setSocketInstance } from './lib/utils/socket-emitter.js';
 import type { UserSession } from './lib/types';
 
 console.log("Socket.IO Server: dotenv configured.");
@@ -139,6 +140,9 @@ app.prepare().then(() => {
     transports: ['websocket', 'polling'] // Prioritize WebSocket
   });
   console.log("Socket.IO Server: > Socket.IO server initialized successfully on path: /socket.io/");
+  
+  // Set socket instance for server-side emissions
+  setSocketInstance(io);
 
   io.on('connection', (socket: Socket) => {
     console.log(`Socket.IO Server: > Client connected: ${socket.id}. Total clients: ${io.engine.clientsCount}`);
@@ -164,6 +168,29 @@ app.prepare().then(() => {
         // Broadcast to other clients in the room
         socket.to(conversationId).emit('newMessage', message);
         console.log(`Socket.IO Server: > Message from ${socket.id} in room '${conversationId}' broadcasted: ${message?.content?.substring(0, 30)}...`);
+        
+        // Emit notification for new message if from user
+        if (message.sender === 'user') {
+          socket.broadcast.emit('newMessageNotification', {
+            customerId: message.customerId,
+            customerName: message.customerName,
+            messageContent: message.content,
+            conversationId: conversationId,
+            sender: message.sender
+          });
+        }
+        
+        // Emit notification for chat reply if from staff/system
+        if (message.sender === 'staff' || message.sender === 'system') {
+          socket.broadcast.emit('chatReplyNotification', {
+            customerId: message.customerId,
+            customerName: message.customerName,
+            replyContent: message.content,
+            conversationId: conversationId,
+            staffName: message.staffName || message.name,
+            sender: message.sender
+          });
+        }
       } else {
         console.warn(`Socket.IO Server: > Received sendMessage event with missing message or conversationId from ${socket.id}`);
       }
@@ -229,6 +256,16 @@ app.prepare().then(() => {
         socket.to(conversationId).emit('messageDeleted', { messageId, conversationId });
         console.log(`Socket.IO Server: > Message ${messageId} deletion broadcast in room '${conversationId}'`);
       }
+    });
+
+    socket.on('newCustomerCreated', ({ customerId, customerName, customerPhone }) => {
+      // Broadcast new customer notification to all staff/admin users
+      socket.broadcast.emit('newCustomerNotification', {
+        customerId,
+        customerName,
+        customerPhone
+      });
+      console.log(`Socket.IO Server: > New customer notification broadcasted for ${customerName || 'Unnamed'} (${customerPhone})`);
     });
 
     socket.on('disconnect', (reason: string) => {

@@ -3,6 +3,7 @@ import type { Message, MessageViewerRole } from '@/lib/types';
 import { cn } from '@/lib/utils';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { User, Bot, FileText, Download, Brain, Edit, Trash2, Pin, PinOff, Image as ImageIconLucide, MoreVertical } from 'lucide-react';
+import { extractImageFromContent, isCloudinaryUrl, isDataUri } from '@/lib/utils/upload';
 import Image from 'next/image';
 import { useAppSettingsContext } from '@/contexts/AppSettingsContext';
 import { Button } from '@/components/ui/button';
@@ -140,27 +141,18 @@ export function MessageBubble({
 
 
   const renderContent = () => {
-    const dataUriRegex = /^(data:[^;]+;base64,[^#]+)#filename=([^#\s]+)(?:\n([\s\S]*))?$/;
-    const match = message.content.match(dataUriRegex);
+    const mediaContent = extractImageFromContent(message.content);
+    
+    if (mediaContent.imageUrl) {
+      const { imageUrl, fileName = "tệp_đính_kèm", textContent } = mediaContent;
+      const isImage = imageUrl.includes('image') || isCloudinaryUrl(imageUrl) || isImageDataURI(imageUrl);
 
-    if (match) {
-      const fileDataUri = match[1];
-      const fileNameEncoded = match[2];
-      const textContent = match[3]?.trim();
-
-      let fileName = "tệp_đính_kèm";
-      try {
-        fileName = decodeURIComponent(fileNameEncoded);
-      } catch (e) {
-        console.warn("Không thể giải mã tên tệp từ URI", e);
-      }
-
-      const fileElement = isImageDataURI(fileDataUri) ? (
+      const fileElement = isImage ? (
         <Dialog open={isPreviewOpen} onOpenChange={setIsPreviewOpen}>
           <DialogTrigger asChild>
             <button type="button" className="my-1 relative max-w-xs h-auto aspect-auto block cursor-pointer hover:opacity-80 transition-opacity" title="Nhấn để xem ảnh lớn">
               <Image
-                src={fileDataUri}
+                src={imageUrl}
                 alt={fileName || 'Hình ảnh được gửi'}
                 width={200}
                 height={200}
@@ -176,7 +168,7 @@ export function MessageBubble({
             </DialogHeader>
             <div className="flex-grow overflow-auto p-2 flex items-center justify-center">
               <Image
-                src={fileDataUri}
+                src={imageUrl}
                 alt={fileName || 'Hình ảnh được gửi'}
                 width={800}
                 height={600}
@@ -185,7 +177,7 @@ export function MessageBubble({
               />
             </div>
             <div className="p-2 border-t flex justify-end">
-              <a href={fileDataUri} download={fileName}>
+              <a href={imageUrl} download={fileName}>
                 <Button variant="outline"><Download className="mr-2 h-4 w-4" />Tải về</Button>
               </a>
             </div>
@@ -193,7 +185,7 @@ export function MessageBubble({
         </Dialog>
       ) : (
         <a
-          href={fileDataUri}
+          href={imageUrl}
           download={fileName}
           className="flex items-center gap-2 p-2 my-1 bg-secondary/50 hover:bg-secondary rounded-md text-sm text-foreground transition-colors"
         >
@@ -217,6 +209,7 @@ export function MessageBubble({
         </>
       );
     }
+    
     return (
       <p className="text-sm whitespace-pre-wrap">
         <LinkifiedText text={message.content} />

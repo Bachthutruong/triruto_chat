@@ -52,9 +52,8 @@ import { useSocket } from '@/contexts/SocketContext';
 import { AppointmentBookingForm } from '@/components/chat/AppointmentBookingForm';
 import { cn } from '@/lib/utils';
 import { ReminderService } from '@/lib/services/reminder.service';
-import mongoose from 'mongoose';
-import { IReminder } from '@/models/Reminder.model';
 import { Badge } from '@/components/ui/badge';
+import { ImageDetailModal } from '@/components/chat/ImageDetailModal';
 
 // New imports for product assignment
 import { getAllProducts } from '@/app/actions';
@@ -97,9 +96,15 @@ export default function StaffIndividualChatPage() {
   const [editingInternalName, setEditingInternalName] = useState(false);
   const [internalNameInput, setInternalNameInput] = useState('');
 
-  // State for sidebar image preview
-  const [selectedSidebarImagePreview, setSelectedSidebarImagePreview] = useState<string | null>(null);
-  const [selectedSidebarImageName, setSelectedSidebarImageName] = useState<string>('');
+  // State for image detail modal
+  const [isImageDetailModalOpen, setIsImageDetailModalOpen] = useState(false);
+  const [selectedImageDetail, setSelectedImageDetail] = useState<{
+    imageUrl: string;
+    fileName: string;
+    notes?: Note[];
+    sender?: { name: string; role?: string };
+    timestamp?: Date;
+  } | null>(null);
 
   // Note states
   const [newNoteContent, setNewNoteContent] = useState('');
@@ -178,10 +183,16 @@ export default function StaffIndividualChatPage() {
     }
   }, []);
 
-  // Handler for opening image preview from the sidebar/drawer
-  const handleSidebarImageClick = (dataUri: string, fileName: string) => {
-    setSelectedSidebarImagePreview(dataUri);
-    setSelectedSidebarImageName(fileName);
+  // Handler for opening image detail modal
+  const handleImageDetailClick = (imageUrl: string, fileName: string, relatedNotes?: Note[], sender?: { name: string; role?: string }, timestamp?: Date) => {
+    setSelectedImageDetail({
+      imageUrl,
+      fileName,
+      notes: relatedNotes || [],
+      sender,
+      timestamp
+    });
+    setIsImageDetailModalOpen(true);
   };
 
 
@@ -698,7 +709,7 @@ export default function StaffIndividualChatPage() {
     }
   };
 
-  const handleNewNoteImageChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleNewNoteImageChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file) {
       if (!file.type.startsWith('image/')) {
@@ -711,12 +722,19 @@ export default function StaffIndividualChatPage() {
         if (newNoteImageInputRef.current) newNoteImageInputRef.current.value = "";
         return;
       }
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setNewNoteImageDataUri(reader.result as string);
-        setNewNoteImageFileName(file.name);
-      };
-      reader.readAsDataURL(file);
+
+      try {
+        // Convert to data URI for immediate preview
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          setNewNoteImageDataUri(reader.result as string);
+          setNewNoteImageFileName(file.name);
+        };
+        reader.readAsDataURL(file);
+      } catch (error) {
+        toast({ title: "Lỗi", description: "Không thể đọc tệp hình ảnh.", variant: "destructive" });
+        if (newNoteImageInputRef.current) newNoteImageInputRef.current.value = "";
+      }
     }
   };
 
@@ -770,7 +788,7 @@ export default function StaffIndividualChatPage() {
   const handleEditNote = (note: Note) => {
     setEditingNote(note);
     setEditingNoteContent(note.content);
-    setEditingNoteImageDataUri(note.imageDataUri);
+    setEditingNoteImageDataUri(note.imageUrl);
     setEditingNoteImageFileName(note.imageFileName);
   };
 
@@ -1270,6 +1288,7 @@ export default function StaffIndividualChatPage() {
           // activeConversationId={activeConversation?.id}
           activeConversationPinnedMessageIds={activeConversation?.pinnedMessageIds || []}
           onBookAppointmentClick={() => setIsBookingModalOpen(true)}
+          isAppointmentDisabled={customer?.isAppointmentDisabled}
         />
       </Card>
 
@@ -1429,8 +1448,14 @@ export default function StaffIndividualChatPage() {
                               key={msg.id}
                               type="button"
                               className="aspect-square relative rounded overflow-hidden bg-muted hover:opacity-80 transition-opacity cursor-pointer"
-                              onClick={() => handleSidebarImageClick(dataUri, fileName)}
-                              title={`Xem trước ${fileName}`}
+                              onClick={() => handleImageDetailClick(
+                                dataUri, 
+                                fileName,
+                                [],
+                                { name: customer?.name || 'Khách hàng', role: 'customer' },
+                                new Date(msg.timestamp)
+                              )}
+                              title={`Xem chi tiết ${fileName}`}
                             >
                               <NextImage src={dataUri} alt="media thumbnail" layout="fill" objectFit="cover" data-ai-hint="thumbnail image" />
                             </button>
@@ -1536,14 +1561,20 @@ export default function StaffIndividualChatPage() {
                       </div>
                     ) : (
                       <>
-                        {note.imageDataUri && (
+                        {note.imageUrl && (
                           <button
                             type="button"
-                            onClick={() => handleSidebarImageClick(note.imageDataUri!, note.imageFileName || 'Note_Image')}
+                            onClick={() => handleImageDetailClick(
+                              note.imageUrl!, 
+                              note.imageFileName || 'Note_Image',
+                              [note],
+                              { name: note.staffName || 'Nhân viên', role: 'staff' },
+                              note.createdAt
+                            )}
                             className="relative w-full aspect-video border rounded overflow-hidden my-1 cursor-pointer hover:opacity-90 transition-opacity"
-                            title="Click để xem ảnh lớn"
+                            title="Click để xem ảnh chi tiết"
                           >
-                            <NextImage src={note.imageDataUri} alt={note.imageFileName || "Note image"} layout="fill" objectFit="contain" data-ai-hint="note image" />
+                            <NextImage src={note.imageUrl} alt={note.imageFileName || "Note image"} layout="fill" objectFit="contain" data-ai-hint="note image" />
                           </button>
                         )}
                         <p className="whitespace-pre-wrap">{note.content}</p>
@@ -1830,35 +1861,21 @@ export default function StaffIndividualChatPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Sidebar Image Preview Dialog */}
-      <Dialog open={!!selectedSidebarImagePreview} onOpenChange={(open) => { if (!open) setSelectedSidebarImagePreview(null) }}>
-        <DialogContent className="max-w-3xl max-h-[80vh] flex flex-col p-2">
-          <DialogHeader className="p-2 border-b">
-            <DialogTitle className="text-sm truncate">{selectedSidebarImageName || "Xem trước ảnh"}</DialogTitle>
-          </DialogHeader>
-          <div className="flex-grow overflow-auto p-2 flex items-center justify-center">
-            {selectedSidebarImagePreview && (
-              <NextImage
-                src={selectedSidebarImagePreview}
-                alt={selectedSidebarImageName || 'Xem trước ảnh'}
-                width={1200}
-                height={800}
-                className="max-w-full max-h-full object-contain"
-                data-ai-hint="full image preview"
-              />
-            )}
-          </div>
-          <div className="p-2 border-t flex justify-end">
-            {selectedSidebarImagePreview && (
-              <Button variant="outline" asChild>
-                <a href={selectedSidebarImagePreview} download={selectedSidebarImageName || 'image.png'}>
-                  <Download className="mr-2 h-4 w-4" />Tải về
-                </a>
-              </Button>
-            )}
-          </div>
-        </DialogContent>
-      </Dialog>
+      {/* Image Detail Modal */}
+      {selectedImageDetail && (
+        <ImageDetailModal
+          isOpen={isImageDetailModalOpen}
+          onClose={() => {
+            setIsImageDetailModalOpen(false);
+            setSelectedImageDetail(null);
+          }}
+          imageUrl={selectedImageDetail.imageUrl}
+          fileName={selectedImageDetail.fileName}
+          notes={selectedImageDetail.notes}
+          sender={selectedImageDetail.sender}
+          timestamp={selectedImageDetail.timestamp}
+        />
+      )}
 
       {/* Mobile Customer Info Button and Drawer */}
       <div className="md:hidden fixed bottom-40 right-4 z-50">
@@ -2055,8 +2072,14 @@ export default function StaffIndividualChatPage() {
                                 key={msg.id}
                                 type="button"
                                 className="aspect-square relative rounded overflow-hidden bg-muted hover:opacity-80 transition-opacity cursor-pointer"
-                                onClick={() => handleSidebarImageClick(dataUri, fileName)}
-                                title={`Xem trước ${fileName}`}
+                                onClick={() => handleImageDetailClick(
+                                  dataUri, 
+                                  fileName,
+                                  [],
+                                  { name: customer?.name || 'Khách hàng', role: 'customer' },
+                                  new Date(msg.timestamp)
+                                )}
+                                title={`Xem chi tiết ${fileName}`}
                               >
                                 <NextImage src={dataUri} alt="media thumbnail" layout="fill" objectFit="cover" data-ai-hint="thumbnail image" />
                               </button>
@@ -2164,14 +2187,20 @@ export default function StaffIndividualChatPage() {
                         </div>
                       ) : (
                         <>
-                          {note.imageDataUri && (
+                          {note.imageUrl && (
                             <button
                               type="button"
-                              onClick={() => handleSidebarImageClick(note.imageDataUri!, note.imageFileName || 'Note_Image')}
+                              onClick={() => handleImageDetailClick(
+                                note.imageUrl!, 
+                                note.imageFileName || 'Note_Image',
+                                [note],
+                                { name: note.staffName || 'Nhân viên', role: 'staff' },
+                                note.createdAt
+                              )}
                               className="relative w-full aspect-video border rounded overflow-hidden my-1 cursor-pointer hover:opacity-90 transition-opacity"
-                              title="Click để xem ảnh lớn"
+                              title="Click để xem ảnh chi tiết"
                             >
-                              <NextImage src={note.imageDataUri} alt={note.imageFileName || "Note image"} layout="fill" objectFit="contain" data-ai-hint="note image" />
+                              <NextImage src={note.imageUrl} alt={note.imageFileName || "Note image"} layout="fill" objectFit="contain" data-ai-hint="note image" />
                             </button>
                           )}
                           <p className="whitespace-pre-wrap">{note.content}</p>

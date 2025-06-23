@@ -14,6 +14,7 @@ import { format, addMinutes, startOfHour, setHours, setMinutes, addDays, addWeek
 import { vi } from 'date-fns/locale';
 import { useToast } from '@/hooks/use-toast';
 import { getCustomerListForSelect, getAllProducts, getBranches, getAppSettings } from '@/app/actions';
+import { filterTimeSlotsForBreakTime } from '@/lib/utils/timeSlots';
 import { useAppSettingsContext } from '@/contexts/AppSettingsContext';
 
 
@@ -94,10 +95,13 @@ export function AppointmentBookingForm({
       serviceSpecificDuration,
       appSettingsToUse?.defaultServiceDurationMinutes
     );
-    setTimeSlots(slots);
-    if (slots.length > 0 && !slots.includes(time)) {
-      setTime(slots[0]);
-    } else if (slots.length === 0 && time) {
+    
+    // Filter out break times
+    const filteredSlots = filterTimeSlotsForBreakTime(slots, appSettingsToUse?.breakTimes || []);
+    setTimeSlots(filteredSlots);
+    if (filteredSlots.length > 0 && !filteredSlots.includes(time)) {
+      setTime(filteredSlots[0]);
+    } else if (filteredSlots.length === 0 && time) {
       setTime('');
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps

@@ -7,6 +7,7 @@ import { Calendar } from '@/components/ui/calendar';
 import { PlusCircle, ListFilter, Edit, Trash2, Save, Users, Clock } from 'lucide-react';
 import type { AppointmentDetails, UserSession, GetAppointmentsFilters, ProductItem, Branch, AppSettings } from '@/lib/types';
 import { getAppointments, createNewAppointment, updateExistingAppointment, deleteExistingAppointment, getCustomerListForSelect, getAllUsers, getAllProducts, getBranches, getAppSettings } from '@/app/actions';
+import { filterTimeSlotsForBreakTime } from '@/lib/utils/timeSlots';
 import { useToast } from '@/hooks/use-toast';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogClose, DialogTrigger, DialogFooter } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
@@ -131,10 +132,13 @@ export default function StaffAppointmentsPage() {
       serviceSpecificDuration,
       appSettingsToUse?.defaultServiceDurationMinutes
     );
-    setTimeSlots(slots);
-    if (slots.length > 0 && !slots.includes(formTime)) {
-      setFormTime(slots[0]);
-    } else if (slots.length === 0 && formTime) {
+    
+    // Filter out break times
+    const filteredSlots = filterTimeSlotsForBreakTime(slots, appSettingsToUse?.breakTimes || []);
+    setTimeSlots(filteredSlots);
+    if (filteredSlots.length > 0 && !filteredSlots.includes(formTime)) {
+      setFormTime(filteredSlots[0]);
+    } else if (filteredSlots.length === 0 && formTime) {
       setFormTime('');
     }
   }, [formProductId, products, appSettingsFromContext, currentAppSettings, formTime]);
@@ -439,7 +443,8 @@ export default function StaffAppointmentsPage() {
                     product?.schedulingRules?.serviceDurationMinutes,
                     appSettingsToUse?.defaultServiceDurationMinutes
                   );
-                  if (slots.length > 0) setFormTime(slots[0]); else setFormTime('');
+                  const filteredSlots = filterTimeSlotsForBreakTime(slots, appSettingsToUse?.breakTimes || []);
+                  if (filteredSlots.length > 0) setFormTime(filteredSlots[0]); else setFormTime('');
                 }}
                 disabled={isSubmitting || products.length === 0}
               >

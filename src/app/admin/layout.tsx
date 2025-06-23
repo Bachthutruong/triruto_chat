@@ -7,6 +7,7 @@ import { useRouter } from 'next/navigation';
 import { AdminLayout as AdminLayoutComponent } from '@/components/admin/AdminLayout';
 import type { UserSession } from '@/lib/types';
 import { Skeleton } from '@/components/ui/skeleton'; // For loading state
+import { getUserSession, extendSession } from '@/lib/utils/auth';
 
 export default function Layout({ children }: { children: ReactNode }) {
   const router = useRouter();
@@ -14,22 +15,24 @@ export default function Layout({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<UserSession | null>(null);
 
   useEffect(() => {
-    const sessionString = sessionStorage.getItem('aetherChatUserSession');
-    if (sessionString) {
+    // Sử dụng auth utility để lấy session (check cả localStorage và sessionStorage)
+    const currentSession = getUserSession();
+    if (currentSession) {
       try {
-        const parsedSession: UserSession = JSON.parse(sessionString);
         // Allow both admin and staff to access routes under /admin
         // This is a broad permission. For more fine-grained control,
         // consider moving shared functionalities to a different path segment
         // or implementing a more detailed role/permission system.
-        if (parsedSession && (parsedSession.role === 'admin' || parsedSession.role === 'staff')) {
-          setSession(parsedSession);
+        if (currentSession.role === 'admin' || currentSession.role === 'staff') {
+          setSession(currentSession);
+          // Extend session nếu đang dùng remember me
+          extendSession();
         } else {
           // If not admin or staff, redirect to login.
           router.replace('/login?error=unauthorized_admin_area');
         }
       } catch (e) {
-        console.error("Error parsing session for admin layout:", e);
+        console.error("Error with session for admin layout:", e);
         router.replace('/login?error=session_error');
       }
     } else {

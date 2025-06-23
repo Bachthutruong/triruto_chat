@@ -4,8 +4,10 @@ import type { ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import { AppHeader } from '@/components/layout/AppHeader';
 import type { UserSession } from '@/lib/types';
-import { StaffSidebar as StaffSidebarContent } from './StaffSidebar';
+import { AdminSidebar as SharedSidebarContent } from '../admin/AdminSidebar';
 import { SidebarProvider, Sidebar, SidebarTrigger, SidebarInset } from '@/components/ui/sidebar';
+import { clearUserSession } from '@/lib/utils/auth';
+import { useNotification } from '@/hooks/use-notification';
 
 type StaffLayoutProps = {
   children: ReactNode;
@@ -15,8 +17,12 @@ type StaffLayoutProps = {
 export function StaffLayout({ children, currentSession }: StaffLayoutProps) {
   const router = useRouter();
   
+  // Initialize notification system for staff users
+  useNotification();
+  
   const handleLogout = () => {
-    sessionStorage.removeItem('aetherChatUserSession');
+    // Sử dụng auth utility để xóa toàn bộ session data
+    clearUserSession();
     router.push('/login');
   };
 
@@ -29,8 +35,14 @@ export function StaffLayout({ children, currentSession }: StaffLayoutProps) {
           sidebarTrigger={<SidebarTrigger className="sm:hidden" />}
         />
         <div className="flex flex-1 mt-16"> {/* mt-16 for fixed AppHeader */}
-          <Sidebar className="hidden sm:block fixed h-[calc(100vh-4rem)] z-[1000001]" collapsible="icon" side="left" variant="sidebar" style={{ '--sidebar-width-icon': '2rem' } as React.CSSProperties}> {/* Ensure sidebar doesn't overlap content */}
-            <StaffSidebarContent />
+          <Sidebar
+            className="hidden sm:block fixed h-[calc(100vh-4rem)] z-[1000001]"
+            collapsible="icon"
+            side="left"
+            variant="sidebar"
+            style={{ '--sidebar-width-icon': '2rem' } as React.CSSProperties}
+          >
+            <SharedSidebarContent userRole={currentSession.role as 'admin' | 'staff'} />
           </Sidebar>
           <SidebarInset> {/* Manages margin based on desktop sidebar state */}
             <main className="flex-1 p-4 md:p-6 overflow-y-auto">

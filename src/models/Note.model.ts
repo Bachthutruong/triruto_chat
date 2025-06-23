@@ -19,14 +19,16 @@ staffId: { type: Schema.Types.ObjectId, ref: 'User', required: true, index: true
   //@ts-ignore
   content: { type: String, trim: true }, // Made content optional at schema level
   //@ts-ignore
-  imageDataUri: { type: String },
+  imageUrl: { type: String },
+  //@ts-ignore
+  imagePublicId: { type: String },
   //@ts-ignore
   imageFileName: { type: String },
 }, { timestamps: true }); // createdAt and updatedAt managed by Mongoose
 
-// Custom validator to ensure either content or imageDataUri exists
+// Custom validator to ensure either content or imageUrl exists
 NoteSchema.pre<INote>('validate', function (next) {
-  if (!this.content?.trim() && !this.imageDataUri) {
+  if (!this.content?.trim() && !this.imageUrl) {
     next(new Error('Ghi chú phải có nội dung văn bản hoặc hình ảnh.'));
   } else {
     next();

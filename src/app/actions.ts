@@ -61,6 +61,8 @@ import type { IReminder } from '@/models/Reminder.model';
 import type { IBranch } from '@/models/Branch.model';
 import type { IQuickReply } from '@/models/QuickReply.model';
 import { vi } from 'date-fns/locale';
+import { emitNewCustomerNotification, emitNewMessageNotification, emitChatReplyNotification } from '@/lib/utils/socket-emitter';
+import { uploadToCloudinary, deleteFromCloudinary, extractPublicIdFromUrl } from '@/lib/utils/cloudinary';
 
 
 // interface IMessageWithConversation extends IMessage {
@@ -245,7 +247,8 @@ function transformNoteDocToNote(noteDoc: any): Note {
     staffId: noteDoc.staffId.toString(),
     staffName: (noteDoc.staffId as any)?.name,
     content: noteDoc.content,
-    imageDataUri: noteDoc.imageDataUri,
+    imageUrl: noteDoc.imageUrl,
+    imagePublicId: noteDoc.imagePublicId,
     imageFileName: noteDoc.imageFileName,
     createdAt: new Date(noteDoc.createdAt as Date),
     updatedAt: new Date(noteDoc.updatedAt as Date),
@@ -272,6 +275,9 @@ function transformAppSettingsDoc(doc: IAppSettings | null): AppSettings | null {
     numberOfStaff: 1,
     defaultServiceDurationMinutes: 60,
     workingHours: ["09:00", "10:00", "11:00", "13:00", "14:00", "15:00", "16:00", "17:00"],
+    breakTimes: [],
+    breakTimeNotificationEnabled: false,
+    breakTimeNotificationMessage: 'Hiện tại chúng tôi đang trong giờ nghỉ {{breakName}} từ {{startTime}} đến {{endTime}}. Vui lòng liên hệ lại sau hoặc để lại lời nhắn.',
     weeklyOffDays: [],
     oneTimeOffDates: [],
     specificDayRules: [],
@@ -316,6 +322,14 @@ function transformAppSettingsDoc(doc: IAppSettings | null): AppSettings | null {
     numberOfStaff: doc.numberOfStaff ?? initialDefaultSettings.numberOfStaff,
     defaultServiceDurationMinutes: doc.defaultServiceDurationMinutes ?? initialDefaultSettings.defaultServiceDurationMinutes,
     workingHours: doc.workingHours && doc.workingHours.length > 0 ? doc.workingHours : initialDefaultSettings.workingHours!,
+    breakTimes: (doc.breakTimes || []).map(bt => ({
+      id: bt.id || Date.now().toString() + Math.random().toString(),
+      startTime: bt.startTime,
+      endTime: bt.endTime,
+      name: bt.name,
+    })),
+    breakTimeNotificationEnabled: doc.breakTimeNotificationEnabled ?? initialDefaultSettings.breakTimeNotificationEnabled,
+    breakTimeNotificationMessage: doc.breakTimeNotificationMessage || initialDefaultSettings.breakTimeNotificationMessage,
     weeklyOffDays: doc.weeklyOffDays || initialDefaultSettings.weeklyOffDays || [],
     oneTimeOffDates: doc.oneTimeOffDates || initialDefaultSettings.oneTimeOffDates || [],
     specificDayRules: specificDayRulesPlain,
@@ -357,6 +371,7 @@ export async function updateAppSettings(settings: Partial<Omit<AppSettings, 'id'
   processedSettings.suggestedQuestions = Array.isArray(processedSettings.suggestedQuestions) ? processedSettings.suggestedQuestions : [];
   processedSettings.metaKeywords = Array.isArray(processedSettings.metaKeywords) ? processedSettings.metaKeywords : [];
   processedSettings.workingHours = Array.isArray(processedSettings.workingHours) ? processedSettings.workingHours : [];
+  processedSettings.breakTimes = Array.isArray(processedSettings.breakTimes) ? processedSettings.breakTimes : [];
   processedSettings.weeklyOffDays = Array.isArray(processedSettings.weeklyOffDays) ? processedSettings.weeklyOffDays : [];
   processedSettings.oneTimeOffDates = Array.isArray(processedSettings.oneTimeOffDates) ? processedSettings.oneTimeOffDates : [];
   processedSettings.officeDays = Array.isArray(processedSettings.officeDays) ? processedSettings.officeDays : [];
@@ -434,6 +449,83 @@ function isOutOfOffice(appSettings: AppSettings): boolean {
   return false; // Within office hours
 }
 
+function getCurrentBreakTime(appSettings: AppSettings): { breakTime: any; message: string } | null {
+  try {
+    if (!appSettings.breakTimeNotificationEnabled || !appSettings.breakTimes || appSettings.breakTimes.length === 0) {
+      console.log("[DEBUG getCurrentBreakTime] Early return:", {
+        breakTimeNotificationEnabled: appSettings.breakTimeNotificationEnabled,
+        breakTimesLength: appSettings.breakTimes?.length || 0
+      });
+      return null;
+    }
+
+    const now = new Date();
+    const currentHour = getHours(now);
+    const currentMinute = getMinutes(now);
+    const currentTimeInMinutes = currentHour * 60 + currentMinute;
+    
+    console.log("[DEBUG getCurrentBreakTime] Current time:", {
+      now: now.toISOString(),
+      localTime: now.toLocaleString('vi-VN'),
+      currentHour,
+      currentMinute,
+      currentTimeInMinutes,
+      formattedTime: `${currentHour.toString().padStart(2, '0')}:${currentMinute.toString().padStart(2, '0')}`
+    });
+
+    // Check if current time falls within any break time
+    for (const breakTime of appSettings.breakTimes) {
+      if (!breakTime || !breakTime.startTime || !breakTime.endTime) continue;
+      
+      // Validate time format
+      const timeRegex = /^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/;
+      if (!timeRegex.test(breakTime.startTime) || !timeRegex.test(breakTime.endTime)) continue;
+      
+      const startTimeParts = breakTime.startTime.split(':');
+      const endTimeParts = breakTime.endTime.split(':');
+      
+      if (startTimeParts.length !== 2 || endTimeParts.length !== 2) continue;
+      
+      const startHour = parseInt(startTimeParts[0], 10);
+      const startMinute = parseInt(startTimeParts[1], 10);
+      const endHour = parseInt(endTimeParts[0], 10);
+      const endMinute = parseInt(endTimeParts[1], 10);
+      
+      if (isNaN(startHour) || isNaN(startMinute) || isNaN(endHour) || isNaN(endMinute)) continue;
+
+      const startTimeInMinutes = startHour * 60 + startMinute;
+      const endTimeInMinutes = endHour * 60 + endMinute;
+
+      if (currentTimeInMinutes >= startTimeInMinutes && currentTimeInMinutes < endTimeInMinutes) {
+        // Format the break time notification message safely
+        const baseMessage = appSettings.breakTimeNotificationMessage || 'Hiện tại chúng tôi đang trong giờ nghỉ từ {{startTime}} đến {{endTime}}.';
+        
+        // Limit message length to prevent issues
+        let message = String(baseMessage).substring(0, 500);
+        
+        // Sanitize replacement values to prevent infinite loops
+        const breakName = String(breakTime.name || 'nghỉ').substring(0, 50).replace(/[{}]/g, '');
+        const startTime = String(breakTime.startTime).substring(0, 10).replace(/[{}]/g, '');
+        const endTime = String(breakTime.endTime).substring(0, 10).replace(/[{}]/g, '');
+        
+        // Simple replacement without regex to be extra safe
+        message = message.split('{{breakName}}').join(breakName);
+        message = message.split('{{startTime}}').join(startTime);
+        message = message.split('{{endTime}}').join(endTime);
+
+        return { breakTime, message };
+      }
+    }
+
+    return null;
+  } catch (error) {
+    console.error('Error in getCurrentBreakTime:', error);
+    return null;
+  }
+}
+
+
+
 
 export async function handleCustomerAccess(phoneNumber: string): Promise<{
   userSession: UserSession;
@@ -466,6 +558,13 @@ export async function handleCustomerAccess(phoneNumber: string): Promise<{
     });
     await customer.save();
     isNewCustomer = true;
+    
+    // Emit new customer notification
+    emitNewCustomerNotification({
+      customerId: customer._id!.toString(),
+      customerName: customer.name,
+      customerPhone: customer.phoneNumber,
+    });
   } else {
     console.log("Returning customer found:", customer.id);
     // Ensure these arrays are not undefined
@@ -484,7 +583,7 @@ export async function handleCustomerAccess(phoneNumber: string): Promise<{
       .populate({
         path: 'messageIds',
         model: MessageModel,
-        options: { sort: { timestamp: 1 }, limit: 50 }
+        options: { sort: { timestamp: 1 } } // Bỏ giới hạn - load tất cả tin nhắn
       });
     if (activeConversation) console.log("Found existing active conversation:", activeConversation.id);
   }
@@ -496,7 +595,7 @@ export async function handleCustomerAccess(phoneNumber: string): Promise<{
     activeConversation = await ConversationModel.findById(newConvDocFromAction.id).populate({
       path: 'messageIds',
       model: MessageModel,
-      options: { sort: { timestamp: 1 }, limit: 50 }
+      options: { sort: { timestamp: 1 } } // Bỏ giới hạn - load tất cả tin nhắn
     });
     if (activeConversation) {
       console.log("New conversation created and fetched:", activeConversation.id);
@@ -522,7 +621,17 @@ export async function handleCustomerAccess(phoneNumber: string): Promise<{
   const ultimateDefaultGreeting = 'Tôi có thể giúp gì cho bạn hôm nay?';
 
   if (appSettings) {
-    if (appSettings.outOfOfficeResponseEnabled && isOutOfOffice(appSettings)) {
+    let currentBreakTime = null;
+    try {
+      currentBreakTime = getCurrentBreakTime(appSettings);
+    } catch (error) {
+      console.error("Error checking break time:", error);
+    }
+    
+    if (currentBreakTime) {
+      initialSystemMessageContent = currentBreakTime.message.trim();
+      console.log("Break time message selected:", initialSystemMessageContent);
+    } else if (appSettings.outOfOfficeResponseEnabled && isOutOfOffice(appSettings)) {
       initialSystemMessageContent = (appSettings.outOfOfficeMessage?.trim() || ultimateDefaultGreeting).trim();
       console.log("Out of office message selected:", initialSystemMessageContent);
     } else if (isNewCustomer && appSettings.greetingMessageNewCustomer && appSettings.greetingMessageNewCustomer.trim() !== "") {
@@ -565,7 +674,7 @@ export async function handleCustomerAccess(phoneNumber: string): Promise<{
       const populatedMessages = (activeConversation.messageIds as unknown as IMessage[]).sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
       finalInitialMessages.push(...populatedMessages.map(transformMessageDocToMessage));
     } else {
-      const conversationMessageDocs = await MessageModel.find({ _id: { $in: activeConversation.messageIds as Types.ObjectId[] } }).sort({ timestamp: 1 }).limit(50);
+              const conversationMessageDocs = await MessageModel.find({ _id: { $in: activeConversation.messageIds as Types.ObjectId[] } }).sort({ timestamp: 1 });
       finalInitialMessages.push(...conversationMessageDocs.map(transformMessageDocToMessage));
     }
   }
@@ -647,13 +756,56 @@ export async function getConversationHistory(conversationId: string): Promise<Me
   const conversation = await ConversationModel.findById(conversationId).populate({
     path: 'messageIds',
     model: MessageModel,
-    options: { sort: { timestamp: 1 } }
+    options: { sort: { timestamp: 1 } } // Bỏ giới hạn - load tất cả tin nhắn
   });
   if (!conversation || !conversation.messageIds || conversation.messageIds.length === 0) {
     return [];
   }
   const messages = (conversation.messageIds as unknown as IMessage[]);
   return messages.map(transformMessageDocToMessage);
+}
+
+// Helper function để load tất cả tin nhắn từ tất cả conversation của customer
+export async function getAllCustomerMessages(customerId: string, messageLimit?: number): Promise<Message[]> {
+  await dbConnect();
+  if (!mongoose.Types.ObjectId.isValid(customerId)) {
+    console.warn(`[ACTIONS] Invalid customerId for getAllCustomerMessages: ${customerId}`);
+    return [];
+  }
+  
+  // Load tất cả conversation của customer
+  const customer = await CustomerModel.findById(customerId).populate({
+    path: 'conversationIds',
+    model: ConversationModel,
+    options: { sort: { lastMessageTimestamp: -1 } }, // Sort theo tin nhắn mới nhất
+    populate: {
+      path: 'messageIds',
+      model: MessageModel,
+      options: { sort: { timestamp: 1 } }
+    }
+  });
+
+  if (!customer || !customer.conversationIds || customer.conversationIds.length === 0) {
+    return [];
+  }
+
+  const allMessages: Message[] = [];
+  
+  // Gộp tin nhắn từ tất cả conversation
+  for (const convDoc of customer.conversationIds as unknown as IConversation[]) {
+    if (convDoc && convDoc.messageIds && convDoc.messageIds.length > 0) {
+      const conversationMessages = (convDoc.messageIds as unknown as IMessage[])
+        .map(transformMessageDocToMessage);
+      allMessages.push(...conversationMessages);
+    }
+  }
+
+  // Sort tất cả tin nhắn theo thời gian và giới hạn số lượng (nếu có)
+  const sortedMessages = allMessages
+    .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+  
+  // Chỉ áp dụng limit nếu được chỉ định và > 0, không thì trả về tất cả
+  return (messageLimit && messageLimit > 0) ? sortedMessages.slice(-messageLimit) : sortedMessages;
 }
 
 export async function getUserConversations(userId: string): Promise<Conversation[]> {
@@ -670,26 +822,61 @@ export async function getUserConversations(userId: string): Promise<Conversation
 }
 
 function formatBookingConfirmation(template: string, details: AppointmentDetails): string {
-  let message = template;
-  message = message.replace(/{{service}}/g, details.service);
   try {
-    const dateObj = dateFnsParseISO(details.date);
-    if (isValidDateFns(dateObj)) {
-      message = message.replace(/{{date}}/g, dateFnsFormat(dateObj, 'dd/MM/yyyy', { locale: vi }));
-    } else {
-      message = message.replace(/{{date}}/g, details.date);
+    // Limit template length and sanitize
+    let message = String(template || '').substring(0, 1000);
+    
+    // Sanitize replacement values to prevent infinite loops
+    const service = String(details.service || '').substring(0, 100).replace(/[{}]/g, '');
+    const time = String(details.time || '').substring(0, 20).replace(/[{}]/g, '');
+    const branch = String(details.branch || '').substring(0, 100).replace(/[{}]/g, '');
+    
+    // Use split/join instead of regex for safety
+    message = message.split('{{service}}').join(service);
+    
+    try {
+      const dateObj = dateFnsParseISO(details.date);
+      if (isValidDateFns(dateObj)) {
+        const formattedDate = dateFnsFormat(dateObj, 'dd/MM/yyyy', { locale: vi });
+        message = message.split('{{date}}').join(formattedDate);
+      } else {
+        const sanitizedDate = String(details.date || '').substring(0, 20).replace(/[{}]/g, '');
+        message = message.split('{{date}}').join(sanitizedDate);
+      }
+    } catch (e) {
+      const sanitizedDate = String(details.date || '').substring(0, 20).replace(/[{}]/g, '');
+      message = message.split('{{date}}').join(sanitizedDate);
     }
-  } catch (e) {
-    message = message.replace(/{{date}}/g, details.date);
+    
+    message = message.split('{{time}}').join(time);
+    message = message.split('{{branch}}').join(branch);
+    
+    // Handle conditional branch display - simple approach
+    if (!details.branch) {
+      // Remove entire conditional block if no branch
+      const startPattern = '{{#if branch}}';
+      const endPattern = '{{/if}}';
+      let startIndex = message.indexOf(startPattern);
+      while (startIndex !== -1) {
+        const endIndex = message.indexOf(endPattern, startIndex);
+        if (endIndex !== -1) {
+          message = message.substring(0, startIndex) + message.substring(endIndex + endPattern.length);
+        } else {
+          break;
+        }
+        startIndex = message.indexOf(startPattern);
+      }
+    } else {
+      // Remove just the conditional tags
+      message = message.split('{{#if branch}}').join('');
+      message = message.split('{{/if}}').join('');
+    }
+    
+    return message.trim().substring(0, 1000);
+  } catch (error) {
+    console.error('Error in formatBookingConfirmation:', error);
+    return 'Lịch hẹn đã được đặt thành công.';
   }
-  message = message.replace(/{{time}}/g, details.time);
-  message = message.replace(/{{branch}}/g, details.branch || '');
-  if (!details.branch) {
-    message = message.replace(/{{#if branch}}.*?{{\/if}}/g, '');
-  } else {
-    message = message.replace(/{{#if branch}}/g, '').replace(/{{\/if}}/g, '');
-  }
-  return message.trim();
 }
 
 
@@ -710,21 +897,58 @@ export async function processUserMessage(
 
   let textForAI = userMessageContent;
   let mediaDataUriForAI: string | undefined = undefined;
+  let processedMessageContent = userMessageContent;
 
-  const dataUriRegex = /^(data:[^;]+;base64,[^#]+)#filename=([^#\s]+)(?:\n([\s\S]*))?$/;
-  const match = userMessageContent.match(dataUriRegex);
+  // Check for new Cloudinary URL format first
+  const cloudinaryRegex = /^(https:\/\/res\.cloudinary\.com\/[^#]+)#filename=([^#\s]+)(?:\n([\s\S]*))?$/;
+  const cloudinaryMatch = userMessageContent.match(cloudinaryRegex);
 
-  if (match) {
-    mediaDataUriForAI = match[1];
-    const fileNameEncoded = match[2];
+  if (cloudinaryMatch) {
+    // Keep the Cloudinary URL format for storage
+    processedMessageContent = userMessageContent;
+    const fileNameEncoded = cloudinaryMatch[2];
     let originalFileName = "attached_file";
     try { originalFileName = decodeURIComponent(fileNameEncoded); } catch (e) { /* ignore */ }
-    textForAI = match[3]?.trim() || `Tôi đã gửi một tệp: ${originalFileName}. Bạn có thể phân tích hoặc mô tả nó không?`;
+    textForAI = cloudinaryMatch[3]?.trim() || `Tôi đã gửi một tệp: ${originalFileName}. Bạn có thể phân tích hoặc mô tả nó không?`;
+    // For AI processing, we'll use the text content
+    mediaDataUriForAI = cloudinaryMatch[1];
+  } else {
+    // Check for legacy data URI format and convert to Cloudinary
+    const dataUriRegex = /^(data:[^;]+;base64,[^#]+)#filename=([^#\s]+)(?:\n([\s\S]*))?$/;
+    const dataUriMatch = userMessageContent.match(dataUriRegex);
+
+    if (dataUriMatch) {
+      try {
+        const fileDataUri = dataUriMatch[1];
+        const fileNameEncoded = dataUriMatch[2];
+        const textContent = dataUriMatch[3];
+        let originalFileName = "attached_file";
+        try { originalFileName = decodeURIComponent(fileNameEncoded); } catch (e) { /* ignore */ }
+
+        // Upload to Cloudinary
+        const uploadResult = await uploadToCloudinary(fileDataUri, originalFileName, 'triruto_chat/messages');
+        
+        // Update message content to use Cloudinary URL
+        processedMessageContent = `${uploadResult.secure_url}#filename=${encodeURIComponent(originalFileName)}${textContent ? '\n' + textContent : ''}`;
+        
+        textForAI = textContent?.trim() || `Tôi đã gửi một tệp: ${originalFileName}. Bạn có thể phân tích hoặc mô tả nó không?`;
+        mediaDataUriForAI = uploadResult.secure_url;
+      } catch (error) {
+        console.error('Error uploading to Cloudinary:', error);
+        // Fallback to original data URI processing
+        mediaDataUriForAI = dataUriMatch[1];
+        const fileNameEncoded = dataUriMatch[2];
+        let originalFileName = "attached_file";
+        try { originalFileName = decodeURIComponent(fileNameEncoded); } catch (e) { /* ignore */ }
+        textForAI = dataUriMatch[3]?.trim() || `Tôi đã gửi một tệp: ${originalFileName}. Bạn có thể phân tích hoặc mô tả nó không?`;
+        processedMessageContent = userMessageContent; // Keep original on error
+      }
+    }
   }
 
   const userMessageData: Partial<IMessage> = {
     sender: 'user',
-    content: userMessageContent,
+    content: processedMessageContent, // Use processed content (Cloudinary URL if uploaded)
     timestamp: new Date(),
     //@ts-ignore
     name: currentUserSession.name || `Người dùng ${currentUserSession.phoneNumber}`,
@@ -738,6 +962,18 @@ export async function processUserMessage(
   const savedUserMessageDoc = await new MessageModel(userMessageData).save();
   const userMessage = transformMessageDocToMessage(savedUserMessageDoc);
   console.log("[processUserMessage] User message saved:", userMessage.id);
+
+  // Emit new message notification for user messages
+  const customer = await CustomerModel.findById(customerId);
+  if (customer) {
+    emitNewMessageNotification({
+      customerId: customerId,
+      customerName: customer.name,
+      messageContent: textForAI,
+      conversationId: currentConversationId,
+      sender: 'user'
+    });
+  }
 
   await CustomerModel.findByIdAndUpdate(customerId, {
     lastInteractionAt: new Date(),
@@ -765,7 +1001,28 @@ export async function processUserMessage(
     throw new Error("Không thể tải cài đặt ứng dụng. Không thể xử lý tin nhắn.");
   }
 
-  if (isOutOfOffice(appSettings) && appSettings.outOfOfficeResponseEnabled && appSettings.outOfOfficeMessage) {
+  let currentBreakTime = null;
+  try {
+    console.log("[DEBUG] App settings for break time check:", {
+      breakTimeNotificationEnabled: appSettings.breakTimeNotificationEnabled,
+      breakTimesCount: appSettings.breakTimes?.length || 0,
+      breakTimes: appSettings.breakTimes
+    });
+    currentBreakTime = getCurrentBreakTime(appSettings);
+    console.log("[DEBUG] getCurrentBreakTime result:", currentBreakTime);
+  } catch (error) {
+    console.error("Error checking break time in processUserMessage:", error);
+  }
+  
+  if (currentBreakTime) {
+    const lastAiMessage = currentChatHistory.slice().reverse().find(m => m.sender === 'ai' || m.sender === 'system');
+    if (lastAiMessage && lastAiMessage.content === currentBreakTime.message) {
+      aiResponseContent = "Chúng tôi vẫn đang trong giờ nghỉ. Xin cảm ơn sự kiên nhẫn của bạn.";
+    } else {
+      aiResponseContent = currentBreakTime.message;
+    }
+    console.log("[processUserMessage] In break time. AI response:", aiResponseContent);
+  } else if (isOutOfOffice(appSettings) && appSettings.outOfOfficeResponseEnabled && appSettings.outOfOfficeMessage) {
     const lastAiMessage = currentChatHistory.slice().reverse().find(m => m.sender === 'ai' || m.sender === 'system');
     if (lastAiMessage && lastAiMessage.content === appSettings.outOfOfficeMessage) {
       aiResponseContent = "Chúng tôi vẫn đang ngoài giờ làm việc. Xin cảm ơn sự kiên nhẫn của bạn.";
@@ -938,6 +1195,17 @@ export async function processUserMessage(
   finalAiMessage = transformMessageDocToMessage(savedAiMessageDoc);
   console.log("[processUserMessage] AI message saved:", finalAiMessage.id);
 
+  // Emit chat reply notification for AI messages
+  if (customer) {
+    emitChatReplyNotification({
+      customerId: customerId,
+      customerName: customer.name,
+      replyContent: aiResponseContent,
+      conversationId: currentConversationId,
+      staffName: brandNameForAI,
+      sender: 'system'
+    });
+  }
 
   await CustomerModel.findByIdAndUpdate(customerId, { lastInteractionAt: new Date() });
   await ConversationModel.findByIdAndUpdate(currentConversationId, {
@@ -1158,7 +1426,9 @@ export async function getCustomersForStaffView(
     appointmentIds: (doc.appointmentIds || []).map(id => id.toString()),
     productIds: (doc.productIds || []).map(id => id.toString()),
     noteIds: (doc.noteIds || []).map(id => id.toString()),
+    pinnedMessageIds: (doc.pinnedMessageIds || []).map(id => id.toString()),
     pinnedConversationIds: (doc.pinnedConversationIds || []).map(id => id.toString()),
+    messagePinningAllowedConversationIds: (doc.messagePinningAllowedConversationIds || []).map(id => id.toString()),
     tags: doc.tags || [],
     assignedStaffId: doc.assignedStaffId?._id?.toString(),
     assignedStaffName: (doc.assignedStaffId as IUser)?.name,
@@ -1190,7 +1460,7 @@ export async function getCustomerDetails(customerId: string): Promise<{ customer
       populate: {
         path: 'messageIds',
         model: MessageModel,
-        options: { sort: { timestamp: 1 } }
+        options: { sort: { timestamp: 1 } } // Bỏ giới hạn - load tất cả tin nhắn
       }
     });
 
@@ -1202,11 +1472,19 @@ export async function getCustomerDetails(customerId: string): Promise<{ customer
     .map(convDoc => transformConversationDoc(convDoc as unknown as IConversation))
     .filter(Boolean) as Conversation[];
 
+  // Load tất cả tin nhắn từ tất cả conversation của customer (thay vì chỉ conversation đầu tiên)
   let messagesForActiveConversation: Message[] = [];
-  if (transformedConversations.length > 0 && customerDoc.conversationIds && customerDoc.conversationIds[0]) {
-    const activeConvDoc = customerDoc.conversationIds[0] as unknown as IConversation;
-    if (activeConvDoc && activeConvDoc.messageIds) {
-      messagesForActiveConversation = (activeConvDoc.messageIds as unknown as IMessage[]).map(transformMessageDocToMessage);
+  try {
+    messagesForActiveConversation = await getAllCustomerMessages(customerId); // Load tất cả tin nhắn - không giới hạn
+    console.log(`[getCustomerDetails] Loaded ${messagesForActiveConversation.length} messages from all conversations for customer ${customerId}`);
+  } catch (error) {
+    console.error(`[getCustomerDetails] Error loading all customer messages:`, error);
+    // Fallback to old logic if new function fails
+    if (transformedConversations.length > 0 && customerDoc.conversationIds && customerDoc.conversationIds[0]) {
+      const activeConvDoc = customerDoc.conversationIds[0] as unknown as IConversation;
+      if (activeConvDoc && activeConvDoc.messageIds) {
+        messagesForActiveConversation = (activeConvDoc.messageIds as unknown as IMessage[]).map(transformMessageDocToMessage);
+      }
     }
   }
 
@@ -1220,6 +1498,7 @@ export async function getCustomerDetails(customerId: string): Promise<{ customer
     .populate<{ staffId: IUser }>('staffId', 'name')
     .sort({ createdAt: -1 });
 
+  //@ts-ignore
   const customerProfile: CustomerProfile = {
     id: (customerDoc._id as Types.ObjectId).toString(),
     phoneNumber: customerDoc.phoneNumber,
@@ -1324,6 +1603,7 @@ export async function assignStaffToCustomer(customerId: string, staffId: string)
   ).populate<{ assignedStaffId: IUser }>('assignedStaffId', 'name');
   if (!updatedCustomerDoc) throw new Error("Không tìm thấy khách hàng.");
 
+  //@ts-ignore
   return {
     id: (updatedCustomerDoc._id as Types.ObjectId).toString(),
     phoneNumber: updatedCustomerDoc.phoneNumber,
@@ -1357,6 +1637,7 @@ export async function unassignStaffFromCustomer(customerId: string): Promise<Cus
     { new: true }
   );
   if (!updatedCustomerDoc) throw new Error("Không tìm thấy khách hàng.");
+  //@ts-ignore
   return {
     id: (updatedCustomerDoc._id as Types.ObjectId).toString(),
     phoneNumber: updatedCustomerDoc.phoneNumber,
@@ -1392,6 +1673,7 @@ export async function addTagToCustomer(customerId: string, tag: string): Promise
     customer.lastInteractionAt = new Date();
     await customer.save();
   }
+  //@ts-ignore
   return {
     id: (customer._id as Types.ObjectId).toString(),
     phoneNumber: customer.phoneNumber,
@@ -1430,7 +1712,9 @@ export async function removeTagFromCustomer(customerId: string, tagToRemove: str
     appointmentIds: (customer.appointmentIds || []).map(id => id.toString()),
     productIds: (customer.productIds || []).map(id => id.toString()),
     noteIds: (customer.noteIds || []).map(id => id.toString()),
+    pinnedMessageIds: (customer.pinnedMessageIds || []).map(id => id.toString()),
     pinnedConversationIds: (customer.pinnedConversationIds || []).map(id => id.toString()),
+    messagePinningAllowedConversationIds: (customer.messagePinningAllowedConversationIds || []).map(id => id.toString()),
     tags: customer.tags || [],
     assignedStaffId: customer.assignedStaffId?._id?.toString(),
     assignedStaffName: (customer.assignedStaffId as IUser)?.name,
@@ -1439,9 +1723,77 @@ export async function removeTagFromCustomer(customerId: string, tagToRemove: str
     interactionStatus: customer.interactionStatus as CustomerInteractionStatus,
     lastMessagePreview: customer.lastMessagePreview,
     lastMessageTimestamp: customer.lastMessageTimestamp ? new Date(customer.lastMessageTimestamp) : undefined,
+    isAppointmentDisabled: customer.isAppointmentDisabled,
   };
 }
 
+export async function updateCustomerAppointmentStatus(customerId: string, isAppointmentDisabled: boolean): Promise<CustomerProfile | null> {
+  await dbConnect();
+  const customer = await CustomerModel.findByIdAndUpdate(
+    customerId,
+    { isAppointmentDisabled, lastInteractionAt: new Date() },
+    { new: true }
+  ).populate<{ assignedStaffId: IUser }>('assignedStaffId', 'name');
+  if (!customer) throw new Error("Không tìm thấy khách hàng.");
+  
+  return {
+    id: (customer._id as Types.ObjectId).toString(),
+    phoneNumber: customer.phoneNumber,
+    name: customer.name || `Người dùng ${customer.phoneNumber}`,
+    internalName: customer.internalName,
+    conversationIds: (customer.conversationIds || []).map(id => id.toString()),
+    appointmentIds: (customer.appointmentIds || []).map(id => id.toString()),
+    productIds: (customer.productIds || []).map(id => id.toString()),
+    noteIds: (customer.noteIds || []).map(id => id.toString()),
+    pinnedMessageIds: (customer.pinnedMessageIds || []).map(id => id.toString()),
+    pinnedConversationIds: (customer.pinnedConversationIds || []).map(id => id.toString()),
+    messagePinningAllowedConversationIds: (customer.messagePinningAllowedConversationIds || []).map(id => id.toString()),
+    tags: customer.tags || [],
+    assignedStaffId: customer.assignedStaffId?._id?.toString(),
+    assignedStaffName: (customer.assignedStaffId as IUser)?.name,
+    lastInteractionAt: new Date(customer.lastInteractionAt),
+    createdAt: new Date(customer.createdAt as Date),
+    interactionStatus: customer.interactionStatus as CustomerInteractionStatus,
+    lastMessagePreview: customer.lastMessagePreview,
+    lastMessageTimestamp: customer.lastMessageTimestamp ? new Date(customer.lastMessageTimestamp) : undefined,
+    isAppointmentDisabled: customer.isAppointmentDisabled,
+  };
+}
+
+export async function getCurrentCustomerProfile(customerId: string): Promise<CustomerProfile | null> {
+  await dbConnect();
+  const customer = await CustomerModel.findById(customerId)
+    .populate<{ assignedStaffId: IUser }>('assignedStaffId', 'name');
+  if (!customer) return null;
+  
+  return {
+    id: (customer._id as Types.ObjectId).toString(),
+    phoneNumber: customer.phoneNumber,
+    name: customer.name || `Người dùng ${customer.phoneNumber}`,
+    internalName: customer.internalName,
+    email: customer.email,
+    address: customer.address,
+    dateOfBirth: customer.dateOfBirth,
+    gender: customer.gender,
+    notes: customer.notes,
+    conversationIds: (customer.conversationIds || []).map(id => id.toString()),
+    appointmentIds: (customer.appointmentIds || []).map(id => id.toString()),
+    productIds: (customer.productIds || []).map(id => id.toString()),
+    noteIds: (customer.noteIds || []).map(id => id.toString()),
+    pinnedMessageIds: (customer.pinnedMessageIds || []).map(id => id.toString()),
+    pinnedConversationIds: (customer.pinnedConversationIds || []).map(id => id.toString()),
+    messagePinningAllowedConversationIds: (customer.messagePinningAllowedConversationIds || []).map(id => id.toString()),
+    tags: customer.tags || [],
+    assignedStaffId: customer.assignedStaffId?._id?.toString(),
+    assignedStaffName: (customer.assignedStaffId as IUser)?.name,
+    lastInteractionAt: new Date(customer.lastInteractionAt),
+    createdAt: new Date(customer.createdAt as Date),
+    interactionStatus: customer.interactionStatus as CustomerInteractionStatus,
+    lastMessagePreview: customer.lastMessagePreview,
+    lastMessageTimestamp: customer.lastMessageTimestamp ? new Date(customer.lastMessageTimestamp) : undefined,
+    isAppointmentDisabled: customer.isAppointmentDisabled,
+  };
+}
 
 export async function sendStaffMessage(
   staffSession: UserSession,
@@ -1502,6 +1854,17 @@ export async function sendStaffMessage(
     lastMessagePreview: savedStaffMessageDoc.content.substring(0, 100),
     $addToSet: { participants: { userId: staffSession.id, role: staffSession.role, name: staffSession.name, phoneNumber: staffSession.phoneNumber } }
   });
+
+  // Emit chat reply notification for staff messages
+  emitChatReplyNotification({
+    customerId: customerId,
+    customerName: customer.name,
+    replyContent: messageContent,
+    conversationId: conversationId,
+    staffName: staffSession.name,
+    sender: 'staff'
+  });
+
   return savedMessageWithConvId;
 }
 
@@ -1732,6 +2095,7 @@ export async function updateCustomerInternalName(customerId: string, internalNam
     { new: true }
   ).populate<{ assignedStaffId: IUser }>('assignedStaffId', 'name');
   if (!customer) throw new Error("Không tìm thấy khách hàng.");
+  //@ts-ignore
   return {
     id: (customer._id as Types.ObjectId).toString(),
     phoneNumber: customer.phoneNumber,
@@ -2032,11 +2396,22 @@ export async function addNoteToCustomer(
   }
 
   try {
+    let imageUrl: string | undefined;
+    let imagePublicId: string | undefined;
+
+    // Upload image to Cloudinary if provided
+    if (imageDataUri && imageFileName) {
+      const uploadResult = await uploadToCloudinary(imageDataUri, imageFileName, 'triruto_chat/notes');
+      imageUrl = uploadResult.secure_url;
+      imagePublicId = uploadResult.public_id;
+    }
+
     const noteDoc = new NoteModel({
       customerId: new mongoose.Types.ObjectId(customerId) as any,
       staffId: new mongoose.Types.ObjectId(staffId) as any,
       content: content?.trim(),
-      imageDataUri,
+      imageUrl,
+      imagePublicId,
       imageFileName,
     });
     await noteDoc.save();
@@ -2078,20 +2453,32 @@ export async function updateCustomerNote(noteId: string, staffId: string, conten
   }
 
   const trimmedContent = content?.trim();
-  if (!trimmedContent && imageDataUri === null && !note.imageDataUri) { // If trying to remove image and no text is left
+  if (!trimmedContent && imageDataUri === null && !note.imageUrl) { // If trying to remove image and no text is left
     throw new Error("Ghi chú phải có nội dung văn bản hoặc hình ảnh.");
   }
-  if (!trimmedContent && !imageDataUri && !note.imageDataUri) { // If all content is empty
+  if (!trimmedContent && !imageDataUri && !note.imageUrl) { // If all content is empty
     throw new Error("Ghi chú phải có nội dung văn bản hoặc hình ảnh.");
   }
 
 
   note.content = trimmedContent;
   if (imageDataUri === null) {
-    note.imageDataUri = undefined;
+    // Delete old image from Cloudinary if exists
+    if (note.imagePublicId) {
+      await deleteFromCloudinary(note.imagePublicId);
+    }
+    note.imageUrl = undefined;
+    note.imagePublicId = undefined;
     note.imageFileName = undefined;
-  } else if (imageDataUri) {
-    note.imageDataUri = imageDataUri;
+  } else if (imageDataUri && imageFileName) {
+    // Delete old image from Cloudinary if exists
+    if (note.imagePublicId) {
+      await deleteFromCloudinary(note.imagePublicId);
+    }
+    // Upload new image to Cloudinary
+    const uploadResult = await uploadToCloudinary(imageDataUri, imageFileName, 'triruto_chat/notes');
+    note.imageUrl = uploadResult.secure_url;
+    note.imagePublicId = uploadResult.public_id;
     //@ts-ignore
     note.imageFileName = imageFileName;
   }
@@ -2553,10 +2940,45 @@ export async function getCustomerMediaMessages(customerId: string): Promise<Mess
   await dbConnect();
   const messages = await MessageModel.find({
     customerId: new mongoose.Types.ObjectId(customerId) as any,
-    content: { $regex: /^data:(image\/(jpeg|png|gif|webp|svg\+xml)|application\/(pdf|msword|vnd\.openxmlformats-officedocument\.wordprocessingml\.document|vnd\.ms-excel|vnd\.openxmlformats-officedocument\.spreadsheetml\.sheet|plain|rtf|zip|x-rar-compressed|octet-stream))/ }
+    $or: [
+      // New Cloudinary URL format
+      { content: { $regex: /^https:\/\/res\.cloudinary\.com\// } },
+      // Legacy data URI format
+      { content: { $regex: /^data:(image\/(jpeg|png|gif|webp|svg\+xml)|application\/(pdf|msword|vnd\.openxmlformats-officedocument\.wordprocessingml\.document|vnd\.ms-excel|vnd\.openxmlformats-officedocument\.spreadsheetml\.sheet|plain|rtf|zip|x-rar-compressed|octet-stream))/ } }
+    ]
   }).sort({ timestamp: -1 }); // KHÔNG có .limit()
   console.log(`[getCustomerMediaMessages] Found ${messages.length} media messages for customerId ${customerId}`);
   return messages.map(transformMessageDocToMessage);
+}
+
+export async function getStaffMediaMessages(): Promise<Message[]> {
+  await dbConnect();
+  
+  console.log('[DEBUG] Starting getStaffMediaMessages...');
+  
+  // Get ALL messages with Cloudinary URLs or data URIs
+  const allMediaMessages = await MessageModel.find({
+    $or: [
+      // New Cloudinary URL format
+      { content: { $regex: /^https:\/\/res\.cloudinary\.com\// } },
+      // Legacy data URI format
+      { content: { $regex: /data:/ } }
+    ]
+  }).lean().sort({ timestamp: -1 }); // Bỏ giới hạn - load tất cả media messages
+  
+  console.log(`[DEBUG] Found ${allMediaMessages.length} total media messages`);
+  
+  if (allMediaMessages.length > 0) {
+    console.log('[DEBUG] Sample media messages:', allMediaMessages.slice(0, 3).map(m => ({
+      id: m._id.toString(),
+      sender: m.sender,
+      staffId: m.staffId?.toString() || 'null',
+      contentStart: m.content.substring(0, 50),
+      isCloudinary: m.content.startsWith('https://res.cloudinary.com/')
+    })));
+  }
+  
+  return allMediaMessages.map(transformMessageDocToMessage);
 }
 
 export async function updateConversationTitle(conversationId: string, newTitle: string, userId: string): Promise<Conversation | null> {
@@ -2611,6 +3033,7 @@ export async function pinConversationForUser(userId: string, conversationId: str
   const updatedCustomer = await CustomerModel.findById(userId).populate<{ assignedStaffId: IUser }>('assignedStaffId', 'name');
 
   if (!updatedCustomer) return null;
+  //@ts-ignore
   return {
     id: (updatedCustomer._id as Types.ObjectId).toString(),
     phoneNumber: updatedCustomer.phoneNumber,
@@ -2645,6 +3068,7 @@ export async function unpinConversationForUser(userId: string, conversationId: s
   ).populate<{ assignedStaffId: IUser }>('assignedStaffId', 'name');
 
   if (!updatedCustomer) return null;
+  //@ts-ignore
   return {
     id: (updatedCustomer._id as Types.ObjectId).toString(),
     phoneNumber: updatedCustomer.phoneNumber,
