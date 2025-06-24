@@ -1,4 +1,3 @@
-
 // src/components/media/MediaHistoryPage.tsx
 'use client';
 
@@ -36,10 +35,22 @@ export default function MediaHistoryPage() {
         setIsLoading(true);
         setError(null);
         try {
+          console.log('[MediaHistoryPage] Fetching data for customerId:', customerId);
           const [mediaData, customerDetailsResult] = await Promise.all([ // Renamed customerDetails to customerDetailsResult
             getCustomerMediaMessages(customerId),
             getCustomerDetails(customerId)
           ]);
+          console.log('[MediaHistoryPage] Received media data:', mediaData);
+          console.log('[MediaHistoryPage] Media data count:', mediaData.length);
+          if (mediaData.length > 0) {
+            console.log('[MediaHistoryPage] Sample media messages:', mediaData.slice(0, 3).map(m => ({
+              id: m.id,
+              sender: m.sender,
+              contentStart: m.content.substring(0, 100),
+              isCloudinary: m.content.startsWith('https://res.cloudinary.com/'),
+              isDataUri: m.content.startsWith('data:')
+            })));
+          }
           setMediaMessages(mediaData);
           setCustomer(customerDetailsResult.customer); // Access .customer property
         } catch (err) {
@@ -72,60 +83,120 @@ export default function MediaHistoryPage() {
   };
 
   const renderMediaItem = (message: Message) => {
+    // Check for legacy data URI format with filename
     const dataUriRegex = /^(data:[^;]+;base64,[^#]+)#filename=([^#\s]+)(?:\n([\s\S]*))?$/;
-    const match = message.content.match(dataUriRegex);
+    const dataUriMatch = message.content.match(dataUriRegex);
 
-    if (!match) return null;
+    // Check for Cloudinary URL format
+    const cloudinaryRegex = /^https:\/\/res\.cloudinary\.com\//;
+    const isCloudinaryUrl = cloudinaryRegex.test(message.content);
 
-    const fileDataUri = match[1];
-    const fileNameEncoded = match[2];
-    let fileName = "attached_file";
-    try {
-      fileName = decodeURIComponent(fileNameEncoded);
-    } catch (e) { /* ignore */ }
+    if (dataUriMatch) {
+      // Legacy data URI format
+      const fileDataUri = dataUriMatch[1];
+      const fileNameEncoded = dataUriMatch[2];
+      let fileName = "attached_file";
+      try {
+        fileName = decodeURIComponent(fileNameEncoded);
+      } catch (e) { /* ignore */ }
 
-    return (
-      <div key={message.id} className="border rounded-lg p-3 shadow-sm hover:shadow-md transition-shadow bg-card">
-        {isImageDataURI(fileDataUri) ? (
-          <button 
-            type="button" 
-            onClick={() => handleImageClick(fileDataUri, fileName)}
-            className="w-full aspect-video relative rounded-md overflow-hidden mb-2 bg-muted cursor-pointer group"
-            title="Nhấn để xem ảnh lớn"
-          >
-            <NextImage 
-              src={fileDataUri} 
-              alt={fileName} 
-              layout="fill" 
-              objectFit="cover" 
-              className="rounded-md group-hover:opacity-80 transition-opacity"
-              data-ai-hint="historical image"
-            />
-          </button>
-        ) : (
-          <a
-            href={fileDataUri}
-            download={fileName}
-            className="flex flex-col items-center justify-center h-32 bg-muted rounded-md mb-2 hover:bg-muted/80 transition-colors"
-            title={`Tải về ${fileName}`}
-          >
-            <FileText className="h-12 w-12 text-muted-foreground" />
-            <span className="text-xs text-muted-foreground mt-1 px-1 text-center truncate w-full">{fileName}</span>
-          </a>
-        )}
-        <div className="flex items-center justify-between text-xs">
-          <span className="font-medium truncate max-w-[calc(100%-2.5rem)]" title={fileName}>{fileName}</span>
-          <a href={fileDataUri} download={fileName}>
-            <Button variant="ghost" size="icon" className="h-7 w-7" title={`Tải về ${fileName}`}>
-              <Download className="h-4 w-4" />
-            </Button>
-          </a>
+      return (
+        <div key={message.id} className="border rounded-lg p-3 shadow-sm hover:shadow-md transition-shadow bg-card">
+          {isImageDataURI(fileDataUri) ? (
+            <button 
+              type="button" 
+              onClick={() => handleImageClick(fileDataUri, fileName)}
+              className="w-full aspect-video relative rounded-md overflow-hidden mb-2 bg-muted cursor-pointer group"
+              title="Nhấn để xem ảnh lớn"
+            >
+              <NextImage 
+                src={fileDataUri} 
+                alt={fileName} 
+                layout="fill" 
+                objectFit="cover" 
+                className="rounded-md group-hover:opacity-80 transition-opacity"
+                data-ai-hint="historical image"
+              />
+            </button>
+          ) : (
+            <a
+              href={fileDataUri}
+              download={fileName}
+              className="flex flex-col items-center justify-center h-32 bg-muted rounded-md mb-2 hover:bg-muted/80 transition-colors"
+              title={`Tải về ${fileName}`}
+            >
+              <FileText className="h-12 w-12 text-muted-foreground" />
+              <span className="text-xs text-muted-foreground mt-1 px-1 text-center truncate w-full">{fileName}</span>
+            </a>
+          )}
+          <div className="flex items-center justify-between text-xs">
+            <span className="font-medium truncate max-w-[calc(100%-2.5rem)]" title={fileName}>{fileName}</span>
+            <a href={fileDataUri} download={fileName}>
+              <Button variant="ghost" size="icon" className="h-7 w-7" title={`Tải về ${fileName}`}>
+                <Download className="h-4 w-4" />
+              </Button>
+            </a>
+          </div>
+          <p className="text-xs text-muted-foreground mt-1">
+            Gửi bởi: {message.name || message.sender} lúc {format(new Date(message.timestamp), 'HH:mm', { locale: vi })}
+          </p>
         </div>
-        <p className="text-xs text-muted-foreground mt-1">
-          Gửi bởi: {message.name || message.sender} lúc {format(new Date(message.timestamp), 'HH:mm', { locale: vi })}
-        </p>
-      </div>
-    );
+      );
+    } else if (isCloudinaryUrl) {
+      // New Cloudinary URL format
+      const cloudinaryUrl = message.content;
+      const fileName = cloudinaryUrl.split('/').pop() || 'cloudinary_file';
+      
+      // Determine if it's an image by checking the URL or file extension
+      const isImage = /\.(jpg|jpeg|png|gif|webp|svg)(\?|$)/i.test(cloudinaryUrl) || 
+                      cloudinaryUrl.includes('/image/upload/');
+
+      return (
+        <div key={message.id} className="border rounded-lg p-3 shadow-sm hover:shadow-md transition-shadow bg-card">
+          {isImage ? (
+            <button 
+              type="button" 
+              onClick={() => handleImageClick(cloudinaryUrl, fileName)}
+              className="w-full aspect-video relative rounded-md overflow-hidden mb-2 bg-muted cursor-pointer group"
+              title="Nhấn để xem ảnh lớn"
+            >
+              <NextImage 
+                src={cloudinaryUrl} 
+                alt={fileName} 
+                layout="fill" 
+                objectFit="cover" 
+                className="rounded-md group-hover:opacity-80 transition-opacity"
+                data-ai-hint="cloudinary image"
+              />
+            </button>
+          ) : (
+            <a
+              href={cloudinaryUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex flex-col items-center justify-center h-32 bg-muted rounded-md mb-2 hover:bg-muted/80 transition-colors"
+              title={`Xem ${fileName}`}
+            >
+              <FileText className="h-12 w-12 text-muted-foreground" />
+              <span className="text-xs text-muted-foreground mt-1 px-1 text-center truncate w-full">{fileName}</span>
+            </a>
+          )}
+          <div className="flex items-center justify-between text-xs">
+            <span className="font-medium truncate max-w-[calc(100%-2.5rem)]" title={fileName}>{fileName}</span>
+            <a href={cloudinaryUrl} target="_blank" rel="noopener noreferrer">
+              <Button variant="ghost" size="icon" className="h-7 w-7" title={`Xem ${fileName}`}>
+                <Download className="h-4 w-4" />
+              </Button>
+            </a>
+          </div>
+          <p className="text-xs text-muted-foreground mt-1">
+            Gửi bởi: {message.name || message.sender} lúc {format(new Date(message.timestamp), 'HH:mm', { locale: vi })}
+          </p>
+        </div>
+      );
+    }
+
+    return null;
   };
 
   const session = typeof window !== 'undefined' ? sessionStorage.getItem('aetherChatUserSession') : null;

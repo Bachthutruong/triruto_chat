@@ -649,8 +649,11 @@ export default function HomePage() {
   };
 
   const refreshAppointments = async () => {
+    console.log('[DEBUG] refreshAppointments called');
     if (currentUserSession?.id) {
+      console.log('[DEBUG] Refreshing appointments for customer:', currentUserSession.id);
       const updatedAppointments = await getAppointments({ customerId: currentUserSession.id });
+      console.log('[DEBUG] Refreshed appointments:', updatedAppointments);
       setAppointments(updatedAppointments);
     }
   };
@@ -686,16 +689,31 @@ export default function HomePage() {
   };
 
   const handleCancelAppointment = async (appointmentId: string) => {
+    console.log('[DEBUG] handleCancelAppointment called with appointmentId:', appointmentId);
     try {
+      console.log('[DEBUG] Calling deleteExistingAppointment...');
       await deleteExistingAppointment(appointmentId);
+      console.log('[DEBUG] deleteExistingAppointment completed');
+      
       // Refresh appointments list
       const updatedAppointments = await getAppointments({ customerId: currentUserSession?.id || '' });
+      console.log('[DEBUG] Updated appointments after cancel:', updatedAppointments);
       setAppointments(updatedAppointments);
+      
+      // Refresh messages to show the cancellation message
+      if (activeConversation?.id) {
+        console.log('[DEBUG] Refreshing conversation messages...');
+        const updatedMessages = await getConversationHistory(activeConversation.id);
+        console.log('[DEBUG] Updated messages after cancel:', updatedMessages);
+        setCurrentMessages(updatedMessages);
+      }
+      
       toast({
         title: "Hủy lịch thành công",
         description: "Lịch hẹn đã được hủy thành công.",
       });
     } catch (error) {
+      console.error('[DEBUG] Error in handleCancelAppointment:', error);
       toast({
         title: "Lỗi",
         description: "Không thể hủy lịch hẹn. Vui lòng thử lại sau.",
@@ -772,9 +790,14 @@ export default function HomePage() {
 
   useEffect(() => {
     if (currentUserSession?.id) {
-      getAppointments({ customerId: currentUserSession.id }).then(setAppointments);
+      console.log('[DEBUG] Fetching appointments for customer:', currentUserSession.id);
+      getAppointments({ customerId: currentUserSession.id }).then((fetchedAppointments) => {
+        console.log('[DEBUG] Fetched appointments:', fetchedAppointments);
+        setAppointments(fetchedAppointments);
+      });
     }
   }, [currentUserSession?.id, activeConversation?.id]);
+  console.log('[DEBUG] Current appointments state:', appointments);
   console.log('activeConversation', activeConversation);
 
   return (

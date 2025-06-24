@@ -215,6 +215,8 @@ export type AppSettings = {
   greetingMessageReturningCustomer: string;
   suggestedQuestions: string[];
   successfulBookingMessageTemplate: string;
+  cancelledAppointmentMessageTemplate: string;
+  rescheduledAppointmentMessageTemplate: string;
   brandName: string;
   logoUrl?: string;
   logoDataUri?: string;

@@ -125,7 +125,7 @@ export default function AdminProductsManagementPage() {
   const basePath = '/admin'; // Assuming admin owns the primary product CRUD routes
 
   return (
-    <div className="space-y-6" style={{ maxWidth: 'none', width: '1500px' }}>
+    <div className="space-y-6" style={{ maxWidth: 'none', width: '1200px' }}>
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-2xl sm:text-3xl font-bold">Quản lý Sản phẩm/Dịch vụ</h1>

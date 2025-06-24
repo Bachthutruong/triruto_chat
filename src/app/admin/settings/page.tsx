@@ -33,6 +33,8 @@ const initialSettingsState: AppSettings = {
   greetingMessageReturningCustomer: 'Chào mừng bạn quay trở lại! Rất vui được gặp lại bạn.',
   suggestedQuestions: ['Các dịch vụ của bạn?', 'Đặt lịch hẹn', 'Địa chỉ của bạn ở đâu?'],
   successfulBookingMessageTemplate: "Lịch hẹn của bạn cho {{service}} vào lúc {{time}} ngày {{date}}{{#if branch}} tại {{branch}}{{/if}} đã được đặt thành công!",
+  cancelledAppointmentMessageTemplate: "Lịch hẹn {{service}} vào lúc {{time}} ngày {{date}}{{#if branch}} tại {{branch}}{{/if}} đã được hủy thành công.",
+  rescheduledAppointmentMessageTemplate: "Lịch hẹn {{service}} đã được đổi thành {{time}} ngày {{date}}{{#if branch}} tại {{branch}}{{/if}}.",
   footerText: `© ${new Date().getFullYear()} ${defaultInitialBrandName}. Đã đăng ký Bản quyền.`,
   metaTitle: `Triruto - Trợ lý AI cho giao tiếp khách hàng liền mạch.`,
   metaDescription: 'Live chat tích hợp AI cho giao tiếp khách hàng liền mạch.',
@@ -95,6 +97,8 @@ export default function AdminSettingsPage() {
           ...fetchedSettings,
           suggestedQuestions: fetchedSettings.suggestedQuestions && fetchedSettings.suggestedQuestions.length > 0 ? fetchedSettings.suggestedQuestions : initialSettingsState.suggestedQuestions || [],
           successfulBookingMessageTemplate: fetchedSettings.successfulBookingMessageTemplate || initialSettingsState.successfulBookingMessageTemplate,
+          cancelledAppointmentMessageTemplate: fetchedSettings.cancelledAppointmentMessageTemplate || initialSettingsState.cancelledAppointmentMessageTemplate,
+          rescheduledAppointmentMessageTemplate: fetchedSettings.rescheduledAppointmentMessageTemplate || initialSettingsState.rescheduledAppointmentMessageTemplate,
           metaKeywords: fetchedSettings.metaKeywords && fetchedSettings.metaKeywords.length > 0 ? fetchedSettings.metaKeywords : initialSettingsState.metaKeywords || [],
           workingHours: fetchedSettings.workingHours && fetchedSettings.workingHours.length > 0 ? fetchedSettings.workingHours : initialSettingsState.workingHours || [],
           breakTimes: (fetchedSettings.breakTimes || []).map(bt => ({ ...bt, id: bt.id || new Date().getTime().toString() + Math.random() })),
@@ -468,7 +472,7 @@ export default function AdminSettingsPage() {
   }
 
   return (
-    <div className="space-y-6 md:w-[1500px]">
+    <div className="space-y-6 md:w-[1200px]">
       <h1 className="text-3xl font-bold">Cài đặt Ứng dụng</h1>
       <p className="text-muted-foreground">Cấu hình giao diện, SEO, và các cài đặt hệ thống khác.</p>
 
@@ -548,6 +552,17 @@ export default function AdminSettingsPage() {
             <Textarea id="successfulBookingMessageTemplate" name="successfulBookingMessageTemplate" value={settings.successfulBookingMessageTemplate || ''} onChange={handleInputChange} disabled={isSubmitting} placeholder="VD: Lịch hẹn cho {{service}} vào {{time}} {{date}} đã được xác nhận!" />
             <p className="text-xs text-muted-foreground">Sử dụng: {'\'{{service}}\''}, {'\'{{date}}\''}, {'\'{{time}}\''}, {'\'{{branch}}\''}.</p>
           </div>
+          <div className="space-y-2">
+            <Label htmlFor="cancelledAppointmentMessageTemplate">Mẫu tin nhắn Hủy lịch hẹn</Label>
+            <Textarea id="cancelledAppointmentMessageTemplate" name="cancelledAppointmentMessageTemplate" value={settings.cancelledAppointmentMessageTemplate || ''} onChange={handleInputChange} disabled={isSubmitting} placeholder="VD: Lịch hẹn {{service}} vào {{time}} {{date}} đã được hủy thành công." />
+            <p className="text-xs text-muted-foreground">Sử dụng: {'\'{{service}}\''}, {'\'{{date}}\''}, {'\'{{time}}\''}, {'\'{{branch}}\''}.</p>
+          </div>
+          {/* Mẫu tin nhắn Đổi lịch hẹn */}
+          {/* <div className="space-y-2">
+            <Label htmlFor="rescheduledAppointmentMessageTemplate">Mẫu tin nhắn Đổi lịch hẹn</Label>
+            <Textarea id="rescheduledAppointmentMessageTemplate" name="rescheduledAppointmentMessageTemplate" value={settings.rescheduledAppointmentMessageTemplate || ''} onChange={handleInputChange} disabled={isSubmitting} placeholder="VD: Lịch hẹn {{service}} đã được đổi thành {{time}} {{date}}." />
+            <p className="text-xs text-muted-foreground">Sử dụng: {'\'{{service}}\''}, {'\'{{date}}\''}, {'\'{{time}}\''}, {'\'{{branch}}\''}.</p>
+          </div> */}
         </CardContent>
       </Card>
 
@@ -857,7 +872,7 @@ export default function AdminSettingsPage() {
       <NotificationSettings />
 
       {/* Notification Debug Panel */}
-      <NotificationDebug />
+      {/* <NotificationDebug /> */}
 
       <Card>
         <CardHeader>

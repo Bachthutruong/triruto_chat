@@ -20,6 +20,8 @@ type AppointmentManagerProps = {
 };
 
 export function AppointmentManager({ isOpen, onClose, appointments, onCancelAppointment, onBookNewAppointmentClick, canBookNew = true }: AppointmentManagerProps) {
+    console.log('[DEBUG] AppointmentManager received appointments:', appointments);
+    
     const filteredAppointments = appointments
         .filter(appointment => {
             const appointmentDate = parseISO(appointment.date);
@@ -31,7 +33,16 @@ export function AppointmentManager({ isOpen, onClose, appointments, onCancelAppo
                 hours,
                 minutes
             );
-            return appointmentDateTime > new Date();
+            const now = new Date();
+            console.log('[DEBUG] Appointment:', {
+                service: appointment.service,
+                date: appointment.date,
+                time: appointment.time,
+                appointmentDateTime: appointmentDateTime.toISOString(),
+                now: now.toISOString(),
+                isFuture: appointmentDateTime > now
+            });
+            return appointmentDateTime > now;
         })
         .sort((a, b) => {
             const dateA = parseISO(a.date);
@@ -44,6 +55,8 @@ export function AppointmentManager({ isOpen, onClose, appointments, onCancelAppo
 
             return dateTimeB.getTime() - dateTimeA.getTime();
         });
+    
+    console.log('[DEBUG] Filtered appointments (future only):', filteredAppointments);
 
     return (
         <Dialog open={isOpen} onOpenChange={onClose}>

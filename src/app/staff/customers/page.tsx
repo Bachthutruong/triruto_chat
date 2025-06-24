@@ -139,7 +139,7 @@ export default function StaffCustomersPage() {
   };
 
   return (
-    <div className="space-y-6 md:w-[1500px]">
+    <div className="space-y-6 md:w-[1200px]">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-2xl sm:text-3xl font-bold">Quản lý Khách hàng</h1>
