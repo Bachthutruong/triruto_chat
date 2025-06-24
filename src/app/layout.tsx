@@ -7,6 +7,7 @@ import { Analytics } from '@vercel/analytics/react';
 import { AppSettingsProvider } from '@/contexts/AppSettingsContext';
 import { SocketProvider } from '@/contexts/SocketContext'; // Import SocketProvider
 import { getAppSettings } from './actions';
+import ErrorBoundary from '@/components/ErrorBoundary';
 
 const interFont = Inter({
   variable: '--font-geist-sans',
@@ -46,12 +47,17 @@ export default async function RootLayout({
 
   return (
     <html lang="vi">
-      <body className={`${interFont.variable} ${robotoMonoFont.variable} font-sans antialiased`}>
-        <SocketProvider> {/* SocketProvider should wrap AppSettingsProvider and children */}
-          <AppSettingsProvider settings={appSettings}>
-            {children}
-          </AppSettingsProvider>
-        </SocketProvider>
+      <body 
+        className={`${interFont.variable} ${robotoMonoFont.variable} font-sans antialiased`}
+        suppressHydrationWarning={true}
+      >
+        <ErrorBoundary>
+          <SocketProvider> {/* SocketProvider should wrap AppSettingsProvider and children */}
+            <AppSettingsProvider settings={appSettings}>
+              {children}
+            </AppSettingsProvider>
+          </SocketProvider>
+        </ErrorBoundary>
         <Toaster />
         <Analytics />
       </body>

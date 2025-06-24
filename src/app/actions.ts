@@ -61,7 +61,7 @@ import type { IReminder } from '@/models/Reminder.model';
 import type { IBranch } from '@/models/Branch.model';
 import type { IQuickReply } from '@/models/QuickReply.model';
 import { vi } from 'date-fns/locale';
-import { emitNewCustomerNotification, emitNewMessageNotification, emitChatReplyNotification } from '@/lib/utils/socket-emitter';
+import { emitNewCustomerNotification, emitNewMessageNotification, emitChatReplyNotification, getSocketInstance } from '@/lib/utils/socket-emitter';
 import { uploadToCloudinary, deleteFromCloudinary, extractPublicIdFromUrl } from '@/lib/utils/cloudinary';
 
 
@@ -309,6 +309,8 @@ function transformAppSettingsDoc(doc: IAppSettings | null): AppSettings | null {
     greetingMessageReturningCustomer: doc.greetingMessageReturningCustomer || initialDefaultSettings.greetingMessageReturningCustomer,
     suggestedQuestions: doc.suggestedQuestions && doc.suggestedQuestions.length > 0 ? doc.suggestedQuestions : initialDefaultSettings.suggestedQuestions!,
     successfulBookingMessageTemplate: doc.successfulBookingMessageTemplate || initialDefaultSettings.successfulBookingMessageTemplate,
+    cancelledAppointmentMessageTemplate: doc.cancelledAppointmentMessageTemplate || "Lịch hẹn {{service}} vào lúc {{time}} ngày {{date}}{{#if branch}} tại {{branch}}{{/if}} đã được hủy thành công.",
+    rescheduledAppointmentMessageTemplate: doc.rescheduledAppointmentMessageTemplate || "Lịch hẹn {{service}} đã được đổi thành {{time}} ngày {{date}}{{#if branch}} tại {{branch}}{{/if}}.",
     brandName: doc.brandName || initialDefaultSettings.brandName,
     logoUrl: doc.logoUrl,
     logoDataUri: doc.logoDataUri,
@@ -821,7 +823,7 @@ export async function getUserConversations(userId: string): Promise<Conversation
   return (customer.conversationIds as unknown as IConversation[]).map(doc => transformConversationDoc(doc)).filter(Boolean) as Conversation[];
 }
 
-function formatBookingConfirmation(template: string, details: AppointmentDetails): string {
+function formatAppointmentMessage(template: string, details: AppointmentDetails, fallbackMessage: string): string {
   try {
     // Limit template length and sanitize
     let message = String(template || '').substring(0, 1000);
@@ -874,9 +876,13 @@ function formatBookingConfirmation(template: string, details: AppointmentDetails
     
     return message.trim().substring(0, 1000);
   } catch (error) {
-    console.error('Error in formatBookingConfirmation:', error);
-    return 'Lịch hẹn đã được đặt thành công.';
+    console.error('Error in formatAppointmentMessage:', error);
+    return fallbackMessage;
   }
+}
+
+function formatBookingConfirmation(template: string, details: AppointmentDetails): string {
+  return formatAppointmentMessage(template, details, 'Lịch hẹn đã được đặt thành công.');
 }
 
 
@@ -1127,7 +1133,10 @@ export async function processUserMessage(
             }
             if (processedAppointmentDB && processedAppointmentDB._id) {
               await CustomerModel.findByIdAndUpdate(customerId, { $addToSet: { appointmentIds: processedAppointmentDB._id } });
-              if (appSettings.successfulBookingMessageTemplate) {
+              if (scheduleOutputFromAI.intent === 'rescheduled' && appSettings.rescheduledAppointmentMessageTemplate) {
+                const detailsForTemplate = transformAppointmentDocToDetails(await AppointmentModel.findById(processedAppointmentDB._id).populate('customerId staffId'));
+                aiResponseContent = formatAppointmentMessage(appSettings.rescheduledAppointmentMessageTemplate, detailsForTemplate, 'Lịch hẹn đã được đổi thành công.');
+              } else if (appSettings.successfulBookingMessageTemplate) {
                 const detailsForTemplate = transformAppointmentDocToDetails(await AppointmentModel.findById(processedAppointmentDB._id).populate('customerId staffId'));
                 aiResponseContent = formatBookingConfirmation(appSettings.successfulBookingMessageTemplate, detailsForTemplate);
               } else {
@@ -1150,6 +1159,18 @@ export async function processUserMessage(
             { status: 'cancelled', updatedAt: new Date() }, { new: true }
           );
           console.log("[processUserMessage] Appointment cancelled. DB ID:", processedAppointmentDB?._id);
+          
+          // Use cancellation message template if available
+          console.log('[DEBUG] AI Cancellation - processedAppointmentDB exists:', !!processedAppointmentDB);
+          console.log('[DEBUG] AI Cancellation - cancelledAppointmentMessageTemplate exists:', !!appSettings.cancelledAppointmentMessageTemplate);
+          
+          if (processedAppointmentDB && appSettings.cancelledAppointmentMessageTemplate) {
+            const detailsForTemplate = transformAppointmentDocToDetails(processedAppointmentDB);
+            console.log('[DEBUG] AI Cancellation - appointment details:', detailsForTemplate);
+            
+            aiResponseContent = formatAppointmentMessage(appSettings.cancelledAppointmentMessageTemplate, detailsForTemplate, 'Lịch hẹn đã được hủy thành công.');
+            console.log('[DEBUG] AI Cancellation - formatted message:', aiResponseContent);
+          }
         } else {
           console.warn("[processUserMessage] Attempted to cancel without originalAppointmentIdToModify.");
         }
@@ -2183,7 +2204,7 @@ export async function getAppointments(filters: {
 export async function deleteExistingAppointment(appointmentId: string): Promise<void> {
   await dbConnect();
   try {
-    const appointment = await AppointmentModel.findById(appointmentId);
+    const appointment = await AppointmentModel.findById(appointmentId).populate('customerId');
     if (!appointment) {
       throw new Error('Appointment not found');
     }
@@ -2197,6 +2218,39 @@ export async function deleteExistingAppointment(appointmentId: string): Promise<
       appointment.customerId,
       { $pull: { appointmentIds: appointment._id } }
     );
+
+    // Send cancellation message to chat
+    console.log('[DEBUG] deleteExistingAppointment - Sending cancellation message for appointment:', appointmentId);
+    const appSettings = await getAppSettings();
+    console.log('[DEBUG] deleteExistingAppointment - cancelledAppointmentMessageTemplate exists:', !!appSettings?.cancelledAppointmentMessageTemplate);
+    
+    if (appSettings?.cancelledAppointmentMessageTemplate) {
+      const appointmentDetails = transformAppointmentDocToDetails(appointment);
+      console.log('[DEBUG] deleteExistingAppointment - appointment details:', appointmentDetails);
+      
+      const cancellationMessage = formatAppointmentMessage(
+        appSettings.cancelledAppointmentMessageTemplate,
+        appointmentDetails,
+        'Lịch hẹn đã được hủy thành công.'
+      );
+      console.log('[DEBUG] deleteExistingAppointment - formatted message:', cancellationMessage);
+
+      // Find the latest conversation for this customer
+      const latestConversation = await ConversationModel.findOne({
+        customerId: appointment.customerId
+      }).sort({ updatedAt: -1 });
+      console.log('[DEBUG] deleteExistingAppointment - conversation found:', !!latestConversation, latestConversation?._id);
+
+      if (latestConversation) {
+        const systemMessage = await createSystemMessage({
+          conversationId: (latestConversation._id as mongoose.Types.ObjectId).toString(),
+          content: cancellationMessage
+        });
+        console.log('[DEBUG] deleteExistingAppointment - system message created:', systemMessage);
+      }
+    } else {
+      console.log('[DEBUG] deleteExistingAppointment - No cancellation template found');
+    }
   } catch (error) {
     console.error('Error cancelling appointment:', error);
     throw error;
@@ -2276,6 +2330,9 @@ export async function updateExistingAppointment(
     throw new Error("Định dạng ngày không hợp lệ khi cập nhật. Phải là YYYY-MM-DD.");
   }
 
+  // Get original appointment for comparison
+  const originalAppointment = await AppointmentModel.findById(appointmentId);
+
   const updateData: any = { ...data, updatedAt: new Date() };
   delete updateData.customerId;
   delete updateData.userId;
@@ -2300,6 +2357,37 @@ export async function updateExistingAppointment(
     .populate<{ customerId: ICustomer }>('customerId', 'name phoneNumber')
     .populate<{ staffId: IUser }>('staffId', 'name');
   console.log("[ACTIONS] Manually updated appointment:", appointmentId, "with data:", JSON.stringify(updateData), "Result:", JSON.stringify(updatedAppointmentDoc));
+
+  // Check if this is a reschedule (date or time changed)
+  const isReschedule = originalAppointment && updatedAppointmentDoc && (
+    (data.date && data.date !== originalAppointment.date) ||
+    (data.time && data.time !== originalAppointment.time)
+  );
+
+  // Send reschedule message to chat if date/time changed
+  if (isReschedule && updatedAppointmentDoc) {
+    const appSettings = await getAppSettings();
+    if (appSettings?.rescheduledAppointmentMessageTemplate) {
+      const appointmentDetails = transformAppointmentDocToDetails(updatedAppointmentDoc);
+      const rescheduleMessage = formatAppointmentMessage(
+        appSettings.rescheduledAppointmentMessageTemplate,
+        appointmentDetails,
+        'Lịch hẹn đã được đổi thành công.'
+      );
+
+      // Find the latest conversation for this customer
+      const latestConversation = await ConversationModel.findOne({
+        customerId: updatedAppointmentDoc.customerId
+      }).sort({ updatedAt: -1 });
+
+      if (latestConversation) {
+        await createSystemMessage({
+          conversationId: (latestConversation._id as mongoose.Types.ObjectId).toString(),
+          content: rescheduleMessage
+        });
+      }
+    }
+  }
 
   return updatedAppointmentDoc ? transformAppointmentDocToDetails(updatedAppointmentDoc) : null;
 }
@@ -2536,8 +2624,8 @@ function transformReminderDocToReminder(doc: any): Reminder {
 
   return {
     id: doc._id.toString(),
-    customerId: typeof doc.customerId === 'string' ? doc.customerId : doc.customerId._id.toString(),
-    staffId: typeof doc.staffId === 'string' ? doc.staffId : doc.staffId._id.toString(),
+    customerId: typeof doc.customerId === 'string' ? doc.customerId : (doc.customerId && doc.customerId._id ? doc.customerId._id.toString() : ''),
+    staffId: typeof doc.staffId === 'string' ? doc.staffId : (doc.staffId && doc.staffId._id ? doc.staffId._id.toString() : ''),
     customerName,
     staffName,
     title: doc.title,
@@ -3194,8 +3282,9 @@ export async function deleteQuickReply(id: string): Promise<{ success: boolean }
 export async function createSystemMessage({ conversationId, content }: { conversationId: string, content: string }) {
   await dbConnect();
   // Lấy conversation để lấy customerId
-  const conversation = await ConversationModel.findById(conversationId);
+  const conversation = await ConversationModel.findById(conversationId).populate('customerId', 'name phoneNumber');
   if (!conversation) throw new Error('Conversation not found');
+  
   const message = await MessageModel.create({
     conversationId,
     content,
@@ -3213,6 +3302,40 @@ export async function createSystemMessage({ conversationId, content }: { convers
     lastMessagePreview: message.content.substring(0, 100)
   });
 
+  // Emit socket events for real-time update
+  const customer = conversation.customerId as any;
+  if (customer) {
+    // Create message object for socket
+    const messageForSocket = {
+      id: (message._id as mongoose.Types.ObjectId).toString(),
+      sender: 'system',
+      content: content,
+      timestamp: message.timestamp,
+      name: 'Hệ thống',
+      conversationId: conversationId,
+      customerId: customer._id?.toString() || conversation.customerId.toString(),
+      customerName: customer.name || `Người dùng ${customer.phoneNumber}`,
+      staffName: 'Hệ thống'
+    };
+
+    // Emit newMessage event for real-time chat update
+    const io = getSocketInstance();
+    if (io) {
+      io.to(conversationId).emit('newMessage', messageForSocket);
+      console.log('[createSystemMessage] Emitted newMessage event for real-time update');
+    }
+
+    // Emit notification
+    emitChatReplyNotification({
+      customerId: customer._id?.toString() || conversation.customerId.toString(),
+      customerName: customer.name || `Người dùng ${customer.phoneNumber}`,
+      replyContent: content,
+      conversationId: conversationId,
+      staffName: 'Hệ thống',
+      sender: 'system'
+    });
+  }
+
   return {
     //@ts-ignore
     //@ts-ignore
@@ -3229,7 +3352,7 @@ export async function createSystemMessage({ conversationId, content }: { convers
 export async function cancelAppointment(appointmentId: string, userSession: UserSession): Promise<boolean> {
   await dbConnect();
 
-  const appointment = await AppointmentModel.findById(appointmentId);
+  const appointment = await AppointmentModel.findById(appointmentId).populate('customerId');
   if (!appointment) {
     throw new Error("Không tìm thấy lịch hẹn.");
   }
@@ -3239,6 +3362,40 @@ export async function cancelAppointment(appointmentId: string, userSession: User
 
   appointment.status = 'cancelled';
   await appointment.save();
+
+  // Send cancellation message to chat
+  console.log('[DEBUG] Sending cancellation message to chat for appointment:', appointmentId);
+  const appSettings = await getAppSettings();
+  console.log('[DEBUG] App settings loaded, cancelledAppointmentMessageTemplate exists:', !!appSettings?.cancelledAppointmentMessageTemplate);
+  
+  if (appSettings?.cancelledAppointmentMessageTemplate) {
+    const appointmentDetails = transformAppointmentDocToDetails(appointment);
+    console.log('[DEBUG] Appointment details:', appointmentDetails);
+    
+    const cancellationMessage = formatAppointmentMessage(
+      appSettings.cancelledAppointmentMessageTemplate,
+      appointmentDetails,
+      'Lịch hẹn đã được hủy thành công.'
+    );
+    console.log('[DEBUG] Formatted cancellation message:', cancellationMessage);
+
+    // Find the latest conversation for this customer
+    const latestConversation = await ConversationModel.findOne({
+      customerId: appointment.customerId
+    }).sort({ updatedAt: -1 });
+    console.log('[DEBUG] Latest conversation found:', !!latestConversation, latestConversation?._id);
+
+    if (latestConversation) {
+      const systemMessage = await createSystemMessage({
+        conversationId: (latestConversation._id as mongoose.Types.ObjectId).toString(),
+        content: cancellationMessage
+      });
+      console.log('[DEBUG] System message created:', systemMessage);
+    }
+  } else {
+    console.log('[DEBUG] No cancellation template found in settings');
+  }
+
   return true;
 }
 

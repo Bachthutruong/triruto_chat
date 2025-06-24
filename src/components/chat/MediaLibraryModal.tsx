@@ -231,7 +231,7 @@ export function MediaLibraryModal({ isOpen, onClose, onSelectMedia }: MediaLibra
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <ImageIcon className="h-5 w-5" />
-              Thư viện Media & Files (Cloudinary)
+              Thư viện Media & Files
             </DialogTitle>
           </DialogHeader>
 

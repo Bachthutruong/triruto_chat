@@ -186,7 +186,7 @@ export default function AdminBranchesPage() {
   };
 
   return (
-    <div className="space-y-6" style={{ maxWidth: 'none', width: '1500px' }}>
+    <div className="space-y-6" style={{ maxWidth: 'none', width: '1200px' }}>
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold">Quản lý Chi nhánh</h1>

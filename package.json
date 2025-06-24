@@ -4,10 +4,13 @@
   "private": true,
   "scripts": {
     "dev": "tsx watch src/server.ts",
+    "dev:no-overlay": "DISABLE_ERROR_OVERLAY=true tsx watch src/server.ts",
+    "dev:frontend": "DISABLE_ERROR_OVERLAY=true next dev",
     "genkit:dev": "genkit start -- tsx src/ai/dev.ts",
     "genkit:watch": "genkit start -- tsx --watch src/ai/dev.ts",
     "build": "next build && tsc --project tsconfig.server.json && tsc-alias -p tsconfig.server.json",
     "start": "node dist/server.js",
+    "production": "npm run build && npm run start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit"
   },

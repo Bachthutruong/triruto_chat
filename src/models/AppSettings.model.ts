@@ -33,6 +33,8 @@ const AppSettingsSchema: Schema<IAppSettings> = new Schema({
   greetingMessageReturningCustomer: { type: String, default: 'Chào mừng bạn quay trở lại! Rất vui được gặp lại bạn.' },
   suggestedQuestions: { type: [String], default: ['Các dịch vụ của bạn?', 'Đặt lịch hẹn', 'Địa chỉ của bạn ở đâu?'] },
   successfulBookingMessageTemplate: { type: String, default: "Lịch hẹn của bạn cho {{service}} vào lúc {{time}} ngày {{date}}{{#if branch}} tại {{branch}}{{/if}} đã được đặt thành công!" },
+  cancelledAppointmentMessageTemplate: { type: String, default: "Lịch hẹn {{service}} vào lúc {{time}} ngày {{date}}{{#if branch}} tại {{branch}}{{/if}} đã được hủy thành công." },
+  rescheduledAppointmentMessageTemplate: { type: String, default: "Lịch hẹn {{service}} đã được đổi thành {{time}} ngày {{date}}{{#if branch}} tại {{branch}}{{/if}}." },
   brandName: { type: String, default: 'Live Chat' },
   logoUrl: { type: String },
   logoDataUri: { type: String },
